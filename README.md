@@ -1,8 +1,8 @@
 # DevClaw
 
-**One agent. One group chat. A full dev team.**
+**Every group chat becomes an autonomous development team.**
 
-Add the orchestrator to a Telegram group, point it at a GitLab repo, and it spins up an isolated dev team: a **PM** (the orchestrator itself) that manages the backlog, a **DEV** sub-agent that writes code, and a **QA** sub-agent that reviews it. Add another group chat — another team. Each runs independently with its own task queue, workers, and session state.
+Add the agent to a Telegram group, point it at a GitLab repo — that group now has a **PM** managing the backlog, a **DEV** writing code, and a **QA** reviewing it. All autonomous. Add another group, get another team. Each project runs in complete isolation with its own task queue, workers, and session state.
 
 DevClaw is the [OpenClaw](https://openclaw.ai) plugin that makes this work.
 
