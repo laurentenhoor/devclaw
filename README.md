@@ -1,6 +1,10 @@
 # DevClaw
 
-An [OpenClaw](https://openclaw.ai) plugin that turns a single orchestrator agent into a development team lead managing multiple projects simultaneously.
+**One agent. One group chat. A full dev team.**
+
+Add the orchestrator agent to a Telegram group, point it at a GitLab repo, and you have an isolated development team — a DEV that writes code, a QA that reviews it, and a team lead that manages the pipeline. Add another group chat, get another team. Each project runs independently with its own task queue, its own sub-agents, and its own session state.
+
+DevClaw is the [OpenClaw](https://openclaw.ai) plugin that makes this work.
 
 ## Why
 
