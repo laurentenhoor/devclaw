@@ -120,20 +120,20 @@ All project state lives in a single `memory/projects.json` file in the orchestra
 ```json
 {
   "projects": {
-    "-5044836116": {
-      "name": "trainerswap",
-      "repo": "~/git/trainerswap",
-      "groupName": "Henk - Trainerswap",
+    "-1234567890": {
+      "name": "my-webapp",
+      "repo": "~/git/my-webapp",
+      "groupName": "Dev - My Webapp",
       "baseBranch": "development",
       "dev": {
         "active": false,
-        "sessionId": "agent:henk-dev:subagent:a9e4d078-...",
+        "sessionId": "agent:orchestrator:subagent:a9e4d078-...",
         "issueId": null,
         "model": "haiku"
       },
       "qa": {
         "active": false,
-        "sessionId": "agent:henk-dev:subagent:18707821-...",
+        "sessionId": "agent:orchestrator:subagent:18707821-...",
         "issueId": null,
         "model": "grok"
       }
@@ -211,9 +211,9 @@ Detects and optionally fixes state inconsistencies.
 Every tool call automatically appends an NDJSON entry to `memory/audit.log`. No manual logging required from the orchestrator agent.
 
 ```jsonl
-{"ts":"2026-02-08T10:30:00Z","event":"task_pickup","project":"trainerswap","issue":42,"role":"dev","model":"sonnet","sessionAction":"send"}
+{"ts":"2026-02-08T10:30:00Z","event":"task_pickup","project":"my-webapp","issue":42,"role":"dev","model":"sonnet","sessionAction":"send"}
 {"ts":"2026-02-08T10:30:01Z","event":"model_selection","issue":42,"role":"dev","selected":"sonnet","reason":"Standard dev task"}
-{"ts":"2026-02-08T10:45:00Z","event":"task_complete","project":"trainerswap","issue":42,"role":"dev","result":"done"}
+{"ts":"2026-02-08T10:45:00Z","event":"task_complete","project":"my-webapp","issue":42,"role":"dev","result":"done"}
 ```
 
 ## Installation
