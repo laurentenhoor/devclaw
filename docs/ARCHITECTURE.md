@@ -1,17 +1,35 @@
 # DevClaw — Architecture & Component Interaction
 
+## Agents vs Sessions
+
+Understanding the OpenClaw model is key to understanding how DevClaw works:
+
+- **Agent** — A configured entity in `openclaw.json`. Has a workspace, model, identity files (SOUL.md, IDENTITY.md), and tool permissions. Persists across restarts.
+- **Session** — A runtime conversation instance. Created when the agent starts or when `sessions_spawn` is called. Each session has its own context window and conversation history.
+- **Sub-agent session** — A session spawned by the orchestrator agent via `sessions_spawn`. Despite the name, it is NOT a separate agent — it's a child session running under the same agent, with its own isolated context. Format: `agent:<parent>:subagent:<uuid>`.
+
+DevClaw operates at the **orchestrator agent** level. The orchestrator runs a single long-lived session that manages all projects. For each task, it spawns (or reuses) DEV and QA sub-agent sessions. The plugin handles the orchestration logic — label transitions, state management, model selection, audit logging — and returns structured instructions. The orchestrator agent then executes the actual session operations (`sessions_spawn` or `sessions_send`).
+
+```
+Orchestrator Agent (configured in openclaw.json)
+  └─ Main session (long-lived, handles all projects)
+       ├─ DEV sub-agent session (project A) ← sessions_spawn / sessions_send
+       ├─ QA sub-agent session (project A)  ← sessions_spawn / sessions_send
+       ├─ DEV sub-agent session (project B)
+       └─ QA sub-agent session (project B)
+```
+
 ## System overview
 
 ```mermaid
 graph TB
     subgraph "External"
-        USER[Human / User]
         GL[GitLab]
         TG[Telegram]
     end
 
     subgraph "OpenClaw Runtime"
-        AGENT[Orchestrator Agent / PM]
+        AGENT[Orchestrator Agent]
         DEV[DEV sub-agent session]
         QA[QA sub-agent session]
     end
@@ -30,9 +48,10 @@ graph TB
         REPO[Project Repository]
     end
 
-    USER -->|creates issues| GL
-    USER -->|sends messages| TG
     TG -->|delivers messages| AGENT
+    AGENT -->|announces to group| TG
+
+    AGENT -->|creates/updates issues| GL
 
     AGENT -->|calls| TP
     AGENT -->|calls| TC
@@ -64,9 +83,8 @@ graph TB
     AGENT -->|sessions_send| QA
 
     DEV -->|writes code, creates MRs| REPO
+    DEV -->|creates/updates issues| GL
     QA -->|reviews code, tests| REPO
-
-    AGENT -->|announces to group| TG
 ```
 
 ## Complete ticket lifecycle
@@ -75,8 +93,10 @@ This traces a single issue from creation to completion, showing every component 
 
 ### Phase 1: Issue created
 
+Issues are created by the orchestrator agent or by sub-agent sessions via `glab`. The orchestrator can create issues based on user requests in Telegram, backlog planning, or QA feedback. Sub-agents can also create issues when they discover bugs or related work during development.
+
 ```
-Human → GitLab: creates issue #42 with label "To Do"
+Orchestrator Agent → GitLab: creates issue #42 with label "To Do"
 ```
 
 **State:** GitLab has issue #42 labeled "To Do". Nothing in DevClaw yet.
@@ -84,12 +104,12 @@ Human → GitLab: creates issue #42 with label "To Do"
 ### Phase 2: Heartbeat detects work
 
 ```
-Heartbeat triggers → Agent calls queue_status()
+Heartbeat triggers → Orchestrator calls queue_status()
 ```
 
 ```mermaid
 sequenceDiagram
-    participant A as PM Agent
+    participant A as Orchestrator
     participant QS as queue_status
     participant GL as GitLab
     participant PJ as projects.json
@@ -108,13 +128,13 @@ sequenceDiagram
     QS-->>A: { dev: idle, queue: { toDo: [#42] } }
 ```
 
-**Agent decides:** DEV is idle, issue #42 is in To Do → pick it up.
+**Orchestrator decides:** DEV is idle, issue #42 is in To Do → pick it up.
 
 ### Phase 3: DEV pickup
 
 ```mermaid
 sequenceDiagram
-    participant A as PM Agent
+    participant A as Orchestrator
     participant TP as task_pickup
     participant GL as GitLab
     participant MS as Model Selector
@@ -135,7 +155,7 @@ sequenceDiagram
     TP->>PJ: activateWorker(-123, dev, { issueId: "42", model: "sonnet" })
     TP->>AL: append { event: "task_pickup", ... }
     TP->>AL: append { event: "model_selection", ... }
-    TP-->>A: { sessionAction: "send", sessionId: "existing-session", announcement: "🔧 Sending DEV (sonnet) for #42: Add login page" }
+    TP-->>A: { sessionAction: "send", sessionId: "existing-session", announcement: "..." }
     A->>TG: "🔧 Sending DEV (sonnet) for #42: Add login page"
     A->>A: sessions_send(sessionId, task description)
 ```
@@ -149,17 +169,17 @@ sequenceDiagram
 ### Phase 4: DEV works
 
 ```
-DEV sub-agent → reads codebase, writes code, creates MR
-DEV sub-agent → reports back to PM: "done, MR merged"
+DEV sub-agent session → reads codebase, writes code, creates MR
+DEV sub-agent session → reports back to orchestrator: "done, MR merged"
 ```
 
-This happens inside the OpenClaw session. DevClaw is not involved — the DEV sub-agent works autonomously with the codebase.
+This happens inside the OpenClaw session. DevClaw is not involved — the DEV sub-agent session works autonomously with the codebase.
 
 ### Phase 5: DEV complete
 
 ```mermaid
 sequenceDiagram
-    participant A as PM Agent
+    participant A as Orchestrator
     participant TC as task_complete
     participant GL as GitLab
     participant PJ as projects.json
@@ -196,7 +216,7 @@ Same as Phase 3, but with `role: "qa"`. Label transitions "To Test" → "Testing
 
 ```mermaid
 sequenceDiagram
-    participant A as PM Agent
+    participant A as Orchestrator
     participant TC as task_complete
     participant GL as GitLab
     participant PJ as projects.json
@@ -218,7 +238,7 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant A as PM Agent
+    participant A as Orchestrator
     participant TC as task_complete
     participant GL as GitLab
     participant MS as Model Selector
@@ -254,7 +274,7 @@ The heartbeat runs periodically (triggered by the agent or a scheduled message).
 
 ```mermaid
 sequenceDiagram
-    participant A as PM Agent
+    participant A as Orchestrator
     participant SH as session_health
     participant QS as queue_status
     participant TP as task_pickup
@@ -290,6 +310,7 @@ Every piece of data and where it lives:
 │  Labels: [To Do | Doing | To Test | Testing | Done | ...]       │
 │  State: open / closed                                           │
 │  MRs: linked merge requests                                    │
+│  Created by: orchestrator agent, DEV/QA sub-agents, or humans  │
 └─────────────────────────────────────────────────────────────────┘
         ↕ glab CLI (read/write)
 ┌─────────────────────────────────────────────────────────────────┐
@@ -335,8 +356,8 @@ Every piece of data and where it lives:
 ┌─────────────────────────────────────────────────────────────────┐
 │ Git Repository (codebase)                                       │
 │                                                                 │
-│  DEV sub-agent: reads code, writes code, creates MRs            │
-│  QA sub-agent: reads code, runs tests, reviews MRs              │
+│  DEV sub-agent session: reads code, writes code, creates MRs    │
+│  QA sub-agent session: reads code, runs tests, reviews MRs      │
 │  task_complete (DEV done): git pull to sync latest               │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -355,16 +376,20 @@ graph LR
         Z[Zombie cleanup]
     end
 
-    subgraph "Agent handles (with DevClaw instructions)"
+    subgraph "Orchestrator handles (with DevClaw instructions)"
         SP[Session spawn/send]
         MSG[Telegram announcements]
         HB[Heartbeat scheduling]
+        IC[Issue creation via glab]
     end
 
-    subgraph "External (not DevClaw)"
-        IC[Issue creation]
+    subgraph "Sub-agent sessions handle"
         CR[Code writing]
         MR[MR creation/review]
+        BUG[Bug issue creation]
+    end
+
+    subgraph "External"
         DEPLOY[Deployment]
         HR[Human decisions]
     end

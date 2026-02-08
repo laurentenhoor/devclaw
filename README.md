@@ -2,21 +2,21 @@
 
 **Every group chat becomes an autonomous development team.**
 
-Add the agent to a Telegram group, point it at a GitLab repo — that group now has a **PM** managing the backlog, a **DEV** writing code, and a **QA** reviewing it. All autonomous. Add another group, get another team. Each project runs in complete isolation with its own task queue, workers, and session state.
+Add the agent to a Telegram group, point it at a GitLab repo — that group now has an **orchestrator** managing the backlog, a **DEV** sub-agent session writing code, and a **QA** sub-agent session reviewing it. All autonomous. Add another group, get another team. Each project runs in complete isolation with its own task queue, workers, and session state.
 
 DevClaw is the [OpenClaw](https://openclaw.ai) plugin that makes this work.
 
 ## Why
 
-[OpenClaw](https://openclaw.ai) is great at giving AI agents the ability to develop software — spawn sub-agents, manage sessions, work with code. But running a real multi-project development pipeline exposes a gap: the orchestration layer between "agent can write code" and "agent reliably manages multiple projects" is brittle. Every task involves 10+ coordinated steps across GitLab labels, session state, model selection, and audit logging. Agents forget steps, corrupt state, null out session IDs they should preserve, or pick the wrong model for the job.
+[OpenClaw](https://openclaw.ai) is great at giving AI agents the ability to develop software — spawn sub-agent sessions, manage sessions, work with code. But running a real multi-project development pipeline exposes a gap: the orchestration layer between "agent can write code" and "agent reliably manages multiple projects" is brittle. Every task involves 10+ coordinated steps across GitLab labels, session state, model selection, and audit logging. Agents forget steps, corrupt state, null out session IDs they should preserve, or pick the wrong model for the job.
 
 DevClaw fills that gap with guardrails. It gives the orchestrator atomic tools that make it impossible to forget a label transition, lose a session reference, or skip an audit log entry. The complexity of multi-project orchestration moves from agent instructions (that LLMs follow imperfectly) into deterministic code (that runs the same way every time).
 
 ## The idea
 
-One head agent acts as the **PM** across all your projects. It reads task backlogs, decides priorities, and delegates work. For each task, it spawns (or reuses) a **DEV** sub-agent to write code or a **QA** sub-agent to review it. Every Telegram group is a separate project — the PM keeps them completely isolated while managing them all from a single process.
+One orchestrator agent manages all your projects. It reads task backlogs, creates issues, decides priorities, and delegates work. For each task, it spawns (or reuses) a **DEV** sub-agent session to write code or a **QA** sub-agent session to review it. Every Telegram group is a separate project — the orchestrator keeps them completely isolated while managing them all from a single process.
 
-DevClaw gives the PM four tools that replace hundreds of lines of manual orchestration logic. Instead of following a 10-step checklist per task (fetch issue, check labels, pick model, check for existing session, transition label, update state, log audit event...), it calls `task_pickup` and the plugin handles everything atomically.
+DevClaw gives the orchestrator four tools that replace hundreds of lines of manual orchestration logic. Instead of following a 10-step checklist per task (fetch issue, check labels, pick model, check for existing session, transition label, update state, log audit event...), it calls `task_pickup` and the plugin handles everything atomically.
 
 ## How it works
 
@@ -24,48 +24,48 @@ DevClaw gives the PM four tools that replace hundreds of lines of manual orchest
 graph TB
     subgraph "Group Chat A"
         direction TB
-        A_PM["🎯 PM (head agent)"]
+        A_O["🎯 Orchestrator"]
         A_GL[GitLab Issues]
-        A_DEV["🔧 DEV (sub-agent)"]
-        A_QA["🔍 QA (sub-agent)"]
-        A_PM -->|task_pickup| A_GL
-        A_PM -->|spawns / sends| A_DEV
-        A_PM -->|spawns / sends| A_QA
+        A_DEV["🔧 DEV (sub-agent session)"]
+        A_QA["🔍 QA (sub-agent session)"]
+        A_O -->|task_pickup| A_GL
+        A_O -->|spawns / sends| A_DEV
+        A_O -->|spawns / sends| A_QA
     end
 
     subgraph "Group Chat B"
         direction TB
-        B_PM["🎯 PM (head agent)"]
+        B_O["🎯 Orchestrator"]
         B_GL[GitLab Issues]
-        B_DEV["🔧 DEV (sub-agent)"]
-        B_QA["🔍 QA (sub-agent)"]
-        B_PM -->|task_pickup| B_GL
-        B_PM -->|spawns / sends| B_DEV
-        B_PM -->|spawns / sends| B_QA
+        B_DEV["🔧 DEV (sub-agent session)"]
+        B_QA["🔍 QA (sub-agent session)"]
+        B_O -->|task_pickup| B_GL
+        B_O -->|spawns / sends| B_DEV
+        B_O -->|spawns / sends| B_QA
     end
 
     subgraph "Group Chat C"
         direction TB
-        C_PM["🎯 PM (head agent)"]
+        C_O["🎯 Orchestrator"]
         C_GL[GitLab Issues]
-        C_DEV["🔧 DEV (sub-agent)"]
-        C_QA["🔍 QA (sub-agent)"]
-        C_PM -->|task_pickup| C_GL
-        C_PM -->|spawns / sends| C_DEV
-        C_PM -->|spawns / sends| C_QA
+        C_DEV["🔧 DEV (sub-agent session)"]
+        C_QA["🔍 QA (sub-agent session)"]
+        C_O -->|task_pickup| C_GL
+        C_O -->|spawns / sends| C_DEV
+        C_O -->|spawns / sends| C_QA
     end
 
     AGENT["Single OpenClaw Agent"]
-    AGENT --- A_PM
-    AGENT --- B_PM
-    AGENT --- C_PM
+    AGENT --- A_O
+    AGENT --- B_O
+    AGENT --- C_O
 ```
 
-It's the same agent process — but each group chat gives it a different project context. The PM role, the workers, the task queue, and all state are fully isolated per group.
+It's the same agent process — but each group chat gives it a different project context. The orchestrator role, the workers, the task queue, and all state are fully isolated per group.
 
 ## Task lifecycle
 
-Every task (GitLab issue) moves through a fixed pipeline of label states. DevClaw tools handle every transition atomically — label change, state update, audit log, and session management in a single call.
+Every task (GitLab issue) moves through a fixed pipeline of label states. Issues are created by the orchestrator agent or by sub-agent sessions — not manually. DevClaw tools handle every transition atomically — label change, state update, audit log, and session management in a single call.
 
 ```mermaid
 stateDiagram-v2

@@ -9,7 +9,7 @@
 | [`glab`](https://gitlab.com/gitlab-org/cli) CLI | GitLab issue/label management | `glab --version` |
 | glab authenticated | Plugin calls glab for every label transition | `glab auth status` |
 | A GitLab repo with issues | The task backlog lives in GitLab | `glab issue list` from your repo |
-| An OpenClaw agent with Telegram | The PM agent that will orchestrate | Agent defined in `openclaw.json` |
+| An OpenClaw agent with Telegram | The orchestrator agent that will manage projects | Agent defined in `openclaw.json` |
 
 ## Setup steps
 
@@ -35,7 +35,7 @@ In `openclaw.json`, your orchestrator agent needs access to the DevClaw tools:
   "agents": {
     "list": [{
       "id": "my-orchestrator",
-      "name": "Dev PM",
+      "name": "Dev Orchestrator",
       "model": "anthropic/claude-sonnet-4-5",
       "tools": {
         "allow": [
@@ -53,7 +53,7 @@ In `openclaw.json`, your orchestrator agent needs access to the DevClaw tools:
 }
 ```
 
-The agent also needs the OpenClaw session tools (`sessions_spawn`, `sessions_send`, `sessions_list`) — DevClaw handles the orchestration logic, but the agent executes the actual session operations.
+The agent also needs the OpenClaw session tools (`sessions_spawn`, `sessions_send`, `sessions_list`) — DevClaw handles the orchestration logic (labels, state, model selection, audit), but the agent executes the actual session operations to spawn or communicate with DEV/QA sub-agent sessions.
 
 ### 3. Create GitLab labels
 
@@ -112,10 +112,12 @@ Add your orchestrator bot to the Telegram group for the project. The agent will 
 
 ### 6. Create your first issue
 
-```bash
-cd ~/git/my-project
-glab issue create --title "My first task" --label "To Do"
-```
+Issues can be created in multiple ways:
+- **Via the agent** — Ask the orchestrator in the Telegram group: "Create an issue for adding a login page"
+- **Via glab CLI** — `cd ~/git/my-project && glab issue create --title "My first task" --label "To Do"`
+- **Via GitLab UI** — Create an issue and add the "To Do" label
+
+The orchestrator agent and sub-agent sessions can all create and update issues via `glab` tool usage.
 
 ### 7. Test the pipeline
 
@@ -127,7 +129,7 @@ The agent should call `queue_status` and report the "To Do" issue. Then:
 
 > "Pick up issue #1 for DEV"
 
-The agent calls `task_pickup`, which selects a model, transitions the label to "Doing", and returns instructions to spawn or reuse a DEV session.
+The agent calls `task_pickup`, which selects a model, transitions the label to "Doing", and returns instructions to spawn or reuse a DEV sub-agent session.
 
 ## Adding more projects
 
@@ -146,7 +148,7 @@ Each project is fully isolated — separate queue, separate workers, separate st
 | Project registration | You (once per project) | Entry in `projects.json` |
 | Agent definition | You (once) | Agent in `openclaw.json` with tool permissions |
 | Telegram group setup | You (once per project) | Add bot to group |
-| Task creation | You or external | Create GitLab issues with labels |
+| Issue creation | Agent or sub-agents | Created via `glab` tool usage (or manually via GitLab UI) |
 | Label transitions | Plugin | Atomic `--unlabel` + `--label` via glab |
 | Model selection | Plugin | Keyword-based heuristic per task |
 | State management | Plugin | Atomic read/write to `projects.json` |
