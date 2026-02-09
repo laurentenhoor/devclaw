@@ -31,6 +31,7 @@ export type NotifyEvent =
       groupId: string;
       issueId: number;
       issueTitle: string;
+      issueUrl: string;
       role: "dev" | "qa";
       model: string;
       sessionAction: "spawn" | "send";
@@ -66,7 +67,7 @@ function buildMessage(event: NotifyEvent): string {
   switch (event.type) {
     case "workerStart": {
       const action = event.sessionAction === "spawn" ? "🚀 Started" : "▶️ Resumed";
-      return `${action} ${event.role.toUpperCase()} (${event.model}) on #${event.issueId}: ${event.issueTitle}`;
+      return `${action} ${event.role.toUpperCase()} (${event.model}) on #${event.issueId}: ${event.issueTitle}\n🔗 ${event.issueUrl}`;
     }
 
     case "workerComplete": {

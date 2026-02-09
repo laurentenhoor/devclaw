@@ -266,7 +266,7 @@ export async function dispatchTask(
       ? "🔍"
       : "🔧";
   const actionVerb = sessionAction === "spawn" ? "Spawning" : "Sending";
-  const announcement = `${emoji} ${actionVerb} ${role.toUpperCase()} (${modelAlias}) for #${issueId}: ${issueTitle}`;
+  const announcement = `${emoji} ${actionVerb} ${role.toUpperCase()} (${modelAlias}) for #${issueId}: ${issueTitle}\n🔗 ${issueUrl}`;
 
   return {
     sessionAction,

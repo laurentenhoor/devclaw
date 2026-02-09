@@ -322,6 +322,7 @@ export function createTaskPickupTool(api: OpenClawPluginApi) {
           groupId,
           issueId: issue.iid,
           issueTitle: issue.title,
+          issueUrl: issue.web_url,
           role,
           model: dispatchResult.modelAlias,
           sessionAction: dispatchResult.sessionAction,
