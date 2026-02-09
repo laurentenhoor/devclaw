@@ -29,14 +29,6 @@ const plugin = {
           qa: { type: "string", description: "QA engineer model" },
         },
       },
-      glabPath: {
-        type: "string",
-        description: "Path to glab CLI binary. Defaults to 'glab' on PATH.",
-      },
-      ghPath: {
-        type: "string",
-        description: "Path to gh CLI binary. Defaults to 'gh' on PATH.",
-      },
     },
   },
 

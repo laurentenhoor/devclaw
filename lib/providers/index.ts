@@ -11,12 +11,12 @@ import { execFileSync } from "node:child_process";
 import type { IssueProvider } from "../issue-provider.js";
 import { GitLabProvider } from "./gitlab.js";
 import { GitHubProvider } from "./github.js";
+import { resolveRepoPath } from "../utils.js";
 
 export type ProviderOptions = {
   provider?: "gitlab" | "github";
-  glabPath?: string;
-  ghPath?: string;
-  repoPath: string;
+  repo?: string;
+  repoPath?: string;
 };
 
 function detectProvider(repoPath: string): "gitlab" | "github" {
@@ -39,16 +39,21 @@ export type ProviderWithType = {
 };
 
 export function createProvider(opts: ProviderOptions): ProviderWithType {
-  const type = opts.provider ?? detectProvider(opts.repoPath);
+  const repoPath = opts.repoPath ?? (opts.repo ? resolveRepoPath(opts.repo) : null);
+  if (!repoPath) {
+    throw new Error("Either repoPath or repo must be provided to createProvider");
+  }
+
+  const type = opts.provider ?? detectProvider(repoPath);
 
   if (type === "github") {
     return {
-      provider: new GitHubProvider({ ghPath: opts.ghPath, repoPath: opts.repoPath }),
+      provider: new GitHubProvider({ repoPath }),
       type: "github",
     };
   }
   return {
-    provider: new GitLabProvider({ glabPath: opts.glabPath, repoPath: opts.repoPath }),
+    provider: new GitLabProvider({ repoPath }),
     type: "gitlab",
   };
 }

@@ -24,7 +24,6 @@ import {
 const execFileAsync = promisify(execFile);
 
 export type GitHubProviderOptions = {
-  ghPath?: string;
   repoPath: string;
 };
 
@@ -50,16 +49,14 @@ function toIssue(gh: GhIssue): Issue {
 }
 
 export class GitHubProvider implements IssueProvider {
-  private ghPath: string;
   private repoPath: string;
 
   constructor(opts: GitHubProviderOptions) {
-    this.ghPath = opts.ghPath ?? "gh";
     this.repoPath = opts.repoPath;
   }
 
   private async gh(args: string[]): Promise<string> {
-    const { stdout } = await execFileAsync(this.ghPath, args, {
+    const { stdout } = await execFileAsync("gh", args, {
       cwd: this.repoPath,
       timeout: 30_000,
     });

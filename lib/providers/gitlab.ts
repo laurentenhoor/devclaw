@@ -20,21 +20,18 @@ import {
 const execFileAsync = promisify(execFile);
 
 export type GitLabProviderOptions = {
-  glabPath?: string;
   repoPath: string;
 };
 
 export class GitLabProvider implements IssueProvider {
-  private glabPath: string;
   private repoPath: string;
 
   constructor(opts: GitLabProviderOptions) {
-    this.glabPath = opts.glabPath ?? "glab";
     this.repoPath = opts.repoPath;
   }
 
   private async glab(args: string[]): Promise<string> {
-    const { stdout } = await execFileAsync(this.glabPath, args, {
+    const { stdout } = await execFileAsync("glab", args, {
       cwd: this.repoPath,
       timeout: 30_000,
     });
@@ -76,7 +73,7 @@ export class GitLabProvider implements IssueProvider {
       const { promisify } = await import("node:util");
       const execAsync = promisify(exec);
 
-      let cmd = `${this.glabPath} issue create --title "${title.replace(/"/g, '\\"')}" --description "$(cat ${tempFile})" --label "${label}" --output json`;
+      let cmd = `glab issue create --title "${title.replace(/"/g, '\\"')}" --description "$(cat ${tempFile})" --label "${label}" --output json`;
       if (assignees && assignees.length > 0) {
         cmd += ` --assignee "${assignees.join(",")}"`;
       }

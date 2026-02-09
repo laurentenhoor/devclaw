@@ -16,6 +16,7 @@ import { log as auditLog } from "../audit.js";
 import { dispatchTask } from "../dispatch.js";
 import { type StateLabel } from "../issue-provider.js";
 import { createProvider } from "../providers/index.js";
+import { resolveRepoPath } from "../utils.js";
 import {
   deactivateWorker,
   getProject,
@@ -24,7 +25,6 @@ import {
   readProjects,
 } from "../projects.js";
 import type { ToolContext } from "../types.js";
-import { resolveRepoPath } from "../utils.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -105,16 +105,11 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
         );
       }
 
-      const repoPath = resolveRepoPath(project.repo);
       const { provider } = createProvider({
-        glabPath: (api.pluginConfig as Record<string, unknown>)?.glabPath as
-          | string
-          | undefined,
-        ghPath: (api.pluginConfig as Record<string, unknown>)?.ghPath as
-          | string
-          | undefined,
-        repoPath,
+        repo: project.repo,
       });
+
+      const repoPath = resolveRepoPath(project.repo);
 
       const output: Record<string, unknown> = {
         success: true,

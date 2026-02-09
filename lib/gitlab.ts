@@ -25,7 +25,6 @@ const STATE_LABELS = [
 export type StateLabel = (typeof STATE_LABELS)[number];
 
 type GlabOptions = {
-  glabPath?: string;
   repoPath: string;
 };
 
@@ -33,8 +32,7 @@ async function glab(
   args: string[],
   opts: GlabOptions,
 ): Promise<string> {
-  const bin = opts.glabPath ?? "glab";
-  const { stdout } = await execFileAsync(bin, args, {
+  const { stdout } = await execFileAsync("glab", args, {
     cwd: opts.repoPath,
     timeout: 30_000,
   });

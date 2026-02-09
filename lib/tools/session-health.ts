@@ -11,7 +11,6 @@ import { readProjects, updateWorker, getSessionForModel } from "../projects.js";
 import { type StateLabel } from "../issue-provider.js";
 import { createProvider } from "../providers/index.js";
 import { log as auditLog } from "../audit.js";
-import { resolveRepoPath } from "../utils.js";
 
 export function createSessionHealthTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
@@ -48,11 +47,8 @@ export function createSessionHealthTool(api: OpenClawPluginApi) {
       let fixesApplied = 0;
 
       for (const [groupId, project] of Object.entries(data.projects)) {
-        const repoPath = resolveRepoPath(project.repo);
         const { provider } = createProvider({
-          glabPath: (api.pluginConfig as Record<string, unknown>)?.glabPath as string | undefined,
-          ghPath: (api.pluginConfig as Record<string, unknown>)?.ghPath as string | undefined,
-          repoPath,
+          repo: project.repo,
         });
 
         for (const role of ["dev", "qa"] as const) {

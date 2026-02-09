@@ -170,9 +170,7 @@ export function createProjectRegisterTool(api: OpenClawPluginApi) {
       const repoPath = resolveRepoPath(repo);
 
       // 3. Create provider and verify it works
-      const glabPath = (api.pluginConfig as Record<string, unknown>)?.glabPath as string | undefined;
-      const ghPath = (api.pluginConfig as Record<string, unknown>)?.ghPath as string | undefined;
-      const { provider, type: providerType } = createProvider({ glabPath, ghPath, repoPath });
+      const { provider, type: providerType } = createProvider({ repo });
 
       const healthy = await provider.healthCheck();
       if (!healthy) {

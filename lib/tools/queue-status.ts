@@ -11,7 +11,6 @@ import { type StateLabel } from "../issue-provider.js";
 import { createProvider } from "../providers/index.js";
 import { log as auditLog } from "../audit.js";
 import { detectContext, generateGuardrails } from "../context-guard.js";
-import { resolveRepoPath } from "../utils.js";
 
 export function createQueueStatusTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
@@ -69,11 +68,8 @@ export function createQueueStatusTool(api: OpenClawPluginApi) {
         const project = getProject(data, pid);
         if (!project) continue;
 
-        const repoPath = resolveRepoPath(project.repo);
         const { provider } = createProvider({
-          glabPath: (api.pluginConfig as Record<string, unknown>)?.glabPath as string | undefined,
-          ghPath: (api.pluginConfig as Record<string, unknown>)?.ghPath as string | undefined,
-          repoPath,
+          repo: project.repo,
         });
 
         // Fetch queue counts from issue tracker

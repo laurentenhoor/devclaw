@@ -9,19 +9,23 @@
         "type": "object",
         "description": "Model mapping per developer tier (junior, medior, senior, qa)",
         "properties": {
-          "junior": { "type": "string", "description": "Junior dev model (default: anthropic/claude-haiku-4-5)" },
-          "medior": { "type": "string", "description": "Medior dev model (default: anthropic/claude-sonnet-4-5)" },
-          "senior": { "type": "string", "description": "Senior dev model (default: anthropic/claude-opus-4-5)" },
-          "qa": { "type": "string", "description": "QA engineer model (default: anthropic/claude-sonnet-4-5)" }
+          "junior": {
+            "type": "string",
+            "description": "Junior dev model (default: anthropic/claude-haiku-4-5)"
+          },
+          "medior": {
+            "type": "string",
+            "description": "Medior dev model (default: anthropic/claude-sonnet-4-5)"
+          },
+          "senior": {
+            "type": "string",
+            "description": "Senior dev model (default: anthropic/claude-opus-4-5)"
+          },
+          "qa": {
+            "type": "string",
+            "description": "QA engineer model (default: anthropic/claude-sonnet-4-5)"
+          }
         }
-      },
-      "glabPath": {
-        "type": "string",
-        "description": "Path to glab CLI binary. Defaults to 'glab' on PATH."
-      },
-      "ghPath": {
-        "type": "string",
-        "description": "Path to gh CLI binary. Defaults to 'gh' on PATH."
       }
     }
   }

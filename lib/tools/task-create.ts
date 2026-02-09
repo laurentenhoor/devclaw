@@ -13,7 +13,6 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
 import { readProjects } from "../projects.js";
-import { resolveRepoPath } from "../utils.js";
 import { createProvider } from "../providers/index.js";
 import { log as auditLog } from "../audit.js";
 import type { StateLabel } from "../issue-provider.js";
@@ -95,12 +94,8 @@ The issue is created with a state label (defaults to "Planning"). Returns the cr
       }
 
       // 2. Create provider
-      const repoPath = resolveRepoPath(project.repo);
-      const config = api.pluginConfig as Record<string, unknown> | undefined;
       const { provider, type: providerType } = createProvider({
-        glabPath: config?.glabPath as string | undefined,
-        ghPath: config?.ghPath as string | undefined,
-        repoPath,
+        repo: project.repo,
       });
 
       // 3. Create the issue
