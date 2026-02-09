@@ -279,7 +279,8 @@ async function resolveWorkspacePath(agentId: string): Promise<string> {
 
 /**
  * Write DevClaw model tier config and devClawAgentIds to openclaw.json plugins section.
- * Also adds tool restrictions (deny sessions_spawn) to DevClaw agents.
+ * Also adds tool restrictions (deny sessions_spawn, sessions_send) to DevClaw agents.
+ * This prevents workers from spawning sub-agents or messaging other sessions directly.
  * Configures subagent cleanup interval to keep development sessions alive.
  * Read-modify-write to preserve existing config.
  */
@@ -325,13 +326,15 @@ async function writePluginConfig(
       config.plugins.entries.devclaw.config.devClawAgentIds = [...existing, agentId];
     }
 
-    // Add tool restrictions (deny sessions_spawn) to the agent
+    // Add tool restrictions to the agent
+    // Workers shouldn't spawn sub-agents or message other sessions directly
+    // All coordination should go through DevClaw tools (task_pickup, task_complete, etc.)
     const agent = config.agents?.list?.find((a: { id: string }) => a.id === agentId);
     if (agent) {
       if (!agent.tools) {
         agent.tools = {};
       }
-      agent.tools.deny = ["sessions_spawn"];
+      agent.tools.deny = ["sessions_spawn", "sessions_send"];
       // Clear any conflicting allow list
       delete agent.tools.allow;
     }
