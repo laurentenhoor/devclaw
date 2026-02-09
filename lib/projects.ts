@@ -23,6 +23,8 @@ export type Project = {
   baseBranch: string;
   deployBranch: string;
   autoChain: boolean;
+  maxDevWorkers?: number;
+  maxQaWorkers?: number;
   dev: WorkerState;
   qa: WorkerState;
 };

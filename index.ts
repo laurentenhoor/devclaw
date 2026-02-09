@@ -9,6 +9,7 @@ import { createSetupTool } from "./lib/tools/devclaw-setup.js";
 import { createOnboardTool } from "./lib/tools/devclaw-onboard.js";
 import { createAnalyzeChannelBindingsTool } from "./lib/tools/analyze-channel-bindings.js";
 import { createContextTestTool } from "./lib/tools/context-test.js";
+import { createHeartbeatTickTool } from "./lib/tools/heartbeat-tick.js";
 import { registerCli } from "./lib/cli.js";
 
 const plugin = {
@@ -28,6 +29,12 @@ const plugin = {
           senior: { type: "string", description: "Senior dev model" },
           qa: { type: "string", description: "QA engineer model" },
         },
+      },
+      workMode: {
+        type: "string",
+        enum: ["parallel", "sequential"],
+        description: "Work mode: parallel (each project independent) or sequential (1 DEV + 1 QA globally)",
+        default: "parallel",
       },
     },
   },
@@ -64,6 +71,9 @@ const plugin = {
     api.registerTool(createContextTestTool(api), {
       names: ["context_test"],
     });
+    api.registerTool(createHeartbeatTickTool(api), {
+      names: ["heartbeat_tick"],
+    });
 
     // CLI: `openclaw devclaw setup`
     api.registerCli(({ program }: { program: any }) => registerCli(program), {
@@ -71,7 +81,7 @@ const plugin = {
     });
 
     api.logger.info(
-      "DevClaw plugin registered (10 tools, 1 CLI command)",
+      "DevClaw plugin registered (11 tools, 1 CLI command)",
     );
   },
 };
