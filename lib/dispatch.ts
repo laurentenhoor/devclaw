@@ -184,7 +184,7 @@ export async function dispatchTask(
           "gateway",
           "call",
           "sessions.patch",
-          "--data",
+          "--params",
           JSON.stringify({ key: sessionKey, model: fullModel }),
         ],
         { timeout: 30_000 },
