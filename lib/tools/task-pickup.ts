@@ -1,22 +1,91 @@
 /**
  * task_pickup — Atomically pick up a task from the issue queue.
  *
+ * Auto-detects:
+ * - projectGroupId: from message context (group chat)
+ * - role: from issue label (To Do/To Improve → dev, To Test → qa)
+ * - model: from tier labels on issue → heuristics → default
+ * - issueId: if omitted, picks next by priority (To Improve > To Test > To Do)
+ *
  * Handles: validation, model selection, then delegates to dispatchTask()
  * for label transition, session creation/reuse, task dispatch, state update,
  * and audit logging.
- *
- * Model selection is LLM-based: the orchestrator passes a `model` param.
- * A keyword heuristic is used as fallback if no model is specified.
  */
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
 import { dispatchTask } from "../dispatch.js";
-import { type StateLabel } from "../task-managers/task-manager.js";
+import { type Issue, type StateLabel } from "../task-managers/task-manager.js";
 import { createProvider } from "../task-managers/index.js";
 import { selectModel } from "../model-selector.js";
 import { getProject, getWorker, readProjects } from "../projects.js";
 import type { ToolContext } from "../types.js";
 import { detectContext, generateGuardrails } from "../context-guard.js";
+import { isDevTier, isTier, type Tier } from "../tiers.js";
+
+/** Labels that map to DEV role */
+const DEV_LABELS: StateLabel[] = ["To Do", "To Improve"];
+
+/** Labels that map to QA role */
+const QA_LABELS: StateLabel[] = ["To Test"];
+
+/** All pickable labels, in priority order (highest first) */
+const PRIORITY_ORDER: StateLabel[] = ["To Improve", "To Test", "To Do"];
+
+/** Tier labels that can appear on issues */
+const TIER_LABELS: Tier[] = ["junior", "medior", "senior", "qa"];
+
+/**
+ * Detect role from issue's current state label.
+ */
+function detectRoleFromLabel(label: StateLabel): "dev" | "qa" | null {
+  if (DEV_LABELS.includes(label)) return "dev";
+  if (QA_LABELS.includes(label)) return "qa";
+  return null;
+}
+
+/**
+ * Detect tier from issue labels (e.g., "junior", "senior").
+ */
+function detectTierFromLabels(labels: string[]): Tier | null {
+  const lowerLabels = labels.map((l) => l.toLowerCase());
+  for (const tier of TIER_LABELS) {
+    if (lowerLabels.includes(tier)) {
+      return tier;
+    }
+  }
+  return null;
+}
+
+/**
+ * Find the next issue to pick up by priority.
+ * Priority: To Improve > To Test > To Do
+ */
+async function findNextIssue(
+  provider: { listIssuesByLabel(label: StateLabel): Promise<Issue[]> },
+  role?: "dev" | "qa",
+): Promise<{ issue: Issue; label: StateLabel } | null> {
+  // Filter priority order by role if specified
+  let labelsToCheck = PRIORITY_ORDER;
+  if (role === "dev") {
+    labelsToCheck = PRIORITY_ORDER.filter((l) => DEV_LABELS.includes(l));
+  } else if (role === "qa") {
+    labelsToCheck = PRIORITY_ORDER.filter((l) => QA_LABELS.includes(l));
+  }
+
+  for (const label of labelsToCheck) {
+    try {
+      const issues = await provider.listIssuesByLabel(label);
+      if (issues.length > 0) {
+        // Return oldest issue first (FIFO)
+        const oldest = issues[issues.length - 1];
+        return { issue: oldest, label };
+      }
+    } catch {
+      // Continue to next label on error
+    }
+  }
+  return null;
+}
 
 export function createTaskPickupTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
@@ -25,31 +94,36 @@ export function createTaskPickupTool(api: OpenClawPluginApi) {
     description: `Pick up a task from the issue queue. Context-aware: ONLY works in project group chats, not in DMs or during setup. Handles label transition, tier assignment, session creation, task dispatch, and audit logging. Returns an announcement for posting in the group.`,
     parameters: {
       type: "object",
-      required: ["issueId", "role", "projectGroupId"],
+      required: [],
       properties: {
-        issueId: { type: "number", description: "Issue ID to pick up" },
+        issueId: {
+          type: "number",
+          description:
+            "Issue ID to pick up. If omitted, picks next by priority (To Improve > To Test > To Do).",
+        },
         role: {
           type: "string",
           enum: ["dev", "qa"],
-          description: "Worker role: dev or qa",
+          description:
+            "Worker role: dev or qa. If omitted, auto-detected from issue label (To Do/To Improve → dev, To Test → qa).",
         },
         projectGroupId: {
           type: "string",
           description:
-            "Telegram/WhatsApp group ID (key in projects.json). Required — pass the group ID from the current conversation.",
+            "Telegram/WhatsApp group ID (key in projects.json). If omitted, auto-detected from current group chat context.",
         },
         model: {
           type: "string",
           description:
-            "Developer tier (junior, medior, senior, qa). The orchestrator should evaluate the task complexity and choose the right tier. Falls back to keyword heuristic if omitted.",
+            "Developer tier (junior, medior, senior, qa). If omitted, detected from issue tier labels, then heuristics.",
         },
       },
     },
 
     async execute(_id: string, params: Record<string, unknown>) {
-      const issueId = params.issueId as number;
-      const role = params.role as "dev" | "qa";
-      const groupId = params.projectGroupId as string;
+      const issueIdParam = params.issueId as number | undefined;
+      const roleParam = params.role as "dev" | "qa" | undefined;
+      const groupIdParam = params.projectGroupId as string | undefined;
       const modelParam = params.model as string | undefined;
       const workspaceDir = ctx.workspaceDir;
 
@@ -77,7 +151,10 @@ export function createTaskPickupTool(api: OpenClawPluginApi) {
         });
       }
 
-      // 1. Resolve project
+      // 1. Auto-detect projectGroupId from context if not provided
+      const groupId = groupIdParam ?? context.groupId;
+
+      // 2. Resolve project
       const data = await readProjects(workspaceDir);
       const project = getProject(data, groupId);
       if (!project) {
@@ -86,7 +163,64 @@ export function createTaskPickupTool(api: OpenClawPluginApi) {
         );
       }
 
-      // 2. Check no active worker for this role
+      // 3. Create provider for issue operations
+      const { provider } = createProvider({
+        repo: project.repo,
+      });
+
+      // 4. Find issue (by ID or auto-pick)
+      let issue: Issue;
+      let currentLabel: StateLabel;
+
+      if (issueIdParam !== undefined) {
+        // Explicit issue ID provided
+        issue = await provider.getIssue(issueIdParam);
+        const label = provider.getCurrentStateLabel(issue);
+        if (!label) {
+          throw new Error(
+            `Issue #${issueIdParam} has no recognized state label. Expected one of: ${PRIORITY_ORDER.join(", ")}`,
+          );
+        }
+        currentLabel = label;
+      } else {
+        // Auto-pick next issue by priority
+        const next = await findNextIssue(provider, roleParam);
+        if (!next) {
+          const roleFilter = roleParam ? ` for ${roleParam.toUpperCase()}` : "";
+          return jsonResult({
+            success: false,
+            error: `No issues available${roleFilter}. Queue is empty.`,
+            checkedLabels: roleParam
+              ? PRIORITY_ORDER.filter((l) =>
+                  roleParam === "dev"
+                    ? DEV_LABELS.includes(l)
+                    : QA_LABELS.includes(l),
+                )
+              : PRIORITY_ORDER,
+          });
+        }
+        issue = next.issue;
+        currentLabel = next.label;
+      }
+
+      // 5. Auto-detect role from issue label if not provided
+      const detectedRole = detectRoleFromLabel(currentLabel);
+      if (!detectedRole) {
+        throw new Error(
+          `Issue #${issue.iid} has label "${currentLabel}" which doesn't map to dev or qa. Expected: ${[...DEV_LABELS, ...QA_LABELS].join(", ")}`,
+        );
+      }
+
+      const role = roleParam ?? detectedRole;
+
+      // Verify role matches label (if role was explicitly provided)
+      if (roleParam && roleParam !== detectedRole) {
+        throw new Error(
+          `Role mismatch: issue #${issue.iid} has label "${currentLabel}" (${detectedRole.toUpperCase()}) but role "${roleParam}" was requested.`,
+        );
+      }
+
+      // 6. Check no active worker for this role
       const worker = getWorker(project, role);
       if (worker.active) {
         throw new Error(
@@ -94,46 +228,57 @@ export function createTaskPickupTool(api: OpenClawPluginApi) {
         );
       }
 
-      // 3. Fetch issue and verify state
-      const { provider } = createProvider({
-        repo: project.repo,
-      });
-
-      const issue = await provider.getIssue(issueId);
-      const currentLabel = provider.getCurrentStateLabel(issue);
-
-      const validLabelsForDev: StateLabel[] = ["To Do", "To Improve"];
-      const validLabelsForQa: StateLabel[] = ["To Test"];
-      const validLabels = role === "dev" ? validLabelsForDev : validLabelsForQa;
-
-      if (!currentLabel || !validLabels.includes(currentLabel)) {
-        throw new Error(
-          `Issue #${issueId} has label "${currentLabel ?? "none"}" but expected one of: ${validLabels.join(", ")}. Cannot pick up for ${role.toUpperCase()}.`,
-        );
-      }
-
-      // 4. Select model
+      // 7. Select model (priority: param > tier label > heuristic)
       const targetLabel: StateLabel = role === "dev" ? "Doing" : "Testing";
       let modelAlias: string;
       let modelReason: string;
       let modelSource: string;
 
       if (modelParam) {
+        // Explicit model param
         modelAlias = modelParam;
         modelReason = "LLM-selected by orchestrator";
         modelSource = "llm";
       } else {
-        const selected = selectModel(
-          issue.title,
-          issue.description ?? "",
-          role,
-        );
-        modelAlias = selected.tier;
-        modelReason = selected.reason;
-        modelSource = "heuristic";
+        // Check for tier labels on the issue
+        const tierFromLabels = detectTierFromLabels(issue.labels);
+
+        if (tierFromLabels) {
+          // Validate tier matches role
+          if (role === "qa" && tierFromLabels !== "qa") {
+            // QA role should use qa tier, ignore dev tier labels
+            modelAlias = "qa";
+            modelReason = `QA role overrides tier label "${tierFromLabels}"`;
+            modelSource = "role-override";
+          } else if (role === "dev" && tierFromLabels === "qa") {
+            // Dev role shouldn't use qa tier, fall back to heuristic
+            const selected = selectModel(
+              issue.title,
+              issue.description ?? "",
+              role,
+            );
+            modelAlias = selected.tier;
+            modelReason = `Ignored "qa" tier label for DEV role; ${selected.reason}`;
+            modelSource = "heuristic";
+          } else {
+            modelAlias = tierFromLabels;
+            modelReason = `Tier label found on issue: "${tierFromLabels}"`;
+            modelSource = "label";
+          }
+        } else {
+          // Fall back to keyword heuristic
+          const selected = selectModel(
+            issue.title,
+            issue.description ?? "",
+            role,
+          );
+          modelAlias = selected.tier;
+          modelReason = selected.reason;
+          modelSource = "heuristic";
+        }
       }
 
-      // 5. Dispatch via shared logic
+      // 8. Dispatch via shared logic
       const pluginConfig = api.pluginConfig as
         | Record<string, unknown>
         | undefined;
@@ -142,7 +287,7 @@ export function createTaskPickupTool(api: OpenClawPluginApi) {
         agentId: ctx.agentId,
         groupId,
         project,
-        issueId,
+        issueId: issue.iid,
         issueTitle: issue.title,
         issueDescription: issue.description ?? "",
         issueUrl: issue.web_url,
@@ -155,12 +300,12 @@ export function createTaskPickupTool(api: OpenClawPluginApi) {
         pluginConfig,
       });
 
-      // 6. Build result
+      // 9. Build result
       const result: Record<string, unknown> = {
         success: true,
         project: project.name,
         groupId,
-        issueId,
+        issueId: issue.iid,
         issueTitle: issue.title,
         role,
         model: dispatchResult.modelAlias,
@@ -170,6 +315,12 @@ export function createTaskPickupTool(api: OpenClawPluginApi) {
         labelTransition: `${currentLabel} → ${targetLabel}`,
         modelReason,
         modelSource,
+        autoDetected: {
+          projectGroupId: !groupIdParam,
+          role: !roleParam,
+          issueId: issueIdParam === undefined,
+          model: !modelParam,
+        },
       };
 
       if (dispatchResult.sessionAction === "send") {
