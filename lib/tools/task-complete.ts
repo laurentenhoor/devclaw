@@ -25,6 +25,7 @@ import {
   readProjects,
 } from "../projects.js";
 import type { ToolContext } from "../types.js";
+import { notify, getNotificationConfig } from "../notify.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -265,6 +266,42 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
         output.labelTransition = "Testing → Refining";
         output.announcement = `🤔 QA REFINE #${issueId}${summary ? ` — ${summary}` : ""}. Awaiting human decision.`;
       }
+
+      // Send notification to project group
+      const pluginConfig = api.pluginConfig as Record<string, unknown> | undefined;
+      const notifyConfig = getNotificationConfig(pluginConfig);
+      
+      // Determine next state for the notification
+      let nextState: string | undefined;
+      if (role === "dev" && result === "done") {
+        nextState = "QA queue";
+      } else if (role === "qa" && result === "pass") {
+        nextState = "Done!";
+      } else if (role === "qa" && result === "fail") {
+        nextState = "back to DEV";
+      } else if (role === "qa" && result === "refine") {
+        nextState = "awaiting human decision";
+      }
+
+      await notify(
+        {
+          type: "workerComplete",
+          project: project.name,
+          groupId,
+          issueId,
+          role,
+          result,
+          summary,
+          nextState,
+        },
+        {
+          workspaceDir,
+          config: notifyConfig,
+          groupId,
+          // Channel detection: default to telegram if not available
+          channel: "telegram",
+        },
+      );
 
       // Audit log
       await auditLog(workspaceDir, "task_complete", {

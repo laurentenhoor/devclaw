@@ -36,6 +36,31 @@ const plugin = {
         description: "Work mode: parallel (each project independent) or sequential (1 DEV + 1 QA globally)",
         default: "parallel",
       },
+      orchestratorDm: {
+        type: "string",
+        description: "Telegram/WhatsApp chat ID for orchestrator DM notifications (heartbeat summaries)",
+      },
+      notifications: {
+        type: "object",
+        description: "Notification settings for worker lifecycle events",
+        properties: {
+          heartbeatDm: {
+            type: "boolean",
+            description: "Send heartbeat summaries to orchestrator DM. Default: true",
+            default: true,
+          },
+          workerStart: {
+            type: "boolean",
+            description: "Post when worker starts a task. Default: true",
+            default: true,
+          },
+          workerComplete: {
+            type: "boolean",
+            description: "Post when worker completes a task. Default: true",
+            default: true,
+          },
+        },
+      },
     },
   },
 

@@ -21,6 +21,7 @@ import { getProject, getWorker, readProjects } from "../projects.js";
 import type { ToolContext } from "../types.js";
 import { detectContext, generateGuardrails } from "../context-guard.js";
 import { isDevTier, isTier, type Tier } from "../tiers.js";
+import { notify, getNotificationConfig } from "../notify.js";
 
 /** Labels that map to DEV role */
 const DEV_LABELS: StateLabel[] = ["To Do", "To Improve"];
@@ -300,7 +301,28 @@ export function createTaskPickupTool(api: OpenClawPluginApi) {
         pluginConfig,
       });
 
-      // 9. Build result
+      // 9. Send notification to project group
+      const notifyConfig = getNotificationConfig(pluginConfig);
+      await notify(
+        {
+          type: "workerStart",
+          project: project.name,
+          groupId,
+          issueId: issue.iid,
+          issueTitle: issue.title,
+          role,
+          model: dispatchResult.modelAlias,
+          sessionAction: dispatchResult.sessionAction,
+        },
+        {
+          workspaceDir,
+          config: notifyConfig,
+          groupId,
+          channel: context.channel,
+        },
+      );
+
+      // 10. Build result
       const result: Record<string, unknown> = {
         success: true,
         project: project.name,

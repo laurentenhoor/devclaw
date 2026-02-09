@@ -29,6 +29,7 @@ import type { ToolContext } from "../types.js";
 import { detectContext, generateGuardrails } from "../context-guard.js";
 import { type Tier } from "../tiers.js";
 import { log as auditLog } from "../audit.js";
+import { notify, getNotificationConfig } from "../notify.js";
 
 /** Labels that map to DEV role */
 const DEV_LABELS: StateLabel[] = ["To Do", "To Improve"];
@@ -495,6 +496,32 @@ export function createHeartbeatTickTool(api: OpenClawPluginApi) {
         pickups: result.pickups.length,
         skipped: result.skipped.length,
       });
+
+      // Send heartbeat notification to orchestrator DM
+      const notifyConfig = getNotificationConfig(pluginConfig);
+      const orchestratorDm = pluginConfig?.orchestratorDm as string | undefined;
+      
+      await notify(
+        {
+          type: "heartbeat",
+          projectsScanned: projectEntries.length,
+          healthFixes: result.healthFixes.length,
+          pickups: result.pickups.length,
+          skipped: result.skipped.length,
+          dryRun,
+          pickupDetails: result.pickups.map((p) => ({
+            project: p.project,
+            issueId: p.issueId,
+            role: p.role,
+          })),
+        },
+        {
+          workspaceDir,
+          config: notifyConfig,
+          orchestratorDm,
+          channel: "telegram",
+        },
+      );
 
       return jsonResult(result);
     },
