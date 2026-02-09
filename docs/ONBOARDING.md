@@ -27,6 +27,20 @@ openclaw plugins list
 
 ### 2. Run setup
 
+There are three ways to set up DevClaw:
+
+#### Option A: Conversational onboarding (recommended)
+
+Call the `devclaw_onboard` tool from any agent that has the DevClaw plugin loaded. The agent will walk you through configuration step by step — asking about:
+- Agent selection (current or create new)
+- Channel binding (telegram/whatsapp/none) — for new agents only
+- Model tiers (accept defaults or customize)
+- Optional project registration
+
+The tool returns instructions that guide the agent through the QA-style setup conversation.
+
+#### Option B: CLI wizard
+
 ```bash
 openclaw devclaw setup
 ```
@@ -44,7 +58,7 @@ The setup wizard walks you through:
 Non-interactive mode:
 ```bash
 # Create new agent with default models
-openclaw devclaw setup --new-agent "My Dev Orchestrator" --non-interactive
+openclaw devclaw setup --new-agent "My Dev Orchestrator"
 
 # Configure existing agent with custom models
 openclaw devclaw setup --agent my-orchestrator \
@@ -52,9 +66,77 @@ openclaw devclaw setup --agent my-orchestrator \
   --senior "anthropic/claude-opus-4-5"
 ```
 
-### 3. Add the agent to the Telegram group
+#### Option C: Tool call (agent-driven)
 
-Add your orchestrator bot to the Telegram group for the project. The agent will now receive messages from this group and can operate on the linked project.
+**Conversational onboarding via tool:**
+```json
+devclaw_onboard({ mode: "first-run" })
+```
+
+The tool returns step-by-step instructions that guide the agent through the QA-style setup conversation.
+
+**Direct setup (skip conversation):**
+```json
+{
+  "newAgentName": "My Dev Orchestrator",
+  "channelBinding": "telegram",
+  "models": {
+    "junior": "anthropic/claude-haiku-4-5",
+    "senior": "anthropic/claude-opus-4-5"
+  }
+}
+```
+
+This calls `devclaw_setup` directly without conversational prompts.
+
+### 3. Channel binding (optional, for new agents)
+
+If you created a new agent during conversational onboarding and selected a channel binding (telegram/whatsapp), the agent is automatically bound and will receive messages from that channel. **Skip to step 4.**
+
+**Smart Migration**: If an existing agent already has a channel-wide binding (e.g., the old orchestrator receives all telegram messages), the onboarding agent will:
+1. Call `analyze_channel_bindings` to detect the conflict
+2. Ask if you want to migrate the binding from the old agent to the new one
+3. If you confirm, the binding is automatically moved — no manual config edit needed
+
+This is useful when you're replacing an old orchestrator with a new one.
+
+If you didn't bind a channel during setup, you have two options:
+
+**Option A: Manually edit `openclaw.json`** (for existing agents or post-creation binding)
+
+Add an entry to the `bindings` array:
+```json
+{
+  "bindings": [
+    {
+      "agentId": "my-orchestrator",
+      "match": {
+        "channel": "telegram"
+      }
+    }
+  ]
+}
+```
+
+For group-specific bindings:
+```json
+{
+  "agentId": "my-orchestrator",
+  "match": {
+    "channel": "telegram",
+    "peer": {
+      "kind": "group",
+      "id": "-1234567890"
+    }
+  }
+}
+```
+
+Restart OpenClaw after editing.
+
+**Option B: Add bot to Telegram/WhatsApp group**
+
+If using a channel-wide binding (no peer filter), the agent will receive all messages from that channel. Add your orchestrator bot to the relevant Telegram group for the project.
 
 ### 4. Register your project
 
@@ -165,7 +247,9 @@ Change which model powers each tier in `openclaw.json`:
 | Responsibility | Who | Details |
 |---|---|---|
 | Plugin installation | You (once) | `cp -r devclaw ~/.openclaw/extensions/` |
-| Agent + workspace setup | Plugin (`devclaw setup`) | Creates agent, configures models, writes workspace files |
+| Agent + workspace setup | Plugin (`devclaw_setup`) | Creates agent, configures models, writes workspace files |
+| Channel binding analysis | Plugin (`analyze_channel_bindings`) | Detects channel conflicts, validates channel configuration |
+| Channel binding migration | Plugin (`devclaw_setup` with `migrateFrom`) | Automatically moves channel-wide bindings between agents |
 | Label setup | Plugin (`project_register`) | 8 labels, created idempotently via `IssueProvider` |
 | Role file scaffolding | Plugin (`project_register`) | Creates `roles/<project>/dev.md` and `qa.md` from defaults |
 | Project registration | Plugin (`project_register`) | Entry in `projects.json` with empty worker state |

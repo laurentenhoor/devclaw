@@ -21,12 +21,13 @@ import {
 import { selectModel } from "../model-selector.js";
 import { getProject, getWorker, readProjects } from "../projects.js";
 import type { ToolContext } from "../types.js";
+import { detectContext, generateGuardrails } from "../context-guard.js";
 
 export function createTaskPickupTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
     name: "task_pickup",
     label: "Task Pickup",
-    description: `Pick up a task from the issue queue for a DEV or QA worker. Handles everything end-to-end: label transition, tier assignment, session creation/reuse, task dispatch, state update, and audit logging. The orchestrator should analyze the issue and pass the appropriate developer tier. Returns an announcement for the agent to post — no further session actions needed.`,
+    description: `Pick up a task from the issue queue. Context-aware: ONLY works in project group chats, not in DMs or during setup. Handles label transition, tier assignment, session creation, task dispatch, and audit logging. Returns an announcement for posting in the group.`,
     parameters: {
       type: "object",
       required: ["issueId", "role", "projectGroupId"],
@@ -40,7 +41,7 @@ export function createTaskPickupTool(api: OpenClawPluginApi) {
         projectGroupId: {
           type: "string",
           description:
-            "Telegram group ID (key in projects.json). Required — pass the group ID from the current conversation.",
+            "Telegram/WhatsApp group ID (key in projects.json). Required — pass the group ID from the current conversation.",
         },
         model: {
           type: "string",
@@ -59,6 +60,26 @@ export function createTaskPickupTool(api: OpenClawPluginApi) {
 
       if (!workspaceDir) {
         throw new Error("No workspace directory available in tool context");
+      }
+
+      // --- Context detection ---
+      const devClawAgentIds =
+        ((api.pluginConfig as Record<string, unknown>)?.devClawAgentIds as
+          | string[]
+          | undefined) ?? [];
+      const context = await detectContext(ctx, devClawAgentIds);
+
+      // ONLY allow in group context
+      if (context.type !== "group") {
+        return jsonResult({
+          success: false,
+          error: "task_pickup can only be used in project group chats.",
+          recommendation:
+            context.type === "via-agent"
+              ? "If you're setting up DevClaw, use devclaw_onboard instead."
+              : "To pick up tasks, please use the relevant project's Telegram/WhatsApp group.",
+          contextGuidance: generateGuardrails(context),
+        });
       }
 
       // 1. Resolve project

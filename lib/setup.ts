@@ -15,12 +15,17 @@ import {
   DEFAULT_DEV_INSTRUCTIONS,
   DEFAULT_QA_INSTRUCTIONS,
 } from "./templates.js";
+import { migrateChannelBinding } from "./binding-manager.js";
 
 const execFileAsync = promisify(execFile);
 
 export type SetupOpts = {
   /** Create a new agent with this name. Mutually exclusive with agentId. */
   newAgentName?: string;
+  /** Channel binding for new agent. Only used when newAgentName is set. */
+  channelBinding?: "telegram" | "whatsapp" | null;
+  /** Migrate channel binding from this agent ID. Only used when newAgentName and channelBinding are set. */
+  migrateFrom?: string;
   /** Use an existing agent by ID. Mutually exclusive with newAgentName. */
   agentId?: string;
   /** Override workspace path (auto-detected from agent if not given). */
@@ -36,6 +41,10 @@ export type SetupResult = {
   models: Record<Tier, string>;
   filesWritten: string[];
   warnings: string[];
+  bindingMigrated?: {
+    from: string;
+    channel: "telegram" | "whatsapp";
+  };
 };
 
 /**
@@ -51,13 +60,33 @@ export async function runSetup(opts: SetupOpts): Promise<SetupResult> {
   let agentId: string;
   let agentCreated = false;
   let workspacePath: string;
+  let bindingMigrated: SetupResult["bindingMigrated"];
 
   // --- Step 1: Agent ---
   if (opts.newAgentName) {
-    const result = await createAgent(opts.newAgentName);
+    const result = await createAgent(opts.newAgentName, opts.channelBinding);
     agentId = result.agentId;
     workspacePath = result.workspacePath;
     agentCreated = true;
+
+    // --- Step 1b: Migration (if requested) ---
+    if (opts.migrateFrom && opts.channelBinding) {
+      try {
+        await migrateChannelBinding(
+          opts.channelBinding,
+          opts.migrateFrom,
+          agentId,
+        );
+        bindingMigrated = {
+          from: opts.migrateFrom,
+          channel: opts.channelBinding,
+        };
+      } catch (err) {
+        warnings.push(
+          `Failed to migrate binding from "${opts.migrateFrom}": ${(err as Error).message}`,
+        );
+      }
+    }
   } else if (opts.agentId) {
     agentId = opts.agentId;
     workspacePath = opts.workspacePath ?? await resolveWorkspacePath(agentId);
@@ -80,8 +109,8 @@ export async function runSetup(opts: SetupOpts): Promise<SetupResult> {
     }
   }
 
-  // Write plugin config to openclaw.json
-  await writePluginConfig(models);
+  // Write plugin config to openclaw.json (includes agentId in devClawAgentIds)
+  await writePluginConfig(models, agentId);
 
   // --- Step 3: Workspace files ---
 
@@ -131,6 +160,7 @@ export async function runSetup(opts: SetupOpts): Promise<SetupResult> {
     models,
     filesWritten,
     warnings,
+    bindingMigrated,
   };
 }
 
@@ -139,6 +169,7 @@ export async function runSetup(opts: SetupOpts): Promise<SetupResult> {
  */
 async function createAgent(
   name: string,
+  channelBinding?: "telegram" | "whatsapp" | null,
 ): Promise<{ agentId: string; workspacePath: string }> {
   // Generate ID from name (lowercase, hyphenated)
   const agentId = name
@@ -152,29 +183,69 @@ async function createAgent(
     `workspace-${agentId}`,
   );
 
+  const args = [
+    "agents",
+    "add",
+    agentId,
+    "--workspace",
+    workspacePath,
+    "--non-interactive",
+  ];
+
+  // Add --bind if specified
+  if (channelBinding) {
+    args.push("--bind", channelBinding);
+  }
+
   try {
-    await execFileAsync("openclaw", [
-      "agents",
-      "add",
-      agentId,
-      "--name",
-      name,
-      "--workspace",
-      workspacePath,
-      "--non-interactive",
-    ], { timeout: 30_000 });
+    await execFileAsync("openclaw", args, { timeout: 30_000 });
   } catch (err) {
     throw new Error(
       `Failed to create agent "${name}": ${(err as Error).message}`,
     );
   }
 
-  // openclaw agents add creates a .git dir in the workspace — remove it
+  // openclaw agents add creates a .git dir and BOOTSTRAP.md in the workspace — remove them
   const gitDir = path.join(workspacePath, ".git");
+  const bootstrapFile = path.join(workspacePath, "BOOTSTRAP.md");
+
   try {
     await fs.rm(gitDir, { recursive: true });
   } catch {
     // May not exist — that's fine
+  }
+
+  try {
+    await fs.unlink(bootstrapFile);
+  } catch {
+    // May not exist — that's fine
+  }
+
+  // Update agent's display name in openclaw.json if different from ID
+  if (name !== agentId) {
+    try {
+      const configPath = path.join(
+        process.env.HOME ?? "/home/lauren",
+        ".openclaw",
+        "openclaw.json",
+      );
+      const configContent = await fs.readFile(configPath, "utf-8");
+      const config = JSON.parse(configContent);
+
+      // Find the newly created agent and update its name
+      const agent = config.agents?.list?.find((a: { id: string }) => a.id === agentId);
+      if (agent) {
+        agent.name = name;
+        await fs.writeFile(
+          configPath,
+          JSON.stringify(config, null, 2) + "\n",
+          "utf-8",
+        );
+      }
+    } catch (err) {
+      // Non-fatal - agent was created successfully, just couldn't update display name
+      console.warn(`Warning: Could not update display name: ${(err as Error).message}`);
+    }
   }
 
   return { agentId, workspacePath };
@@ -205,11 +276,12 @@ async function resolveWorkspacePath(agentId: string): Promise<string> {
 }
 
 /**
- * Write DevClaw model tier config to openclaw.json plugins section.
+ * Write DevClaw model tier config and devClawAgentIds to openclaw.json plugins section.
  * Read-modify-write to preserve existing config.
  */
 async function writePluginConfig(
   models: Record<Tier, string>,
+  agentId?: string,
 ): Promise<void> {
   const configPath = path.join(
     process.env.HOME ?? "/home/lauren",
@@ -219,14 +291,23 @@ async function writePluginConfig(
   const raw = await fs.readFile(configPath, "utf-8");
   const config = JSON.parse(raw);
 
-  // Ensure plugins.entries.devclaw.config.models exists
+  // Ensure plugins.entries.devclaw.config exists
   if (!config.plugins) config.plugins = {};
   if (!config.plugins.entries) config.plugins.entries = {};
   if (!config.plugins.entries.devclaw) config.plugins.entries.devclaw = {};
   if (!config.plugins.entries.devclaw.config)
     config.plugins.entries.devclaw.config = {};
 
+  // Write models
   config.plugins.entries.devclaw.config.models = { ...models };
+
+  // Write/update devClawAgentIds
+  if (agentId) {
+    const existing = config.plugins.entries.devclaw.config.devClawAgentIds ?? [];
+    if (!existing.includes(agentId)) {
+      config.plugins.entries.devclaw.config.devClawAgentIds = [...existing, agentId];
+    }
+  }
 
   // Atomic write
   const tmpPath = configPath + ".tmp";

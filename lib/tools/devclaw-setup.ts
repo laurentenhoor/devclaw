@@ -14,13 +14,22 @@ export function createSetupTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
     name: "devclaw_setup",
     label: "DevClaw Setup",
-    description: `Set up DevClaw in an agent's workspace. Creates AGENTS.md, HEARTBEAT.md, role templates, memory/projects.json, and writes model tier config to openclaw.json. Optionally creates a new agent. Backs up existing files before overwriting.`,
+    description: `Execute DevClaw setup with collected configuration. Creates AGENTS.md, HEARTBEAT.md, role templates, memory/projects.json, and writes model tier config to openclaw.json. Optionally creates a new agent with channel binding and migration support. Backs up existing files before overwriting. This tool is typically called AFTER devclaw_onboard guides the conversation, but can be called directly if the user provides explicit configuration parameters.`,
     parameters: {
       type: "object",
       properties: {
         newAgentName: {
           type: "string",
           description: "Create a new agent with this name. If omitted, configures the current agent's workspace.",
+        },
+        channelBinding: {
+          type: "string",
+          enum: ["telegram", "whatsapp"],
+          description: "Channel to bind the new agent to (optional). Only used when newAgentName is specified. If omitted, no binding is created.",
+        },
+        migrateFrom: {
+          type: "string",
+          description: "Agent ID to migrate channel binding from (optional). Use when replacing an existing agent's channel-wide binding. Call analyze_channel_bindings first to detect conflicts.",
         },
         models: {
           type: "object",
@@ -37,11 +46,15 @@ export function createSetupTool(api: OpenClawPluginApi) {
 
     async execute(_id: string, params: Record<string, unknown>) {
       const newAgentName = params.newAgentName as string | undefined;
+      const channelBinding = params.channelBinding as "telegram" | "whatsapp" | undefined;
+      const migrateFrom = params.migrateFrom as string | undefined;
       const modelsParam = params.models as Partial<Record<Tier, string>> | undefined;
       const workspaceDir = ctx.workspaceDir;
 
       const result = await runSetup({
         newAgentName,
+        channelBinding: channelBinding ?? null,
+        migrateFrom,
         // If no new agent name, use the current agent's workspace
         agentId: newAgentName ? undefined : ctx.agentId,
         workspacePath: newAgentName ? undefined : workspaceDir,
@@ -53,12 +66,23 @@ export function createSetupTool(api: OpenClawPluginApi) {
           ? `Agent "${result.agentId}" created`
           : `Configured workspace for agent "${result.agentId}"`,
         ``,
+      ];
+
+      if (result.bindingMigrated) {
+        lines.push(
+          `✅ Channel binding migrated:`,
+          `  ${result.bindingMigrated.channel} (from "${result.bindingMigrated.from}" → "${result.agentId}")`,
+          ``,
+        );
+      }
+
+      lines.push(
         `Models:`,
         ...ALL_TIERS.map((t) => `  ${t}: ${result.models[t]}`),
         ``,
         `Files written:`,
         ...result.filesWritten.map((f) => `  ${f}`),
-      ];
+      );
 
       if (result.warnings.length > 0) {
         lines.push(``, `Warnings:`, ...result.warnings.map((w) => `  ${w}`));
@@ -67,7 +91,7 @@ export function createSetupTool(api: OpenClawPluginApi) {
       lines.push(
         ``,
         `Next steps:`,
-        `  1. Add bot to a Telegram group`,
+        `  1. Add bot to a Telegram/WhatsApp group`,
         `  2. Register a project: "Register project <name> at <repo> for group <id>"`,
         `  3. Create your first issue and pick it up`,
       );

@@ -6,6 +6,9 @@ import { createSessionHealthTool } from "./lib/tools/session-health.js";
 import { createProjectRegisterTool } from "./lib/tools/project-register.js";
 import { createTaskCreateTool } from "./lib/tools/task-create.js";
 import { createSetupTool } from "./lib/tools/devclaw-setup.js";
+import { createOnboardTool } from "./lib/tools/devclaw-onboard.js";
+import { createAnalyzeChannelBindingsTool } from "./lib/tools/analyze-channel-bindings.js";
+import { createContextTestTool } from "./lib/tools/context-test.js";
 import { registerCli } from "./lib/cli.js";
 
 const plugin = {
@@ -60,13 +63,24 @@ const plugin = {
     api.registerTool(createSetupTool(api), {
       names: ["devclaw_setup"],
     });
+    api.registerTool(createOnboardTool(api), {
+      names: ["devclaw_onboard"],
+    });
+    api.registerTool(createAnalyzeChannelBindingsTool(api), {
+      names: ["analyze_channel_bindings"],
+    });
+    api.registerTool(createContextTestTool(api), {
+      names: ["context_test"],
+    });
 
     // CLI: `openclaw devclaw setup`
     api.registerCli(({ program }: { program: any }) => registerCli(program), {
       commands: ["devclaw"],
     });
 
-    api.logger.info("DevClaw plugin registered (7 tools, 1 CLI command)");
+    api.logger.info(
+      "DevClaw plugin registered (10 tools, 1 CLI command)",
+    );
   },
 };
 

@@ -55,11 +55,11 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
         },
         projectGroupId: {
           type: "string",
-          description: "Telegram group ID (key in projects.json)",
+          description: "Telegram/WhatsApp group ID (key in projects.json)",
         },
         summary: {
           type: "string",
-          description: "Brief summary for Telegram announcement",
+          description: "Brief summary for group announcement",
         },
       },
     },

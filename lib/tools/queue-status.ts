@@ -9,12 +9,13 @@ import type { ToolContext } from "../types.js";
 import { readProjects, getProject } from "../projects.js";
 import { listIssuesByLabel, resolveRepoPath, type StateLabel } from "../gitlab.js";
 import { log as auditLog } from "../audit.js";
+import { detectContext, generateGuardrails } from "../context-guard.js";
 
 export function createQueueStatusTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
     name: "queue_status",
     label: "Queue Status",
-    description: `Show task queue counts and worker status for all projects (or a specific project). Returns To Improve, To Test, To Do issue counts and active DEV/QA session state.`,
+    description: `Show task queue and worker status. Context-aware: In group chats, auto-filters to that project. In direct messages, shows all projects. Best for status checks, not during setup.`,
     parameters: {
       type: "object",
       properties: {
@@ -26,11 +27,33 @@ export function createQueueStatusTool(api: OpenClawPluginApi) {
     },
 
     async execute(_id: string, params: Record<string, unknown>) {
-      const groupId = params.projectGroupId as string | undefined;
       const workspaceDir = ctx.workspaceDir;
 
       if (!workspaceDir) {
         throw new Error("No workspace directory available in tool context");
+      }
+
+      // --- Context detection ---
+      const devClawAgentIds =
+        ((api.pluginConfig as Record<string, unknown>)?.devClawAgentIds as
+          | string[]
+          | undefined) ?? [];
+      const context = await detectContext(ctx, devClawAgentIds);
+
+      // If via another agent (setup mode), suggest devclaw_onboard instead
+      if (context.type === "via-agent") {
+        return jsonResult({
+          success: false,
+          warning: "queue_status is for operational use, not setup.",
+          recommendation: "If you're setting up DevClaw, use devclaw_onboard instead.",
+          contextGuidance: generateGuardrails(context),
+        });
+      }
+
+      // Auto-filter to current project in group context
+      let groupId = params.projectGroupId as string | undefined;
+      if (context.type === "group" && !groupId) {
+        groupId = context.groupId; // Use the actual group ID for lookup
       }
 
       const data = await readProjects(workspaceDir);
@@ -101,7 +124,17 @@ export function createQueueStatusTool(api: OpenClawPluginApi) {
         ),
       });
 
-      return jsonResult({ projects });
+      return jsonResult({
+        projects,
+        context: {
+          type: context.type,
+          ...(context.type === "group" && {
+            projectName: context.projectName,
+            autoFiltered: !params.projectGroupId,
+          }),
+        },
+        contextGuidance: generateGuardrails(context),
+      });
     },
   });
 }

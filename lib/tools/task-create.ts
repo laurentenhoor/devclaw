@@ -47,7 +47,7 @@ The issue is created with a state label (defaults to "Planning"). Returns the cr
       properties: {
         projectGroupId: {
           type: "string",
-          description: "Telegram group ID for the project",
+          description: "Telegram/WhatsApp group ID for the project",
         },
         title: {
           type: "string",
