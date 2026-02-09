@@ -277,6 +277,7 @@ async function resolveWorkspacePath(agentId: string): Promise<string> {
 
 /**
  * Write DevClaw model tier config and devClawAgentIds to openclaw.json plugins section.
+ * Also adds tool restrictions (deny sessions_spawn) to DevClaw agents.
  * Read-modify-write to preserve existing config.
  */
 async function writePluginConfig(
@@ -306,6 +307,17 @@ async function writePluginConfig(
     const existing = config.plugins.entries.devclaw.config.devClawAgentIds ?? [];
     if (!existing.includes(agentId)) {
       config.plugins.entries.devclaw.config.devClawAgentIds = [...existing, agentId];
+    }
+
+    // Add tool restrictions (deny sessions_spawn) to the agent
+    const agent = config.agents?.list?.find((a: { id: string }) => a.id === agentId);
+    if (agent) {
+      if (!agent.tools) {
+        agent.tools = {};
+      }
+      agent.tools.deny = ["sessions_spawn"];
+      // Clear any conflicting allow list
+      delete agent.tools.allow;
     }
   }
 
