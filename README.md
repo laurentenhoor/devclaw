@@ -1,5 +1,7 @@
 # DevClaw
 
+![DevClaw Logo](assets/logo.jpg)
+
 **Every group chat becomes an autonomous development team.**
 
 Add the agent to a Telegram/WhatsApp group, point it at a GitLab/GitHub repo — that group now has an **orchestrator** managing the backlog, a **DEV** worker session writing code, and a **QA** worker session reviewing it. All autonomous. Add another group, get another team. Each project runs in complete isolation with its own task queue, workers, and session state.
