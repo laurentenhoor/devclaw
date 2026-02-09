@@ -6,7 +6,9 @@
  * 2. Loop over all projects
  * 3. Check worker slots per project
  * 4. Pick up tasks by priority (To Improve > To Test > To Do)
- * 5. Respect work mode (parallel vs sequential)
+ * 5. Respect two-level work mode:
+ *    - projectExecution (plugin-level): parallel/sequential for projects
+ *    - roleExecution (project-level): parallel/sequential for roles within a project
  * 6. Return summary of actions taken
  *
  * Context guard: Only allows from DM/cron context, blocks project groups.
@@ -43,7 +45,7 @@ const PRIORITY_ORDER: StateLabel[] = ["To Improve", "To Test", "To Do"];
 /** Tier labels that can appear on issues */
 const TIER_LABELS: Tier[] = ["junior", "medior", "senior", "qa"];
 
-type WorkMode = "parallel" | "sequential";
+type ExecutionMode = "parallel" | "sequential";
 
 type PickupAction = {
   project: string;
@@ -66,11 +68,11 @@ type HealthFix = {
 type TickResult = {
   success: boolean;
   dryRun: boolean;
-  workMode: WorkMode;
+  projectExecution: ExecutionMode;
   healthFixes: HealthFix[];
   pickups: PickupAction[];
-  skipped: Array<{ project: string; reason: string }>;
-  globalState?: { activeDev: number; activeQa: number };
+  skipped: Array<{ project: string; role?: "dev" | "qa"; reason: string }>;
+  globalState?: { activeProjects: number; activeDev: number; activeQa: number };
 };
 
 /**
@@ -228,7 +230,7 @@ export function createHeartbeatTickTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
     name: "heartbeat_tick",
     label: "Heartbeat Tick",
-    description: `Automated task pickup across all projects. Runs session health checks, then picks up tasks by priority (To Improve > To Test > To Do). Respects work mode (parallel: each project independent, sequential: 1 DEV + 1 QA globally). Only works from DM/cron context, not project groups.`,
+    description: `Automated task pickup across all projects. Runs session health checks, then picks up tasks by priority (To Improve > To Test > To Do). Respects two-level work mode: plugin-level projectExecution (parallel/sequential for projects) and project-level roleExecution (parallel/sequential for roles within a project). Only works from DM/cron context, not project groups.`,
     parameters: {
       type: "object",
       properties: {
@@ -275,15 +277,15 @@ export function createHeartbeatTickTool(api: OpenClawPluginApi) {
         });
       }
 
-      // Get work mode from plugin config
+      // Get plugin-level projectExecution mode from plugin config
       const pluginConfig = api.pluginConfig as Record<string, unknown> | undefined;
-      const workMode: WorkMode =
-        (pluginConfig?.workMode as WorkMode) ?? "parallel";
+      const projectExecution: ExecutionMode =
+        (pluginConfig?.projectExecution as ExecutionMode) ?? "parallel";
 
       const result: TickResult = {
         success: true,
         dryRun,
-        workMode,
+        projectExecution,
         healthFixes: [],
         pickups: [],
         skipped: [],
@@ -303,6 +305,7 @@ export function createHeartbeatTickTool(api: OpenClawPluginApi) {
       // Track global worker counts for sequential mode
       let globalActiveDev = 0;
       let globalActiveQa = 0;
+      let activeProjectCount = 0;
       let pickupCount = 0;
 
       // First pass: count active workers and run health checks
@@ -327,8 +330,11 @@ export function createHeartbeatTickTool(api: OpenClawPluginApi) {
         const refreshedData = await readProjects(workspaceDir);
         const refreshedProject = refreshedData.projects[groupId];
         if (refreshedProject) {
-          if (refreshedProject.dev.active) globalActiveDev++;
-          if (refreshedProject.qa.active) globalActiveQa++;
+          const devActive = refreshedProject.dev.active;
+          const qaActive = refreshedProject.qa.active;
+          if (devActive) globalActiveDev++;
+          if (qaActive) globalActiveQa++;
+          if (devActive || qaActive) activeProjectCount++;
         }
       }
 
@@ -341,12 +347,28 @@ export function createHeartbeatTickTool(api: OpenClawPluginApi) {
 
         const { provider } = createProvider({ repo: project.repo });
 
+        // Get project-level roleExecution mode (default: parallel)
+        const roleExecution: ExecutionMode = project.roleExecution ?? "parallel";
+
+        // Check if this project has any active workers
+        const projectHasActiveWorker = project.dev.active || project.qa.active;
+
+        // Plugin-level projectExecution check: if sequential, only one project can have workers
+        if (projectExecution === "sequential" && !projectHasActiveWorker && activeProjectCount >= 1) {
+          result.skipped.push({
+            project: project.name,
+            reason: "Sequential projectExecution: another project has active workers",
+          });
+          continue;
+        }
+
         // Check each role
         for (const role of ["dev", "qa"] as const) {
           // Check max pickups limit
           if (maxPickups !== undefined && pickupCount >= maxPickups) {
             result.skipped.push({
               project: project.name,
+              role,
               reason: `Max pickups (${maxPickups}) reached`,
             });
             continue;
@@ -357,6 +379,7 @@ export function createHeartbeatTickTool(api: OpenClawPluginApi) {
           if (worker.active) {
             result.skipped.push({
               project: project.name,
+              role,
               reason: `${role.toUpperCase()} already active (issue #${worker.issueId})`,
             });
             continue;
@@ -368,24 +391,21 @@ export function createHeartbeatTickTool(api: OpenClawPluginApi) {
           if (maxWorkers < 1) {
             result.skipped.push({
               project: project.name,
+              role,
               reason: `${role.toUpperCase()} disabled (maxWorkers=0)`,
             });
             continue;
           }
 
-          // Sequential mode: check global limits
-          if (workMode === "sequential") {
-            if (role === "dev" && globalActiveDev >= 1) {
+          // Project-level roleExecution check: if sequential, only one role can be active
+          if (roleExecution === "sequential") {
+            const otherRole = role === "dev" ? "qa" : "dev";
+            const otherWorker = getWorker(project, otherRole);
+            if (otherWorker.active) {
               result.skipped.push({
                 project: project.name,
-                reason: "Sequential mode: DEV slot occupied globally",
-              });
-              continue;
-            }
-            if (role === "qa" && globalActiveQa >= 1) {
-              result.skipped.push({
-                project: project.name,
-                reason: "Sequential mode: QA slot occupied globally",
+                role,
+                reason: `Sequential roleExecution: ${otherRole.toUpperCase()} already active`,
               });
               continue;
             }
@@ -435,6 +455,7 @@ export function createHeartbeatTickTool(api: OpenClawPluginApi) {
             pickupCount++;
             if (role === "dev") globalActiveDev++;
             if (role === "qa") globalActiveQa++;
+            if (!projectHasActiveWorker) activeProjectCount++;
           } else {
             // Actually dispatch
             try {
@@ -469,9 +490,11 @@ export function createHeartbeatTickTool(api: OpenClawPluginApi) {
               pickupCount++;
               if (role === "dev") globalActiveDev++;
               if (role === "qa") globalActiveQa++;
+              if (!projectHasActiveWorker) activeProjectCount++;
             } catch (err) {
               result.skipped.push({
                 project: project.name,
+                role,
                 reason: `Dispatch failed for #${issue.iid}: ${(err as Error).message}`,
               });
             }
@@ -479,18 +502,17 @@ export function createHeartbeatTickTool(api: OpenClawPluginApi) {
         }
       }
 
-      // Add global state for sequential mode visibility
-      if (workMode === "sequential") {
-        result.globalState = {
-          activeDev: globalActiveDev,
-          activeQa: globalActiveQa,
-        };
-      }
+      // Add global state for visibility
+      result.globalState = {
+        activeProjects: activeProjectCount,
+        activeDev: globalActiveDev,
+        activeQa: globalActiveQa,
+      };
 
       // Audit log
       await auditLog(workspaceDir, "heartbeat_tick", {
         dryRun,
-        workMode,
+        projectExecution,
         projectsScanned: projectEntries.length,
         healthFixes: result.healthFixes.length,
         pickups: result.pickups.length,

@@ -30,10 +30,10 @@ const plugin = {
           qa: { type: "string", description: "QA engineer model" },
         },
       },
-      workMode: {
+      projectExecution: {
         type: "string",
         enum: ["parallel", "sequential"],
-        description: "Work mode: parallel (each project independent) or sequential (1 DEV + 1 QA globally)",
+        description: "Plugin-level project execution: parallel (each project independent) or sequential (only one project active at a time)",
         default: "parallel",
       },
       orchestratorDm: {

@@ -32,6 +32,8 @@ export type SetupOpts = {
   workspacePath?: string;
   /** Model overrides per tier. Missing tiers use defaults. */
   models?: Partial<Record<Tier, string>>;
+  /** Plugin-level project execution mode: parallel or sequential. Default: parallel. */
+  projectExecution?: "parallel" | "sequential";
 };
 
 export type SetupResult = {
@@ -110,7 +112,7 @@ export async function runSetup(opts: SetupOpts): Promise<SetupResult> {
   }
 
   // Write plugin config to openclaw.json (includes agentId in devClawAgentIds)
-  await writePluginConfig(models, agentId);
+  await writePluginConfig(models, agentId, opts.projectExecution);
 
   // --- Step 3: Workspace files ---
 
@@ -284,6 +286,7 @@ async function resolveWorkspacePath(agentId: string): Promise<string> {
 async function writePluginConfig(
   models: Record<Tier, string>,
   agentId?: string,
+  projectExecution?: "parallel" | "sequential",
 ): Promise<void> {
   const configPath = path.join(
     process.env.HOME ?? "/home/lauren",
@@ -302,6 +305,11 @@ async function writePluginConfig(
 
   // Write models
   config.plugins.entries.devclaw.config.models = { ...models };
+
+  // Write projectExecution if specified
+  if (projectExecution) {
+    config.plugins.entries.devclaw.config.projectExecution = projectExecution;
+  }
 
   // Configure subagent cleanup interval to 30 days (43200 minutes)
   // This keeps development sessions alive during active development

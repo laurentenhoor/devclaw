@@ -23,6 +23,8 @@ export type Project = {
   baseBranch: string;
   deployBranch: string;
   autoChain: boolean;
+  /** Project-level role execution: parallel (DEV+QA can run simultaneously) or sequential (only one role at a time). Default: parallel */
+  roleExecution?: "parallel" | "sequential";
   maxDevWorkers?: number;
   maxQaWorkers?: number;
   dev: WorkerState;

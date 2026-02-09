@@ -106,6 +106,11 @@ export function createProjectRegisterTool(api: OpenClawPluginApi) {
           type: "string",
           description: "Deployment URL for the project",
         },
+        roleExecution: {
+          type: "string",
+          enum: ["parallel", "sequential"],
+          description: "Project-level role execution mode: parallel (DEV and QA can work simultaneously) or sequential (only one role active at a time). Defaults to parallel.",
+        },
       },
     },
 
@@ -117,6 +122,7 @@ export function createProjectRegisterTool(api: OpenClawPluginApi) {
       const baseBranch = params.baseBranch as string;
       const deployBranch = (params.deployBranch as string) ?? baseBranch;
       const deployUrl = (params.deployUrl as string) ?? "";
+      const roleExecution = (params.roleExecution as "parallel" | "sequential") ?? "parallel";
       const workspaceDir = ctx.workspaceDir;
 
       if (!workspaceDir) {
@@ -199,6 +205,7 @@ export function createProjectRegisterTool(api: OpenClawPluginApi) {
         baseBranch,
         deployBranch,
         autoChain: false,
+        roleExecution,
         dev: emptyWorkerState([...DEV_TIERS]),
         qa: emptyWorkerState([...QA_TIERS]),
       };

@@ -229,6 +229,18 @@ export function createTaskPickupTool(api: OpenClawPluginApi) {
         );
       }
 
+      // 6b. Check project-level roleExecution
+      const roleExecution = project.roleExecution ?? "parallel";
+      if (roleExecution === "sequential") {
+        const otherRole = role === "dev" ? "qa" : "dev";
+        const otherWorker = getWorker(project, otherRole);
+        if (otherWorker.active) {
+          throw new Error(
+            `Project "${project.name}" has sequential roleExecution: ${otherRole.toUpperCase()} worker is active (issue: ${otherWorker.issueId}). Wait for it to complete first.`,
+          );
+        }
+      }
+
       // 7. Select model (priority: param > tier label > heuristic)
       const targetLabel: StateLabel = role === "dev" ? "Doing" : "Testing";
       let modelAlias: string;

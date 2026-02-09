@@ -41,6 +41,11 @@ export function createSetupTool(api: OpenClawPluginApi) {
             qa: { type: "string", description: `QA engineer model (default: ${DEFAULT_MODELS.qa})` },
           },
         },
+        projectExecution: {
+          type: "string",
+          enum: ["parallel", "sequential"],
+          description: "Plugin-level project execution mode: parallel (each project independent) or sequential (work on one project at a time). Default: parallel.",
+        },
       },
     },
 
@@ -49,6 +54,7 @@ export function createSetupTool(api: OpenClawPluginApi) {
       const channelBinding = params.channelBinding as "telegram" | "whatsapp" | undefined;
       const migrateFrom = params.migrateFrom as string | undefined;
       const modelsParam = params.models as Partial<Record<Tier, string>> | undefined;
+      const projectExecution = params.projectExecution as "parallel" | "sequential" | undefined;
       const workspaceDir = ctx.workspaceDir;
 
       const result = await runSetup({
@@ -59,6 +65,7 @@ export function createSetupTool(api: OpenClawPluginApi) {
         agentId: newAgentName ? undefined : ctx.agentId,
         workspacePath: newAgentName ? undefined : workspaceDir,
         models: modelsParam,
+        projectExecution,
       });
 
       const lines = [
