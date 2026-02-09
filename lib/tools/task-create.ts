@@ -9,8 +9,11 @@
  * - A sub-agent finds a bug and needs to file a follow-up issue
  * - Breaking down an epic into smaller tasks
  */
-import type { OpenClawPluginApi, OpenClawPluginToolContext } from "openclaw/plugin-sdk";
-import { readProjects, resolveRepoPath } from "../projects.js";
+import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
+import { jsonResult } from "openclaw/plugin-sdk";
+import type { ToolContext } from "../types.js";
+import { readProjects } from "../projects.js";
+import { resolveRepoPath } from "../gitlab.js";
 import { createProvider } from "../providers/index.js";
 import { log as auditLog } from "../audit.js";
 import type { StateLabel } from "../issue-provider.js";
@@ -27,8 +30,9 @@ const STATE_LABELS: StateLabel[] = [
 ];
 
 export function createTaskCreateTool(api: OpenClawPluginApi) {
-  return (ctx: OpenClawPluginToolContext) => ({
+  return (ctx: ToolContext) => ({
     name: "task_create",
+    label: "Task Create",
     description: `Create a new task (issue) in the project's issue tracker. Use this to file bugs, features, or tasks from chat.
 
 Examples:
@@ -132,12 +136,7 @@ The issue is created with a state label (defaults to "Planning"). Returns the cr
           : `📋 Created #${issue.iid}: "${title}" (${label}).${hasBody ? " With detailed description." : ""} Ready for pickup when needed.`,
       };
 
-      return {
-        content: [{
-          type: "text" as const,
-          text: JSON.stringify(result, null, 2),
-        }],
-      };
+      return jsonResult(result);
     },
   });
 }

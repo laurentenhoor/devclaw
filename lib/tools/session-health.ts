@@ -4,14 +4,17 @@
  * Detects zombie sessions (active=true but session dead) and stale workers.
  * Checks the sessions map for each worker's current model.
  */
-import type { OpenClawPluginApi, OpenClawPluginToolContext } from "openclaw/plugin-sdk";
+import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
+import { jsonResult } from "openclaw/plugin-sdk";
+import type { ToolContext } from "../types.js";
 import { readProjects, updateWorker, getSessionForModel } from "../projects.js";
 import { transitionLabel, resolveRepoPath, type StateLabel } from "../gitlab.js";
 import { log as auditLog } from "../audit.js";
 
 export function createSessionHealthTool(api: OpenClawPluginApi) {
-  return (ctx: OpenClawPluginToolContext) => ({
+  return (ctx: ToolContext) => ({
     name: "session_health",
+    label: "Session Health",
     description: `Check session state consistency across all projects. Detects: active workers with no session in their sessions map, stale workers (>2 hours), and state mismatches. With autoFix=true, clears zombie states and reverts GitLab labels. Pass activeSessions (from sessions_list) so the tool can verify liveness.`,
     parameters: {
       type: "object",
@@ -189,9 +192,7 @@ export function createSessionHealthTool(api: OpenClawPluginApi) {
           : undefined,
       };
 
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
-      };
+      return jsonResult(result);
     },
   });
 }

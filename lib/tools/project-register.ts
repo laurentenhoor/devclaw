@@ -6,7 +6,9 @@
  *
  * Replaces the manual steps of running glab/gh label create + editing projects.json.
  */
-import type { OpenClawPluginApi, OpenClawPluginToolContext } from "openclaw/plugin-sdk";
+import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
+import { jsonResult } from "openclaw/plugin-sdk";
+import type { ToolContext } from "../types.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { readProjects, writeProjects, emptyWorkerState } from "../projects.js";
@@ -67,8 +69,9 @@ async function scaffoldRoleFiles(workspaceDir: string, projectName: string): Pro
 }
 
 export function createProjectRegisterTool(api: OpenClawPluginApi) {
-  return (ctx: OpenClawPluginToolContext) => ({
+  return (ctx: ToolContext) => ({
     name: "project_register",
+    label: "Project Register",
     description: `Register a new project with DevClaw. Creates all required state labels (idempotent) and adds the project to projects.json. One-time setup per project. Auto-detects GitHub/GitLab from git remote.`,
     parameters: {
       type: "object",
@@ -186,22 +189,17 @@ export function createProjectRegisterTool(api: OpenClawPluginApi) {
       const rolesNote = rolesCreated ? " Role files scaffolded." : "";
       const announcement = `📋 Project "${name}" registered for group ${groupName}. Labels created.${rolesNote} Ready for tasks.`;
 
-      return {
-        content: [{
-          type: "text" as const,
-          text: JSON.stringify({
-            success: true,
-            project: name,
-            groupId,
-            repo,
-            baseBranch,
-            deployBranch,
-            labelsCreated: 8,
-            rolesScaffolded: rolesCreated,
-            announcement,
-          }, null, 2),
-        }],
-      };
+      return jsonResult({
+        success: true,
+        project: name,
+        groupId,
+        repo,
+        baseBranch,
+        deployBranch,
+        labelsCreated: 8,
+        rolesScaffolded: rolesCreated,
+        announcement,
+      });
     },
   });
 }

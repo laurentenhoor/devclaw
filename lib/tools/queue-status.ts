@@ -3,14 +3,17 @@
  *
  * Replaces manual GitLab scanning in HEARTBEAT.md.
  */
-import type { OpenClawPluginApi, OpenClawPluginToolContext } from "openclaw/plugin-sdk";
+import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
+import { jsonResult } from "openclaw/plugin-sdk";
+import type { ToolContext } from "../types.js";
 import { readProjects, getProject } from "../projects.js";
 import { listIssuesByLabel, resolveRepoPath, type StateLabel } from "../gitlab.js";
 import { log as auditLog } from "../audit.js";
 
 export function createQueueStatusTool(api: OpenClawPluginApi) {
-  return (ctx: OpenClawPluginToolContext) => ({
+  return (ctx: ToolContext) => ({
     name: "queue_status",
+    label: "Queue Status",
     description: `Show task queue counts and worker status for all projects (or a specific project). Returns To Improve, To Test, To Do issue counts and active DEV/QA session state.`,
     parameters: {
       type: "object",
@@ -98,14 +101,7 @@ export function createQueueStatusTool(api: OpenClawPluginApi) {
         ),
       });
 
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify({ projects }, null, 2),
-          },
-        ],
-      };
+      return jsonResult({ projects });
     },
   });
 }

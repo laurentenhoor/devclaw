@@ -4,13 +4,16 @@
  * Creates a new agent (optional), configures model tiers,
  * and writes workspace files (AGENTS.md, HEARTBEAT.md, roles, memory).
  */
-import type { OpenClawPluginApi, OpenClawPluginToolContext } from "openclaw/plugin-sdk";
+import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
+import { jsonResult } from "openclaw/plugin-sdk";
+import type { ToolContext } from "../types.js";
 import { runSetup } from "../setup.js";
 import { ALL_TIERS, DEFAULT_MODELS, type Tier } from "../tiers.js";
 
 export function createSetupTool(api: OpenClawPluginApi) {
-  return (ctx: OpenClawPluginToolContext) => ({
+  return (ctx: ToolContext) => ({
     name: "devclaw_setup",
+    label: "DevClaw Setup",
     description: `Set up DevClaw in an agent's workspace. Creates AGENTS.md, HEARTBEAT.md, role templates, memory/projects.json, and writes model tier config to openclaw.json. Optionally creates a new agent. Backs up existing files before overwriting.`,
     parameters: {
       type: "object",
@@ -69,16 +72,11 @@ export function createSetupTool(api: OpenClawPluginApi) {
         `  3. Create your first issue and pick it up`,
       );
 
-      return {
-        content: [{
-          type: "text" as const,
-          text: JSON.stringify({
-            success: true,
-            ...result,
-            summary: lines.join("\n"),
-          }, null, 2),
-        }],
-      };
+      return jsonResult({
+        success: true,
+        ...result,
+        summary: lines.join("\n"),
+      });
     },
   });
 }

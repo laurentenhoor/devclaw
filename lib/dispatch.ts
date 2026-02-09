@@ -5,26 +5,24 @@
  * state update (activateWorker), and audit logging.
  */
 import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
+import { log as auditLog } from "./audit.js";
 import {
   type Project,
-  type WorkerState,
-  getWorker,
-  getSessionForModel,
   activateWorker,
+  getSessionForModel,
+  getWorker,
 } from "./projects.js";
-import { selectModel } from "./model-selector.js";
-import { log as auditLog } from "./audit.js";
-import { resolveModel, TIER_EMOJI, isTier } from "./tiers.js";
+import { TIER_EMOJI, isTier, resolveModel } from "./tiers.js";
 
 const execFileAsync = promisify(execFile);
 
 export type DispatchOpts = {
   workspaceDir: string;
-  agentId: string;
+  agentId?: string;
   groupId: string;
   project: Project;
   issueId: number;
@@ -69,12 +67,33 @@ async function buildTaskMessage(opts: {
   baseBranch: string;
   groupId: string;
 }): Promise<string> {
-  const { workspaceDir, projectName, role, issueId, issueTitle, issueDescription, issueUrl, repo, baseBranch, groupId } = opts;
+  const {
+    workspaceDir,
+    projectName,
+    role,
+    issueId,
+    issueTitle,
+    issueDescription,
+    issueUrl,
+    repo,
+    baseBranch,
+    groupId,
+  } = opts;
 
   // Read role-specific instructions
   let roleInstructions = "";
-  const projectRoleFile = path.join(workspaceDir, "roles", projectName, `${role}.md`);
-  const defaultRoleFile = path.join(workspaceDir, "roles", "default", `${role}.md`);
+  const projectRoleFile = path.join(
+    workspaceDir,
+    "roles",
+    projectName,
+    `${role}.md`,
+  );
+  const defaultRoleFile = path.join(
+    workspaceDir,
+    "roles",
+    "default",
+    `${role}.md`,
+  );
   try {
     roleInstructions = await fs.readFile(projectRoleFile, "utf-8");
   } catch {
@@ -110,11 +129,23 @@ async function buildTaskMessage(opts: {
  * (with label rollback). Logs warning on state update failure
  * (dispatch succeeded, session IS running).
  */
-export async function dispatchTask(opts: DispatchOpts): Promise<DispatchResult> {
+export async function dispatchTask(
+  opts: DispatchOpts,
+): Promise<DispatchResult> {
   const {
-    workspaceDir, agentId, groupId, project, issueId,
-    issueTitle, issueDescription, issueUrl,
-    role, modelAlias, fromLabel, toLabel, transitionLabel,
+    workspaceDir,
+    agentId,
+    groupId,
+    project,
+    issueId,
+    issueTitle,
+    issueDescription,
+    issueUrl,
+    role,
+    modelAlias,
+    fromLabel,
+    toLabel,
+    transitionLabel,
     pluginConfig,
   } = opts;
 
@@ -146,18 +177,25 @@ export async function dispatchTask(opts: DispatchOpts): Promise<DispatchResult> 
 
   try {
     if (sessionAction === "spawn") {
-      sessionKey = `agent:${agentId}:subagent:${randomUUID()}`;
-      await execFileAsync("openclaw", [
-        "gateway", "call", "sessions.patch",
-        "--data", JSON.stringify({ key: sessionKey, model: fullModel }),
-      ], { timeout: 30_000 });
+      sessionKey = `agent:${agentId ?? "unknown"}:subagent:${randomUUID()}`;
+      await execFileAsync(
+        "openclaw",
+        [
+          "gateway",
+          "call",
+          "sessions.patch",
+          "--data",
+          JSON.stringify({ key: sessionKey, model: fullModel }),
+        ],
+        { timeout: 30_000 },
+      );
     }
 
-    await execFileAsync("openclaw", [
-      "agent",
-      "--session-id", sessionKey!,
-      "--message", taskMessage,
-    ], { timeout: 60_000 });
+    await execFileAsync(
+      "openclaw",
+      ["agent", "--session-id", sessionKey!, "--message", taskMessage],
+      { timeout: 60_000 },
+    );
 
     dispatched = true;
 
@@ -224,7 +262,9 @@ export async function dispatchTask(opts: DispatchOpts): Promise<DispatchResult> 
   // Build announcement
   const emoji = isTier(modelAlias)
     ? TIER_EMOJI[modelAlias]
-    : (role === "qa" ? "🔍" : "🔧");
+    : role === "qa"
+      ? "🔍"
+      : "🔧";
   const actionVerb = sessionAction === "spawn" ? "Spawning" : "Sending";
   const announcement = `${emoji} ${actionVerb} ${role.toUpperCase()} (${modelAlias}) for #${issueId}: ${issueTitle}`;
 

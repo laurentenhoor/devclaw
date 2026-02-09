@@ -8,35 +8,44 @@
  * Model selection is LLM-based: the orchestrator passes a `model` param.
  * A keyword heuristic is used as fallback if no model is specified.
  */
-import type { OpenClawPluginApi, OpenClawPluginToolContext } from "openclaw/plugin-sdk";
-import { readProjects, getProject, getWorker } from "../projects.js";
+import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
+import { jsonResult } from "openclaw/plugin-sdk";
+import { dispatchTask } from "../dispatch.js";
 import {
-  getIssue,
   getCurrentStateLabel,
-  transitionLabel,
+  getIssue,
   resolveRepoPath,
+  transitionLabel,
   type StateLabel,
 } from "../gitlab.js";
 import { selectModel } from "../model-selector.js";
-import { dispatchTask } from "../dispatch.js";
+import { getProject, getWorker, readProjects } from "../projects.js";
+import type { ToolContext } from "../types.js";
 
 export function createTaskPickupTool(api: OpenClawPluginApi) {
-  return (ctx: OpenClawPluginToolContext) => ({
+  return (ctx: ToolContext) => ({
     name: "task_pickup",
+    label: "Task Pickup",
     description: `Pick up a task from the issue queue for a DEV or QA worker. Handles everything end-to-end: label transition, tier assignment, session creation/reuse, task dispatch, state update, and audit logging. The orchestrator should analyze the issue and pass the appropriate developer tier. Returns an announcement for the agent to post — no further session actions needed.`,
     parameters: {
       type: "object",
       required: ["issueId", "role", "projectGroupId"],
       properties: {
         issueId: { type: "number", description: "Issue ID to pick up" },
-        role: { type: "string", enum: ["dev", "qa"], description: "Worker role: dev or qa" },
+        role: {
+          type: "string",
+          enum: ["dev", "qa"],
+          description: "Worker role: dev or qa",
+        },
         projectGroupId: {
           type: "string",
-          description: "Telegram group ID (key in projects.json). Required — pass the group ID from the current conversation.",
+          description:
+            "Telegram group ID (key in projects.json). Required — pass the group ID from the current conversation.",
         },
         model: {
           type: "string",
-          description: "Developer tier (junior, medior, senior, qa). The orchestrator should evaluate the task complexity and choose the right tier. Falls back to keyword heuristic if omitted.",
+          description:
+            "Developer tier (junior, medior, senior, qa). The orchestrator should evaluate the task complexity and choose the right tier. Falls back to keyword heuristic if omitted.",
         },
       },
     },
@@ -72,7 +81,9 @@ export function createTaskPickupTool(api: OpenClawPluginApi) {
       // 3. Fetch issue and verify state
       const repoPath = resolveRepoPath(project.repo);
       const glabOpts = {
-        glabPath: (api.pluginConfig as Record<string, unknown>)?.glabPath as string | undefined,
+        glabPath: (api.pluginConfig as Record<string, unknown>)?.glabPath as
+          | string
+          | undefined,
         repoPath,
       };
 
@@ -100,14 +111,20 @@ export function createTaskPickupTool(api: OpenClawPluginApi) {
         modelReason = "LLM-selected by orchestrator";
         modelSource = "llm";
       } else {
-        const selected = selectModel(issue.title, issue.description ?? "", role);
+        const selected = selectModel(
+          issue.title,
+          issue.description ?? "",
+          role,
+        );
         modelAlias = selected.tier;
         modelReason = selected.reason;
         modelSource = "heuristic";
       }
 
       // 5. Dispatch via shared logic
-      const pluginConfig = api.pluginConfig as Record<string, unknown> | undefined;
+      const pluginConfig = api.pluginConfig as
+        | Record<string, unknown>
+        | undefined;
       const dispatchResult = await dispatchTask({
         workspaceDir,
         agentId: ctx.agentId,
@@ -147,9 +164,7 @@ export function createTaskPickupTool(api: OpenClawPluginApi) {
         result.tokensSavedEstimate = "~50K (session reuse)";
       }
 
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
-      };
+      return jsonResult(result);
     },
   });
 }

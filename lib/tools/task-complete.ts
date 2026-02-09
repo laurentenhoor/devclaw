@@ -8,45 +8,59 @@
  *   - DEV "done" → automatically dispatches QA (qa tier)
  *   - QA "fail" → automatically dispatches DEV fix (reuses previous DEV tier)
  */
-import type { OpenClawPluginApi, OpenClawPluginToolContext } from "openclaw/plugin-sdk";
-import {
-  readProjects,
-  getProject,
-  getWorker,
-  getSessionForModel,
-  deactivateWorker,
-} from "../projects.js";
-import {
-  getIssue,
-  transitionLabel,
-  closeIssue,
-  reopenIssue,
-  resolveRepoPath,
-  type StateLabel,
-} from "../gitlab.js";
-import { log as auditLog } from "../audit.js";
-import { dispatchTask } from "../dispatch.js";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
+import { jsonResult } from "openclaw/plugin-sdk";
+import { log as auditLog } from "../audit.js";
+import { dispatchTask } from "../dispatch.js";
+import {
+  closeIssue,
+  getIssue,
+  reopenIssue,
+  resolveRepoPath,
+  transitionLabel,
+  type StateLabel,
+} from "../gitlab.js";
+import {
+  deactivateWorker,
+  getProject,
+  getSessionForModel,
+  getWorker,
+  readProjects,
+} from "../projects.js";
+import type { ToolContext } from "../types.js";
 
 const execFileAsync = promisify(execFile);
 
 export function createTaskCompleteTool(api: OpenClawPluginApi) {
-  return (ctx: OpenClawPluginToolContext) => ({
+  return (ctx: ToolContext) => ({
     name: "task_complete",
+    label: "Task Complete",
     description: `Complete a task: DEV done, QA pass, QA fail, or QA refine. Atomically handles: label transition, projects.json update, issue close/reopen, and audit logging. If the project has autoChain enabled, automatically dispatches the next step (DEV done → QA, QA fail → DEV fix).`,
     parameters: {
       type: "object",
       required: ["role", "result", "projectGroupId"],
       properties: {
-        role: { type: "string", enum: ["dev", "qa"], description: "Worker role completing the task" },
+        role: {
+          type: "string",
+          enum: ["dev", "qa"],
+          description: "Worker role completing the task",
+        },
         result: {
           type: "string",
           enum: ["done", "pass", "fail", "refine"],
-          description: 'Completion result: "done" (DEV finished), "pass" (QA approved), "fail" (QA found issues), "refine" (needs human input)',
+          description:
+            'Completion result: "done" (DEV finished), "pass" (QA approved), "fail" (QA found issues), "refine" (needs human input)',
         },
-        projectGroupId: { type: "string", description: "Telegram group ID (key in projects.json)" },
-        summary: { type: "string", description: "Brief summary for Telegram announcement" },
+        projectGroupId: {
+          type: "string",
+          description: "Telegram group ID (key in projects.json)",
+        },
+        summary: {
+          type: "string",
+          description: "Brief summary for Telegram announcement",
+        },
       },
     },
 
@@ -63,10 +77,14 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
 
       // Validate result matches role
       if (role === "dev" && result !== "done") {
-        throw new Error(`DEV can only complete with result "done", got "${result}"`);
+        throw new Error(
+          `DEV can only complete with result "done", got "${result}"`,
+        );
       }
       if (role === "qa" && result === "done") {
-        throw new Error(`QA cannot use result "done". Use "pass", "fail", or "refine".`);
+        throw new Error(
+          `QA cannot use result "done". Use "pass", "fail", or "refine".`,
+        );
       }
 
       // Resolve project
@@ -83,14 +101,20 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
         );
       }
 
-      const issueId = worker.issueId ? Number(worker.issueId.split(",")[0]) : null;
+      const issueId = worker.issueId
+        ? Number(worker.issueId.split(",")[0])
+        : null;
       if (!issueId) {
-        throw new Error(`No issueId found for active ${role.toUpperCase()} worker on ${project.name}`);
+        throw new Error(
+          `No issueId found for active ${role.toUpperCase()} worker on ${project.name}`,
+        );
       }
 
       const repoPath = resolveRepoPath(project.repo);
       const glabOpts = {
-        glabPath: (api.pluginConfig as Record<string, unknown>)?.glabPath as string | undefined,
+        glabPath: (api.pluginConfig as Record<string, unknown>)?.glabPath as
+          | string
+          | undefined,
         repoPath,
       };
 
@@ -106,7 +130,10 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
       // === DEV DONE ===
       if (role === "dev" && result === "done") {
         try {
-          await execFileAsync("git", ["pull"], { cwd: repoPath, timeout: 30_000 });
+          await execFileAsync("git", ["pull"], {
+            cwd: repoPath,
+            timeout: 30_000,
+          });
           output.gitPull = "success";
         } catch (err) {
           output.gitPull = `warning: ${(err as Error).message}`;
@@ -120,7 +147,9 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
 
         if (project.autoChain) {
           try {
-            const pluginConfig = api.pluginConfig as Record<string, unknown> | undefined;
+            const pluginConfig = api.pluginConfig as
+              | Record<string, unknown>
+              | undefined;
             const issue = await getIssue(issueId, glabOpts);
             const chainResult = await dispatchTask({
               workspaceDir,
@@ -136,7 +165,12 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
               fromLabel: "To Test",
               toLabel: "Testing",
               transitionLabel: (id, from, to) =>
-                transitionLabel(id, from as StateLabel, to as StateLabel, glabOpts),
+                transitionLabel(
+                  id,
+                  from as StateLabel,
+                  to as StateLabel,
+                  glabOpts,
+                ),
               pluginConfig,
             });
             output.autoChain = {
@@ -147,7 +181,10 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
               announcement: chainResult.announcement,
             };
           } catch (err) {
-            output.autoChain = { dispatched: false, error: (err as Error).message };
+            output.autoChain = {
+              dispatched: false,
+              error: (err as Error).message,
+            };
           }
         } else {
           output.nextAction = "qa_pickup";
@@ -173,7 +210,9 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
 
         const devWorker = getWorker(project, "dev");
         const devModel = devWorker.model;
-        const devSessionKey = devModel ? getSessionForModel(devWorker, devModel) : null;
+        const devSessionKey = devModel
+          ? getSessionForModel(devWorker, devModel)
+          : null;
 
         output.labelTransition = "Testing → To Improve";
         output.issueReopened = true;
@@ -183,7 +222,9 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
 
         if (project.autoChain && devModel) {
           try {
-            const pluginConfig = api.pluginConfig as Record<string, unknown> | undefined;
+            const pluginConfig = api.pluginConfig as
+              | Record<string, unknown>
+              | undefined;
             const issue = await getIssue(issueId, glabOpts);
             const chainResult = await dispatchTask({
               workspaceDir,
@@ -199,7 +240,12 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
               fromLabel: "To Improve",
               toLabel: "Doing",
               transitionLabel: (id, from, to) =>
-                transitionLabel(id, from as StateLabel, to as StateLabel, glabOpts),
+                transitionLabel(
+                  id,
+                  from as StateLabel,
+                  to as StateLabel,
+                  glabOpts,
+                ),
               pluginConfig,
             });
             output.autoChain = {
@@ -210,7 +256,10 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
               announcement: chainResult.announcement,
             };
           } catch (err) {
-            output.autoChain = { dispatched: false, error: (err as Error).message };
+            output.autoChain = {
+              dispatched: false,
+              error: (err as Error).message,
+            };
           }
         } else {
           output.nextAction = "dev_fix";
@@ -238,9 +287,7 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
         autoChain: output.autoChain ?? null,
       });
 
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify(output, null, 2) }],
-      };
+      return jsonResult(output);
     },
   });
 }
