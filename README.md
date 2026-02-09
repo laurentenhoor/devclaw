@@ -1,8 +1,8 @@
-<p align="left">
+<p align="center">
   <img src="assets/DevClaw.png" width="300" alt="DevClaw Logo">
 </p>
 
-# DevClaw
+# DevClaw - Autonomous Development Plugin for OpenClaw
 
 **Every group chat becomes an autonomous development team.**
 
