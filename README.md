@@ -1,6 +1,8 @@
 # DevClaw
 
-![DevClaw Logo](assets/logo.jpg)
+<p align="center">
+  <img src="assets/logo.jpg" width="300" alt="DevClaw Logo">
+</p>
 
 **Every group chat becomes an autonomous development team.**
 
