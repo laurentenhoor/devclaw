@@ -226,6 +226,10 @@ export async function dispatchTask(
         error: (err as Error).message,
         sessionKey,
       });
+      // Re-throw so caller knows state update failed
+      throw new Error(
+        `State update failed after successful session dispatch: ${(err as Error).message}. Session is running but projects.json was not updated.`,
+      );
     } else {
       // Dispatch failed — rollback label
       try {
