@@ -1,18 +1,15 @@
 /**
- * task_pickup — Atomically pick up a task from the GitLab queue.
+ * task_pickup — Atomically pick up a task from the issue queue.
  *
- * Handles: validation, model selection, GitLab label transition,
- * projects.json state update, and audit logging.
+ * Handles: validation, model selection, then delegates to dispatchTask()
+ * for label transition, session creation/reuse, task dispatch, state update,
+ * and audit logging.
  *
- * Returns structured instructions for the agent to spawn/send a session.
+ * Model selection is LLM-based: the orchestrator passes a `model` param.
+ * A keyword heuristic is used as fallback if no model is specified.
  */
 import type { OpenClawPluginApi, OpenClawPluginToolContext } from "openclaw/plugin-sdk";
-import {
-  readProjects,
-  getProject,
-  getWorker,
-  activateWorker,
-} from "../projects.js";
+import { readProjects, getProject, getWorker } from "../projects.js";
 import {
   getIssue,
   getCurrentStateLabel,
@@ -21,25 +18,25 @@ import {
   type StateLabel,
 } from "../gitlab.js";
 import { selectModel } from "../model-selector.js";
-import { log as auditLog } from "../audit.js";
+import { dispatchTask } from "../dispatch.js";
 
 export function createTaskPickupTool(api: OpenClawPluginApi) {
   return (ctx: OpenClawPluginToolContext) => ({
     name: "task_pickup",
-    description: `Pick up a task from the GitLab queue for a DEV or QA worker. Atomically handles: label transition, model selection, projects.json update, and audit logging. Returns session action instructions (spawn or send) for the agent to execute.`,
+    description: `Pick up a task from the issue queue for a DEV or QA worker. Handles everything end-to-end: label transition, model selection, session creation/reuse, task dispatch, state update, and audit logging. The orchestrator should analyze the issue and pass the appropriate model. Returns an announcement for the agent to post — no further session actions needed.`,
     parameters: {
       type: "object",
       required: ["issueId", "role", "projectGroupId"],
       properties: {
-        issueId: { type: "number", description: "GitLab issue ID to pick up" },
+        issueId: { type: "number", description: "Issue ID to pick up" },
         role: { type: "string", enum: ["dev", "qa"], description: "Worker role: dev or qa" },
         projectGroupId: {
           type: "string",
           description: "Telegram group ID (key in projects.json). Required — pass the group ID from the current conversation.",
         },
-        modelOverride: {
+        model: {
           type: "string",
-          description: "Force a specific model alias (e.g. haiku, sonnet, opus, grok). Overrides automatic selection.",
+          description: "Model alias to use (e.g. haiku, sonnet, opus, grok). The orchestrator should analyze the issue complexity and choose. Falls back to keyword heuristic if omitted.",
         },
       },
     },
@@ -48,7 +45,7 @@ export function createTaskPickupTool(api: OpenClawPluginApi) {
       const issueId = params.issueId as number;
       const role = params.role as "dev" | "qa";
       const groupId = params.projectGroupId as string;
-      const modelOverride = params.modelOverride as string | undefined;
+      const modelParam = params.model as string | undefined;
       const workspaceDir = ctx.workspaceDir;
 
       if (!workspaceDir) {
@@ -68,11 +65,11 @@ export function createTaskPickupTool(api: OpenClawPluginApi) {
       const worker = getWorker(project, role);
       if (worker.active) {
         throw new Error(
-          `${role.toUpperCase()} worker already active on ${project.name} (issue: ${worker.issueId}, session: ${worker.sessionId}). Complete current task first.`,
+          `${role.toUpperCase()} worker already active on ${project.name} (issue: ${worker.issueId}). Complete current task first.`,
         );
       }
 
-      // 3. Fetch issue from GitLab and verify state
+      // 3. Fetch issue and verify state
       const repoPath = resolveRepoPath(project.repo);
       const glabOpts = {
         glabPath: (api.pluginConfig as Record<string, unknown>)?.glabPath as string | undefined,
@@ -82,7 +79,6 @@ export function createTaskPickupTool(api: OpenClawPluginApi) {
       const issue = await getIssue(issueId, glabOpts);
       const currentLabel = getCurrentStateLabel(issue);
 
-      // Validate label matches expected state for the role
       const validLabelsForDev: StateLabel[] = ["To Do", "To Improve"];
       const validLabelsForQa: StateLabel[] = ["To Test"];
       const validLabels = role === "dev" ? validLabelsForDev : validLabelsForQa;
@@ -95,70 +91,40 @@ export function createTaskPickupTool(api: OpenClawPluginApi) {
 
       // 4. Select model
       const targetLabel: StateLabel = role === "dev" ? "Doing" : "Testing";
-      let selectedModel = selectModel(issue.title, issue.description ?? "", role);
-      if (modelOverride) {
-        selectedModel = {
-          model: modelOverride,
-          alias: modelOverride,
-          reason: `User override: ${modelOverride}`,
-        };
-      }
+      let modelAlias: string;
+      let modelReason: string;
+      let modelSource: string;
 
-      // 5. Determine session action (spawn vs reuse)
-      const existingSessionId = worker.sessionId;
-      const sessionAction = existingSessionId ? "send" : "spawn";
-
-      // 6. Transition GitLab label
-      await transitionLabel(issueId, currentLabel, targetLabel, glabOpts);
-
-      // 7. Update projects.json
-      const now = new Date().toISOString();
-      if (sessionAction === "spawn") {
-        // New spawn — agent will provide sessionId after spawning
-        await activateWorker(workspaceDir, groupId, role, {
-          issueId: String(issueId),
-          model: selectedModel.alias,
-          startTime: now,
-        });
+      if (modelParam) {
+        modelAlias = modelParam;
+        modelReason = "LLM-selected by orchestrator";
+        modelSource = "llm";
       } else {
-        // Reuse existing session — preserve sessionId and startTime
-        await activateWorker(workspaceDir, groupId, role, {
-          issueId: String(issueId),
-          model: selectedModel.alias,
-        });
+        const selected = selectModel(issue.title, issue.description ?? "", role);
+        modelAlias = selected.alias;
+        modelReason = selected.reason;
+        modelSource = "heuristic";
       }
 
-      // 8. Audit log
-      await auditLog(workspaceDir, "task_pickup", {
-        project: project.name,
+      // 5. Dispatch via shared logic
+      const dispatchResult = await dispatchTask({
+        workspaceDir,
+        agentId: ctx.agentId,
         groupId,
-        issue: issueId,
+        project,
+        issueId,
         issueTitle: issue.title,
+        issueDescription: issue.description ?? "",
+        issueUrl: issue.web_url,
         role,
-        model: selectedModel.alias,
-        modelReason: selectedModel.reason,
-        sessionAction,
-        sessionId: existingSessionId,
-        labelTransition: `${currentLabel} → ${targetLabel}`,
+        modelAlias,
+        fromLabel: currentLabel,
+        toLabel: targetLabel,
+        transitionLabel: (id, from, to) =>
+          transitionLabel(id, from as StateLabel, to as StateLabel, glabOpts),
       });
 
-      await auditLog(workspaceDir, "model_selection", {
-        issue: issueId,
-        role,
-        selected: selectedModel.alias,
-        fullModel: selectedModel.model,
-        reason: selectedModel.reason,
-        override: modelOverride ?? null,
-      });
-
-      // 9. Build announcement and session instructions
-      const emoji = role === "dev"
-        ? (selectedModel.alias === "haiku" ? "⚡" : selectedModel.alias === "opus" ? "🧠" : "🔧")
-        : "🔍";
-
-      const actionVerb = sessionAction === "spawn" ? "Spawning" : "Sending";
-      const announcement = `${emoji} ${actionVerb} ${role.toUpperCase()} (${selectedModel.alias}) for #${issueId}: ${issue.title}`;
-
+      // 6. Build result
       const result: Record<string, unknown> = {
         success: true,
         project: project.name,
@@ -166,26 +132,17 @@ export function createTaskPickupTool(api: OpenClawPluginApi) {
         issueId,
         issueTitle: issue.title,
         role,
-        model: selectedModel.alias,
-        fullModel: selectedModel.model,
-        modelReason: selectedModel.reason,
-        sessionAction,
-        announcement,
+        model: dispatchResult.modelAlias,
+        fullModel: dispatchResult.fullModel,
+        sessionAction: dispatchResult.sessionAction,
+        announcement: dispatchResult.announcement,
         labelTransition: `${currentLabel} → ${targetLabel}`,
+        modelReason,
+        modelSource,
       };
 
-      if (sessionAction === "send") {
-        result.sessionId = existingSessionId;
-        result.instructions =
-          `Session reuse: send new task to existing session ${existingSessionId}. ` +
-          `If model "${selectedModel.alias}" differs from current session model, call sessions.patch first to update the model. ` +
-          `Then call sessions_send with the task description. ` +
-          `After spawning/sending, update projects.json sessionId if it changed.`;
+      if (dispatchResult.sessionAction === "send") {
         result.tokensSavedEstimate = "~50K (session reuse)";
-      } else {
-        result.instructions =
-          `New session: call sessions_spawn with model "${selectedModel.model}" for this ${role.toUpperCase()} task. ` +
-          `After spawn completes, call task_pickup_confirm with the returned sessionId to update projects.json.`;
       }
 
       return {

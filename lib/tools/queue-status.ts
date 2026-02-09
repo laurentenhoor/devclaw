@@ -63,15 +63,15 @@ export function createQueueStatusTool(api: OpenClawPluginApi) {
           groupId: pid,
           dev: {
             active: project.dev.active,
-            sessionId: project.dev.sessionId,
             issueId: project.dev.issueId,
             model: project.dev.model,
+            sessions: project.dev.sessions,
           },
           qa: {
             active: project.qa.active,
-            sessionId: project.qa.sessionId,
             issueId: project.qa.issueId,
             model: project.qa.model,
+            sessions: project.qa.sessions,
           },
           queue: {
             toImprove: queue["To Improve"],

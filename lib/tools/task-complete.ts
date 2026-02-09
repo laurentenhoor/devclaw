@@ -1,16 +1,20 @@
 /**
  * task_complete — Atomically complete a task (DEV done, QA pass/fail/refine).
  *
- * Handles: validation, GitLab label transition, projects.json state update,
- * issue close/reopen, and audit logging.
+ * Handles: validation, label transition, projects.json state update,
+ * issue close/reopen, audit logging, and optional auto-chaining.
+ *
+ * When project.autoChain is true:
+ *   - DEV "done" → automatically dispatches QA (default model: grok)
+ *   - QA "fail" → automatically dispatches DEV fix (reuses previous DEV model)
  */
 import type { OpenClawPluginApi, OpenClawPluginToolContext } from "openclaw/plugin-sdk";
 import {
   readProjects,
   getProject,
   getWorker,
+  getSessionForModel,
   deactivateWorker,
-  activateWorker,
 } from "../projects.js";
 import {
   getIssue,
@@ -20,8 +24,8 @@ import {
   resolveRepoPath,
   type StateLabel,
 } from "../gitlab.js";
-import { selectModel } from "../model-selector.js";
 import { log as auditLog } from "../audit.js";
+import { dispatchTask } from "../dispatch.js";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
@@ -30,7 +34,7 @@ const execFileAsync = promisify(execFile);
 export function createTaskCompleteTool(api: OpenClawPluginApi) {
   return (ctx: OpenClawPluginToolContext) => ({
     name: "task_complete",
-    description: `Complete a task: DEV done, QA pass, QA fail, or QA refine. Atomically handles: label transition, projects.json update, issue close/reopen, and audit logging. For QA fail, also prepares DEV session instructions for the fix cycle.`,
+    description: `Complete a task: DEV done, QA pass, QA fail, or QA refine. Atomically handles: label transition, projects.json update, issue close/reopen, and audit logging. If the project has autoChain enabled, automatically dispatches the next step (DEV done → QA, QA fail → DEV fix).`,
     parameters: {
       type: "object",
       required: ["role", "result", "projectGroupId"],
@@ -101,7 +105,6 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
 
       // === DEV DONE ===
       if (role === "dev" && result === "done") {
-        // Pull latest on the project repo
         try {
           await execFileAsync("git", ["pull"], { cwd: repoPath, timeout: 30_000 });
           output.gitPull = "success";
@@ -109,22 +112,49 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
           output.gitPull = `warning: ${(err as Error).message}`;
         }
 
-        // Deactivate DEV (preserves sessionId, model, startTime)
         await deactivateWorker(workspaceDir, groupId, "dev");
-
-        // Transition label: Doing → To Test
         await transitionLabel(issueId, "Doing", "To Test", glabOpts);
 
         output.labelTransition = "Doing → To Test";
         output.announcement = `✅ DEV done #${issueId}${summary ? ` — ${summary}` : ""}. Moved to QA queue.`;
+
+        if (project.autoChain) {
+          try {
+            const issue = await getIssue(issueId, glabOpts);
+            const chainResult = await dispatchTask({
+              workspaceDir,
+              agentId: ctx.agentId,
+              groupId,
+              project,
+              issueId,
+              issueTitle: issue.title,
+              issueDescription: issue.description ?? "",
+              issueUrl: issue.web_url,
+              role: "qa",
+              modelAlias: "grok",
+              fromLabel: "To Test",
+              toLabel: "Testing",
+              transitionLabel: (id, from, to) =>
+                transitionLabel(id, from as StateLabel, to as StateLabel, glabOpts),
+            });
+            output.autoChain = {
+              dispatched: true,
+              role: "qa",
+              model: chainResult.modelAlias,
+              sessionAction: chainResult.sessionAction,
+              announcement: chainResult.announcement,
+            };
+          } catch (err) {
+            output.autoChain = { dispatched: false, error: (err as Error).message };
+          }
+        } else {
+          output.nextAction = "qa_pickup";
+        }
       }
 
       // === QA PASS ===
       if (role === "qa" && result === "pass") {
-        // Deactivate QA
         await deactivateWorker(workspaceDir, groupId, "qa");
-
-        // Transition label: Testing → Done, close issue
         await transitionLabel(issueId, "Testing", "Done", glabOpts);
         await closeIssue(issueId, glabOpts);
 
@@ -135,44 +165,57 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
 
       // === QA FAIL ===
       if (role === "qa" && result === "fail") {
-        // Deactivate QA
         await deactivateWorker(workspaceDir, groupId, "qa");
-
-        // Transition label: Testing → To Improve, reopen issue
         await transitionLabel(issueId, "Testing", "To Improve", glabOpts);
         await reopenIssue(issueId, glabOpts);
 
-        // Prepare DEV fix cycle
-        const issue = await getIssue(issueId, glabOpts);
-        const devModel = selectModel(issue.title, issue.description ?? "", "dev");
         const devWorker = getWorker(project, "dev");
+        const devModel = devWorker.model;
+        const devSessionKey = devModel ? getSessionForModel(devWorker, devModel) : null;
 
         output.labelTransition = "Testing → To Improve";
         output.issueReopened = true;
         output.announcement = `❌ QA FAIL #${issueId}${summary ? ` — ${summary}` : ""}. Sent back to DEV.`;
+        output.devSessionAvailable = !!devSessionKey;
+        if (devModel) output.devModel = devModel;
 
-        // If DEV session exists, prepare reuse instructions
-        if (devWorker.sessionId) {
-          output.devFixInstructions =
-            `Send QA feedback to existing DEV session ${devWorker.sessionId}. ` +
-            `If model "${devModel.alias}" differs from "${devWorker.model}", call sessions.patch first. ` +
-            `Then sessions_send with QA failure details. ` +
-            `DEV will pick up from To Improve → Doing automatically.`;
-          output.devSessionId = devWorker.sessionId;
-          output.devModel = devModel.alias;
+        if (project.autoChain && devModel) {
+          try {
+            const issue = await getIssue(issueId, glabOpts);
+            const chainResult = await dispatchTask({
+              workspaceDir,
+              agentId: ctx.agentId,
+              groupId,
+              project,
+              issueId,
+              issueTitle: issue.title,
+              issueDescription: issue.description ?? "",
+              issueUrl: issue.web_url,
+              role: "dev",
+              modelAlias: devModel,
+              fromLabel: "To Improve",
+              toLabel: "Doing",
+              transitionLabel: (id, from, to) =>
+                transitionLabel(id, from as StateLabel, to as StateLabel, glabOpts),
+            });
+            output.autoChain = {
+              dispatched: true,
+              role: "dev",
+              model: chainResult.modelAlias,
+              sessionAction: chainResult.sessionAction,
+              announcement: chainResult.announcement,
+            };
+          } catch (err) {
+            output.autoChain = { dispatched: false, error: (err as Error).message };
+          }
         } else {
-          output.devFixInstructions =
-            `No existing DEV session. Spawn new DEV worker with model "${devModel.alias}" to fix #${issueId}.`;
-          output.devModel = devModel.alias;
+          output.nextAction = "dev_fix";
         }
       }
 
       // === QA REFINE ===
       if (role === "qa" && result === "refine") {
-        // Deactivate QA
         await deactivateWorker(workspaceDir, groupId, "qa");
-
-        // Transition label: Testing → Refining
         await transitionLabel(issueId, "Testing", "Refining", glabOpts);
 
         output.labelTransition = "Testing → Refining";
@@ -188,6 +231,7 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
         result,
         summary: summary ?? null,
         labelTransition: output.labelTransition,
+        autoChain: output.autoChain ?? null,
       });
 
       return {

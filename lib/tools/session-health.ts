@@ -2,21 +2,17 @@
  * session_health — Check and fix session state consistency.
  *
  * Detects zombie sessions (active=true but session dead) and stale workers.
- * Replaces manual HEARTBEAT.md step 1.
- *
- * NOTE: This tool checks projects.json state only. The agent should verify
- * session liveness via sessions_list and pass the results. The tool cannot
- * call sessions_list directly (it's an agent-level tool).
+ * Checks the sessions map for each worker's current model.
  */
 import type { OpenClawPluginApi, OpenClawPluginToolContext } from "openclaw/plugin-sdk";
-import { readProjects, updateWorker } from "../projects.js";
+import { readProjects, updateWorker, getSessionForModel } from "../projects.js";
 import { transitionLabel, resolveRepoPath, type StateLabel } from "../gitlab.js";
 import { log as auditLog } from "../audit.js";
 
 export function createSessionHealthTool(api: OpenClawPluginApi) {
   return (ctx: OpenClawPluginToolContext) => ({
     name: "session_health",
-    description: `Check session state consistency across all projects. Detects: active workers with dead sessions, stale workers (>2 hours), and state mismatches. With autoFix=true, clears zombie states and reverts GitLab labels. Pass activeSessions (from sessions_list) so the tool can verify liveness.`,
+    description: `Check session state consistency across all projects. Detects: active workers with no session in their sessions map, stale workers (>2 hours), and state mismatches. With autoFix=true, clears zombie states and reverts GitLab labels. Pass activeSessions (from sessions_list) so the tool can verify liveness.`,
     parameters: {
       type: "object",
       properties: {
@@ -53,16 +49,20 @@ export function createSessionHealthTool(api: OpenClawPluginApi) {
 
         for (const role of ["dev", "qa"] as const) {
           const worker = project[role];
+          const currentSessionKey = worker.model
+            ? getSessionForModel(worker, worker.model)
+            : null;
 
-          // Check 1: Active but no sessionId
-          if (worker.active && !worker.sessionId) {
+          // Check 1: Active but no session key for current model
+          if (worker.active && !currentSessionKey) {
             const issue: Record<string, unknown> = {
               type: "active_no_session",
               severity: "critical",
               project: project.name,
               groupId,
               role,
-              message: `${role.toUpperCase()} marked active but has no sessionId`,
+              model: worker.model,
+              message: `${role.toUpperCase()} marked active but has no session for model "${worker.model}"`,
             };
 
             if (autoFix) {
@@ -76,12 +76,12 @@ export function createSessionHealthTool(api: OpenClawPluginApi) {
             issues.push(issue);
           }
 
-          // Check 2: Active with sessionId but session is dead (zombie)
+          // Check 2: Active with session but session is dead (zombie)
           if (
             worker.active &&
-            worker.sessionId &&
+            currentSessionKey &&
             activeSessions.length > 0 &&
-            !activeSessions.includes(worker.sessionId)
+            !activeSessions.includes(currentSessionKey)
           ) {
             const issue: Record<string, unknown> = {
               type: "zombie_session",
@@ -89,8 +89,9 @@ export function createSessionHealthTool(api: OpenClawPluginApi) {
               project: project.name,
               groupId,
               role,
-              sessionId: worker.sessionId,
-              message: `${role.toUpperCase()} session ${worker.sessionId} not found in active sessions`,
+              sessionKey: currentSessionKey,
+              model: worker.model,
+              message: `${role.toUpperCase()} session ${currentSessionKey} not found in active sessions`,
             };
 
             if (autoFix) {
@@ -107,9 +108,16 @@ export function createSessionHealthTool(api: OpenClawPluginApi) {
                 issue.labelRevertFailed = true;
               }
 
+              // Clear the dead session from the sessions map
+              const updatedSessions = { ...worker.sessions };
+              if (worker.model) {
+                updatedSessions[worker.model] = null;
+              }
+
               await updateWorker(workspaceDir, groupId, role, {
                 active: false,
                 issueId: null,
+                sessions: updatedSessions,
               });
               issue.fixed = true;
               fixesApplied++;
@@ -131,7 +139,7 @@ export function createSessionHealthTool(api: OpenClawPluginApi) {
                 groupId,
                 role,
                 hoursActive: Math.round(hoursActive * 10) / 10,
-                sessionId: worker.sessionId,
+                sessionKey: currentSessionKey,
                 issueId: worker.issueId,
                 message: `${role.toUpperCase()} has been active for ${Math.round(hoursActive * 10) / 10}h — may need attention`,
               });

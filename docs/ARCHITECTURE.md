@@ -84,8 +84,10 @@ graph TB
     subgraph "DevClaw Plugin"
         TP[task_pickup]
         TC[task_complete]
+        TCR[task_create]
         QS[queue_status]
         SH[session_health]
+        PR[project_register]
         MS_SEL[Model Selector]
         PJ[projects.json]
         AL[audit.log]
@@ -102,8 +104,10 @@ graph TB
 
     MS -->|calls| TP
     MS -->|calls| TC
+    MS -->|calls| TCR
     MS -->|calls| QS
     MS -->|calls| SH
+    MS -->|calls| PR
 
     TP -->|selects model| MS_SEL
     TP -->|transitions labels| GL
@@ -116,7 +120,11 @@ graph TB
     TC -->|closes/reopens| GL
     TC -->|reads/writes| PJ
     TC -->|git pull| REPO
+    TC -->|auto-chain dispatch| CLI
     TC -->|appends| AL
+
+    TCR -->|creates issue| GL
+    TCR -->|appends| AL
 
     QS -->|lists issues by label| GL
     QS -->|reads| PJ
@@ -126,6 +134,10 @@ graph TB
     SH -->|checks sessions| GW
     SH -->|reverts labels| GL
     SH -->|appends| AL
+
+    PR -->|creates labels| GL
+    PR -->|writes entry| PJ
+    PR -->|appends| AL
 
     CLI -->|sends task| DEV_H
     CLI -->|sends task| DEV_S
@@ -271,8 +283,7 @@ sequenceDiagram
     TP->>GL: glab issue view 42 --output json
     GL-->>TP: { title: "Add login page", labels: ["To Do"] }
     TP->>TP: Verify label is "To Do" ✓
-    TP->>MS: selectModel("Add login page", description, "dev")
-    MS-->>TP: { alias: "sonnet" }
+    TP->>TP: model from agent param (LLM-selected) or fallback heuristic
     TP->>PJ: lookup dev.sessions.sonnet
     TP->>GL: glab issue update 42 --unlabel "To Do" --label "Doing"
     alt New session
@@ -294,38 +305,47 @@ sequenceDiagram
 
 ```
 DEV sub-agent session → reads codebase, writes code, creates MR
-DEV sub-agent session → reports back to orchestrator: "done, MR merged"
+DEV sub-agent session → calls task_complete({ role: "dev", result: "done", ... })
 ```
 
-This happens inside the OpenClaw session. DevClaw is not involved — the DEV sub-agent session works autonomously with the codebase.
+This happens inside the OpenClaw session. The worker calls `task_complete` directly for atomic state updates. If the worker discovers unrelated bugs, it calls `task_create` to file them.
 
-### Phase 5: DEV complete
+### Phase 5: DEV complete (worker self-reports)
 
 ```mermaid
 sequenceDiagram
-    participant A as Orchestrator
+    participant DEV as DEV Session
     participant TC as task_complete
     participant GL as GitLab
     participant PJ as projects.json
     participant AL as audit.log
     participant REPO as Git Repo
+    participant QA as QA Session (auto-chain)
 
-    A->>TC: task_complete({ role: "dev", result: "done", projectGroupId: "-123", summary: "Login page with OAuth" })
+    DEV->>TC: task_complete({ role: "dev", result: "done", projectGroupId: "-123", summary: "Login page with OAuth" })
     TC->>PJ: readProjects()
     PJ-->>TC: { dev: { active: true, issueId: "42" } }
     TC->>REPO: git pull
     TC->>PJ: deactivateWorker(-123, dev)
     Note over PJ: active→false, issueId→null<br/>sessions map PRESERVED
-    TC->>GL: glab issue update 42 --unlabel "Doing" --label "To Test"
+    TC->>GL: transition label "Doing" → "To Test"
     TC->>AL: append { event: "task_complete", role: "dev", result: "done" }
-    TC-->>A: { announcement: "✅ DEV done #42 — Login page with OAuth. Moved to QA queue." }
+
+    alt autoChain enabled
+        TC->>GL: transition label "To Test" → "Testing"
+        TC->>QA: dispatchTask(role: "qa", model: "grok")
+        TC->>PJ: activateWorker(-123, qa)
+        TC-->>DEV: { announcement: "✅ DEV done #42", autoChain: { dispatched: true, role: "qa" } }
+    else autoChain disabled
+        TC-->>DEV: { announcement: "✅ DEV done #42", nextAction: "qa_pickup" }
+    end
 ```
 
 **Writes:**
 - `Git repo`: pulled latest (has DEV's merged code)
 - `projects.json`: dev.active=false, dev.issueId=null (sessions map preserved for reuse)
-- `GitLab`: label "Doing" → "To Test"
-- `audit.log`: 1 entry (task_complete)
+- `GitLab`: label "Doing" → "To Test" (+ "To Test" → "Testing" if auto-chain)
+- `audit.log`: 1 entry (task_complete) + optional auto-chain entries
 
 ### Phase 6: QA pickup
 
@@ -415,22 +435,24 @@ Every piece of data and where it lives:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│ GitLab (source of truth for tasks)                              │
+│ Issue Tracker (source of truth for tasks)                        │
 │                                                                 │
 │  Issue #42: "Add login page"                                    │
 │  Labels: [To Do | Doing | To Test | Testing | Done | ...]       │
 │  State: open / closed                                           │
-│  MRs: linked merge requests                                    │
-│  Created by: orchestrator agent, DEV/QA sub-agents, or humans  │
+│  MRs/PRs: linked merge/pull requests                            │
+│  Created by: orchestrator (task_create), workers, or humans     │
 └─────────────────────────────────────────────────────────────────┘
-        ↕ glab CLI (read/write)
+        ↕ glab/gh CLI (read/write, auto-detected)
 ┌─────────────────────────────────────────────────────────────────┐
 │ DevClaw Plugin (orchestration logic)                            │
 │                                                                 │
-│  task_pickup    → model + label + dispatch + state (end-to-end) │
-│  task_complete  → label transition + state update + git pull    │
+│  task_pickup    → model + label + dispatch + role instr (e2e)   │
+│  task_complete  → label + state + git pull + auto-chain        │
+│  task_create    → create issue in tracker                      │
 │  queue_status   → read labels + read state                     │
 │  session_health → check sessions + fix zombies                 │
+│  project_register → labels + roles + state init (one-time)     │
 └─────────────────────────────────────────────────────────────────┘
         ↕ atomic file I/O          ↕ OpenClaw CLI (plugin shells out)
 ┌────────────────────────────────┐ ┌──────────────────────────────┐
@@ -454,7 +476,8 @@ Every piece of data and where it lives:
 │                                                                 │
 │  NDJSON, one line per event:                                    │
 │  task_pickup, task_complete, model_selection,                   │
-│  queue_status, health_check, session_spawn, session_reuse       │
+│  queue_status, health_check, session_spawn, session_reuse,     │
+│  project_register                                               │
 │                                                                 │
 │  Query with: cat audit.log | jq 'select(.event=="task_pickup")' │
 └─────────────────────────────────────────────────────────────────┘
@@ -488,8 +511,10 @@ graph LR
     subgraph "DevClaw controls (deterministic)"
         L[Label transitions]
         S[Worker state]
-        M[Model selection]
+        PR[Project registration]
         SD[Session dispatch<br/>create + send via CLI]
+        AC[Auto-chaining<br/>DEV→QA, QA fail→DEV]
+        RI[Role instructions<br/>loaded per project]
         A[Audit logging]
         Z[Zombie cleanup]
     end
@@ -497,14 +522,15 @@ graph LR
     subgraph "Orchestrator handles"
         MSG[Telegram announcements]
         HB[Heartbeat scheduling]
-        IC[Issue creation via glab]
         DEC[Task prioritization]
+        M[Model selection]
     end
 
     subgraph "Sub-agent sessions handle"
         CR[Code writing]
         MR[MR creation/review]
-        BUG[Bug issue creation]
+        TC_W[Task completion<br/>via task_complete]
+        BUG[Bug filing<br/>via task_create]
     end
 
     subgraph "External"
@@ -512,6 +538,28 @@ graph LR
         HR[Human decisions]
     end
 ```
+
+## IssueProvider abstraction
+
+All issue tracker operations go through the `IssueProvider` interface, defined in `lib/issue-provider.ts`. This abstraction allows DevClaw to support multiple issue trackers without changing tool logic.
+
+**Interface methods:**
+- `ensureLabel` / `ensureAllStateLabels` — idempotent label creation
+- `listIssuesByLabel` / `getIssue` — issue queries
+- `transitionLabel` — atomic label state transition (unlabel + label)
+- `closeIssue` / `reopenIssue` — issue lifecycle
+- `hasStateLabel` / `getCurrentStateLabel` — label inspection
+- `hasMergedMR` — MR/PR verification
+- `healthCheck` — verify provider connectivity
+
+**Current providers:**
+- **GitLab** (`lib/providers/gitlab.ts`) — wraps `glab` CLI
+- **GitHub** (`lib/providers/github.ts`) — wraps `gh` CLI
+
+**Planned providers:**
+- **Jira** — via REST API
+
+Provider selection is handled by `createProvider()` in `lib/providers/index.ts`. Auto-detects GitHub vs GitLab from the git remote URL.
 
 ## Error recovery
 
@@ -525,6 +573,7 @@ graph LR
 | Label out of sync | `task_pickup` verifies label before transitioning | Throws error if label doesn't match expected state. Agent reports mismatch. |
 | Worker already active | `task_pickup` checks `active` flag | Throws error: "DEV worker already active on project". Must complete current task first. |
 | Stale worker (>2h) | `session_health` flags as warning | Agent can investigate or `autoFix` can clear. |
+| `project_register` fails | Plugin catches error during label creation or state write | Clean error returned. No partial state — labels are idempotent, projects.json not written until all labels succeed. |
 
 ## File locations
 
