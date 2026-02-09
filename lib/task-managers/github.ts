@@ -14,12 +14,12 @@ import { writeFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
-  type IssueProvider,
+  type TaskManager,
   type Issue,
   type StateLabel,
   STATE_LABELS,
   LABEL_COLORS,
-} from "../issue-provider.js";
+} from "./task-manager.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -48,7 +48,7 @@ function toIssue(gh: GhIssue): Issue {
   };
 }
 
-export class GitHubProvider implements IssueProvider {
+export class GitHubProvider implements TaskManager {
   private repoPath: string;
 
   constructor(opts: GitHubProviderOptions) {

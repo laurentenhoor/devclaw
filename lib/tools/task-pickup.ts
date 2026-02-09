@@ -11,8 +11,8 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
 import { dispatchTask } from "../dispatch.js";
-import { type StateLabel } from "../issue-provider.js";
-import { createProvider } from "../providers/index.js";
+import { type StateLabel } from "../task-managers/task-manager.js";
+import { createProvider } from "../task-managers/index.js";
 import { selectModel } from "../model-selector.js";
 import { getProject, getWorker, readProjects } from "../projects.js";
 import type { ToolContext } from "../types.js";

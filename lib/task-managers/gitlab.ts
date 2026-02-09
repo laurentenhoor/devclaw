@@ -10,12 +10,12 @@ import { writeFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
-  type IssueProvider,
+  type TaskManager,
   type Issue,
   type StateLabel,
   STATE_LABELS,
   LABEL_COLORS,
-} from "../issue-provider.js";
+} from "./task-manager.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -23,7 +23,7 @@ export type GitLabProviderOptions = {
   repoPath: string;
 };
 
-export class GitLabProvider implements IssueProvider {
+export class GitLabProvider implements TaskManager {
   private repoPath: string;
 
   constructor(opts: GitLabProviderOptions) {

@@ -8,8 +8,8 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
 import { readProjects, updateWorker, getSessionForModel } from "../projects.js";
-import { type StateLabel } from "../issue-provider.js";
-import { createProvider } from "../providers/index.js";
+import { type StateLabel } from "../task-managers/task-manager.js";
+import { createProvider } from "../task-managers/index.js";
 import { log as auditLog } from "../audit.js";
 
 export function createSessionHealthTool(api: OpenClawPluginApi) {

@@ -1,8 +1,8 @@
 /**
- * IssueProvider — Abstract interface for issue tracker operations.
+ * TaskManager — Abstract interface for issue tracker operations.
  *
- * GitLab is the first implementation (via glab CLI).
- * Future providers: GitHub (via gh CLI), Jira (via API).
+ * GitHub (via gh CLI) and GitLab (via glab CLI) are the current implementations.
+ * Future providers: Jira (via API).
  *
  * All DevClaw tools operate through this interface, making it possible
  * to swap issue trackers without changing tool logic.
@@ -41,7 +41,7 @@ export type Issue = {
   web_url: string;
 };
 
-export interface IssueProvider {
+export interface TaskManager {
   /** Create a label if it doesn't exist (idempotent). */
   ensureLabel(name: string, color: string): Promise<void>;
 
@@ -75,6 +75,12 @@ export interface IssueProvider {
   /** Check if any merged MR/PR exists for a specific issue. */
   hasMergedMR(issueId: number): Promise<boolean>;
 
-  /** Verify the provider is working (CLI available, auth valid, repo accessible). */
+  /** Verify the task manager is working (CLI available, auth valid, repo accessible). */
   healthCheck(): Promise<boolean>;
 }
+
+/**
+ * Compatibility alias for backward compatibility.
+ * @deprecated Use TaskManager instead.
+ */
+export type IssueProvider = TaskManager;

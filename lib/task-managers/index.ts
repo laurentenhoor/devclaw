@@ -8,7 +8,7 @@
  * Can be overridden with explicit `provider` option.
  */
 import { execFileSync } from "node:child_process";
-import type { IssueProvider } from "../issue-provider.js";
+import type { TaskManager } from "./task-manager.js";
 import { GitLabProvider } from "./gitlab.js";
 import { GitHubProvider } from "./github.js";
 import { resolveRepoPath } from "../utils.js";
@@ -34,7 +34,7 @@ function detectProvider(repoPath: string): "gitlab" | "github" {
 }
 
 export type ProviderWithType = {
-  provider: IssueProvider;
+  provider: TaskManager;
   type: "github" | "gitlab";
 };
 

@@ -13,7 +13,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { readProjects, writeProjects, emptyWorkerState } from "../projects.js";
 import { resolveRepoPath } from "../utils.js";
-import { createProvider } from "../providers/index.js";
+import { createProvider } from "../task-managers/index.js";
 import { log as auditLog } from "../audit.js";
 import { DEV_TIERS, QA_TIERS } from "../tiers.js";
 import { DEFAULT_DEV_INSTRUCTIONS, DEFAULT_QA_INSTRUCTIONS } from "../templates.js";

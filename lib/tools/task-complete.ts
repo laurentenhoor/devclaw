@@ -14,8 +14,8 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
 import { log as auditLog } from "../audit.js";
 import { dispatchTask } from "../dispatch.js";
-import { type StateLabel } from "../issue-provider.js";
-import { createProvider } from "../providers/index.js";
+import { type StateLabel } from "../task-managers/task-manager.js";
+import { createProvider } from "../task-managers/index.js";
 import { resolveRepoPath } from "../utils.js";
 import {
   deactivateWorker,
