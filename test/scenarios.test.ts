@@ -26,6 +26,7 @@ import { resolveModel } from "../lib/tiers.js";
 import {
   TestCleanup,
   TEST_GROUP_ID,
+  TEST_PROJECT_NAME,
   TEST_REPO,
   createTestWorkspace,
   gateway,
@@ -424,7 +425,7 @@ describe("DevClaw Scenario Tests", { timeout: 240_000 }, () => {
       }>;
       const zombieIssue = issues.find(
         (i) =>
-          i.project === "devclaw" &&
+          i.project === TEST_PROJECT_NAME &&
           i.role === "dev",
       );
       assert.ok(zombieIssue, "Should detect zombie for dev worker");

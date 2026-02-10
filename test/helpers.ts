@@ -26,6 +26,11 @@ export const TEST_GROUP_ID = "-5239235162";
 /** Repo path for test issues (devclaw repo) */
 export const TEST_REPO = "laurentenhoor/devclaw";
 
+/** Project name used in test workspaces. Prefixed with "test-" so session keys
+ *  (agent:devclaw:subagent:test-devclaw-dev-junior) don't collide with production
+ *  and match TEST_SESSION_PREFIX for cleanup sweeps. */
+export const TEST_PROJECT_NAME = "test-devclaw";
+
 // ── Gateway RPC ─────────────────────────────────────────────────────────────
 
 /**
@@ -297,7 +302,7 @@ export async function createTestWorkspace(opts?: {
   // Create required directories
   await fs.mkdir(path.join(tempDir, "memory"), { recursive: true });
   await fs.mkdir(path.join(tempDir, "roles", "default"), { recursive: true });
-  await fs.mkdir(path.join(tempDir, "roles", "devclaw"), {
+  await fs.mkdir(path.join(tempDir, "roles", TEST_PROJECT_NAME), {
     recursive: true,
   });
 
@@ -305,9 +310,9 @@ export async function createTestWorkspace(opts?: {
   const initialData: ProjectsData = {
     projects: {
       [groupId]: {
-        name: "devclaw",
+        name: TEST_PROJECT_NAME,
         repo: `~/.openclaw/extensions/devclaw`,
-        groupName: "DevClaw - DevClaw",
+        groupName: "DevClaw - Test",
         deployUrl: "",
         baseBranch: "main",
         deployBranch: "main",
