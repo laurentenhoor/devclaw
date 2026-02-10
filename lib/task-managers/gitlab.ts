@@ -116,11 +116,38 @@ export class GitLabProvider implements TaskManager {
     from: StateLabel,
     to: StateLabel,
   ): Promise<void> {
-    await this.glab([
+    // Fetch current issue to get all labels
+    const issue = await this.getIssue(issueId);
+    
+    // Find all state labels currently on the issue
+    const currentStateLabels = issue.labels.filter((label) =>
+      STATE_LABELS.includes(label as StateLabel),
+    );
+    
+    // If no state labels to remove, just add the new one
+    if (currentStateLabels.length === 0) {
+      await this.glab([
+        "issue", "update", String(issueId),
+        "--label", to,
+      ]);
+      return;
+    }
+    
+    // Remove all state labels and add the new one in a single operation
+    // This ensures clean transitions: "removed X, added Y" instead of messy multi-label operations
+    const args = [
       "issue", "update", String(issueId),
-      "--unlabel", from,
-      "--label", to,
-    ]);
+    ];
+    
+    // Add all current state labels to remove
+    for (const label of currentStateLabels) {
+      args.push("--unlabel", label);
+    }
+    
+    // Add the new state label
+    args.push("--label", to);
+    
+    await this.glab(args);
   }
 
   async closeIssue(issueId: number): Promise<void> {

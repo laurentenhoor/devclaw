@@ -151,11 +151,38 @@ export class GitHubProvider implements TaskManager {
     from: StateLabel,
     to: StateLabel,
   ): Promise<void> {
-    await this.gh([
+    // Fetch current issue to get all labels
+    const issue = await this.getIssue(issueId);
+    
+    // Find all state labels currently on the issue
+    const currentStateLabels = issue.labels.filter((label) =>
+      STATE_LABELS.includes(label as StateLabel),
+    );
+    
+    // If no state labels to remove, just add the new one
+    if (currentStateLabels.length === 0) {
+      await this.gh([
+        "issue", "edit", String(issueId),
+        "--add-label", to,
+      ]);
+      return;
+    }
+    
+    // Remove all state labels and add the new one in a single operation
+    // This ensures clean transitions: "removed X, added Y" instead of messy multi-label operations
+    const args = [
       "issue", "edit", String(issueId),
-      "--remove-label", from,
-      "--add-label", to,
-    ]);
+    ];
+    
+    // Add all current state labels to remove
+    for (const label of currentStateLabels) {
+      args.push("--remove-label", label);
+    }
+    
+    // Add the new state label
+    args.push("--add-label", to);
+    
+    await this.gh(args);
   }
 
   async closeIssue(issueId: number): Promise<void> {
