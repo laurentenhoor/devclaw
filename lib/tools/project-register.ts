@@ -13,7 +13,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { readProjects, writeProjects, emptyWorkerState } from "../projects.js";
 import { resolveRepoPath } from "../projects.js";
-import { createProvider } from "../task-managers/index.js";
+import { createProvider } from "../providers/index.js";
 import { log as auditLog } from "../audit.js";
 import { DEV_TIERS, QA_TIERS } from "../tiers.js";
 import { DEFAULT_DEV_INSTRUCTIONS, DEFAULT_QA_INSTRUCTIONS } from "../templates.js";
@@ -146,7 +146,7 @@ export function createProjectRegisterTool(api: OpenClawPluginApi) {
           error: "Project registration can only be done from the Telegram/WhatsApp group you're registering.",
           recommendation:
             context.type === "via-agent"
-              ? "If you're setting up DevClaw for the first time, use devclaw_onboard. Then go to the project's Telegram/WhatsApp group to register it."
+              ? "If you're setting up DevClaw for the first time, use onboard. Then go to the project's Telegram/WhatsApp group to register it."
               : "Please go to the Telegram/WhatsApp group you want to register and call project_register from there.",
           contextGuidance: generateGuardrails(context),
         });

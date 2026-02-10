@@ -1,7 +1,7 @@
 /**
  * onboarding.ts — Conversational onboarding context templates.
  *
- * Provides context templates for the devclaw_onboard tool.
+ * Provides context templates for the onboard tool.
  */
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -27,7 +27,7 @@ export async function hasWorkspaceFiles(
       path.join(workspaceDir, "AGENTS.md"),
       "utf-8",
     );
-    return content.includes("DevClaw") && content.includes("task_pickup");
+    return content.includes("DevClaw") && content.includes("work_start");
   } catch {
     return false;
   }
@@ -57,12 +57,12 @@ The user wants to reconfigure DevClaw. Current model configuration:
 ${modelTable}
 
 ## What can be changed
-1. **Model tiers** — call \`devclaw_setup\` with a \`models\` object containing only the tiers to change
-2. **Workspace files** — \`devclaw_setup\` re-writes AGENTS.md, HEARTBEAT.md (backs up existing files)
+1. **Model tiers** — call \`setup\` with a \`models\` object containing only the tiers to change
+2. **Workspace files** — \`setup\` re-writes AGENTS.md, HEARTBEAT.md (backs up existing files)
 3. **Register new projects** — use \`project_register\`
 
 Ask what they want to change, then call the appropriate tool.
-\`devclaw_setup\` is safe to re-run — it backs up existing files before overwriting.
+\`setup\` is safe to re-run — it backs up existing files before overwriting.
 `;
 }
 
@@ -85,7 +85,7 @@ Ask: "Do you want to configure DevClaw for the current agent, or create a new de
   1. Agent name
   2. **Channel binding**: "Which channel should this agent listen to? (telegram/whatsapp/none)"
      - If telegram/whatsapp selected:
-       a) Call \`analyze_channel_bindings\` to check for conflicts
+       a) Check openclaw.json for existing channel bindings
        b) If channel not configured/enabled → warn and recommend skipping binding for now
        c) If channel-wide binding exists on another agent → ask: "Migrate binding from {agentName}?"
        d) Collect migration decision
@@ -104,9 +104,9 @@ Show the default tier-to-model mapping and ask if they want to customize:
 If the defaults are fine, proceed. If customizing, ask which tiers to change.
 
 **Step 3: Run Setup**
-Call \`devclaw_setup\` with the collected answers:
-- Current agent: \`devclaw_setup({})\` or \`devclaw_setup({ models: { ... } })\`
-- New agent: \`devclaw_setup({ newAgentName: "<name>", channelBinding: "telegram"|"whatsapp"|null, migrateFrom: "<agentId>"|null, models: { ... } })\`
+Call \`setup\` with the collected answers:
+- Current agent: \`setup({})\` or \`setup({ models: { ... } })\`
+- New agent: \`setup({ newAgentName: "<name>", channelBinding: "telegram"|"whatsapp"|null, migrateFrom: "<agentId>"|null, models: { ... } })\`
   - \`migrateFrom\`: Include if user wants to migrate an existing channel-wide binding
 
 **Step 4: Optional Project Registration**

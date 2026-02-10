@@ -19,15 +19,14 @@ Read the comments carefully — they often contain clarifications, decisions, or
 
 ## Your Job
 
-- Work in a git worktree at \`~/git/<project>.worktrees/<issue-number>/\` (never switch branches in the main repo)
-  - Example: \`git worktree add ~/git/myproject.worktrees/42 fix/42-bug-name\`
+- Work in a git worktree (never switch branches in the main repo)
 - Run tests before completing
 - Create an MR/PR to the base branch and merge it
-- **IMPORTANT:** Do NOT use closing keywords in PR/MR descriptions (no "Closes #X", "Fixes #X", "Resolves #X", "Fixes issue #X"). Instead use "As described in issue #X" or "Addresses issue #X". DevClaw manages issue state via task_complete - auto-closing bypasses QA validation.
+- **IMPORTANT:** Do NOT use closing keywords in PR/MR descriptions (no "Closes #X", "Fixes #X", "Resolves #X"). Use "As described in issue #X" or "Addresses issue #X" instead. DevClaw manages issue state — auto-closing bypasses QA.
 - Clean up the worktree after merging
-- When done, call task_complete with role "dev", result "done", and a brief summary
+- When done, call work_finish with role "dev", result "done", and a brief summary
 - If you discover unrelated bugs, call task_create to file them
-- Do NOT call task_pickup, queue_status, session_health, or project_register
+- Do NOT call work_start, status, or project_register
 `;
 
 export const DEFAULT_QA_INSTRUCTIONS = `# QA Worker Instructions
@@ -36,12 +35,13 @@ export const DEFAULT_QA_INSTRUCTIONS = `# QA Worker Instructions
 - Run tests and linting
 - Verify the changes address the issue requirements
 - Check for regressions in related functionality
-- When done, call task_complete with role "qa" and one of:
+- **Always** call task_comment with your review findings — even if everything looks good, leave a brief summary of what you checked
+- When done, call work_finish with role "qa" and one of:
   - result "pass" if everything looks good
   - result "fail" with specific issues if problems found
   - result "refine" if you need human input to decide
 - If you discover unrelated bugs, call task_create to file them
-- Do NOT call task_pickup, queue_status, session_health, or project_register
+- Do NOT call work_start, status, or project_register
 `;
 
 export const AGENTS_MD_TEMPLATE = `# AGENTS.md - Development Orchestration (DevClaw)
@@ -57,18 +57,19 @@ Skip the orchestrator section. Follow your task message and role instructions (a
 - Branch naming: \`feature/<id>-<slug>\` or \`fix/<id>-<slug>\`
 - **DEV always works in a git worktree** (never switch branches in the main repo)
 - **DEV must merge to base branch** before announcing completion
-- **Do NOT use closing keywords in PR/MR descriptions** (no "Closes #X", "Fixes #X", "Resolves #X"). Instead use "As described in issue #X" or "Addresses issue #X". DevClaw manages issue state via task_complete — auto-closing bypasses QA validation.
+- **Do NOT use closing keywords in PR/MR descriptions** (no "Closes #X", "Fixes #X", "Resolves #X"). Use "As described in issue #X" or "Addresses issue #X". DevClaw manages issue state — auto-closing bypasses QA.
 - **QA tests on the deployed version** and inspects code on the base branch
+- **QA always calls task_comment** with review findings before completing
 - Always run tests before completing
 
 ### Completing Your Task
 
-When you are done, **call \`task_complete\` yourself** — do not just announce in text.
+When you are done, **call \`work_finish\` yourself** — do not just announce in text.
 
-- **DEV done:** \`task_complete({ role: "dev", result: "done", projectGroupId: "<from task message>", summary: "<brief summary>" })\`
-- **QA pass:** \`task_complete({ role: "qa", result: "pass", projectGroupId: "<from task message>", summary: "<brief summary>" })\`
-- **QA fail:** \`task_complete({ role: "qa", result: "fail", projectGroupId: "<from task message>", summary: "<specific issues>" })\`
-- **QA refine:** \`task_complete({ role: "qa", result: "refine", projectGroupId: "<from task message>", summary: "<what needs human input>" })\`
+- **DEV done:** \`work_finish({ role: "dev", result: "done", projectGroupId: "<from task message>", summary: "<brief summary>" })\`
+- **QA pass:** \`work_finish({ role: "qa", result: "pass", projectGroupId: "<from task message>", summary: "<brief summary>" })\`
+- **QA fail:** \`work_finish({ role: "qa", result: "fail", projectGroupId: "<from task message>", summary: "<specific issues>" })\`
+- **QA refine:** \`work_finish({ role: "qa", result: "refine", projectGroupId: "<from task message>", summary: "<what needs human input>" })\`
 
 The \`projectGroupId\` is included in your task message.
 
@@ -81,34 +82,7 @@ If you discover unrelated bugs or needed improvements during your work, call \`t
 ### Tools You Should NOT Use
 
 These are orchestrator-only tools. Do not call them:
-- \`task_pickup\`, \`queue_status\`, \`session_health\`, \`project_register\`
-
----
-
-## Worker Task Templates (Reference)
-
-These templates show the expected workflow for DEV and QA workers. Your actual task message will include specific issue details and project context.
-
-### DEV Worker Workflow
-
-1. **Setup**: Create worktree: \`git worktree add ~/git/<project>.worktrees/<issue-id>/ -b fix/<issue-id>-<slug>\`
-2. **Implement**: Make changes, run tests locally
-3. **Commit**: Use conventional commits with issue number: \`feat: add feature (#12)\`
-4. **Push**: \`git push -u origin fix/<issue-id>-<slug>\`
-5. **Create PR/MR**: 
-   - **CRITICAL**: Do NOT use closing keywords (no "Closes #X", "Fixes #X", "Resolves #X")
-   - Use: "As described in issue #X" or "Addresses issue #X" or "Related to issue #X"
-   - Example title: \`feat: add user auth (#12)\`
-6. **Merge**: Merge the PR/MR to base branch
-7. **Cleanup**: Remove worktree: \`git worktree remove ~/git/<project>.worktrees/<issue-id>/\`
-8. **Complete**: Call \`task_complete({ role: "dev", result: "done", ... })\`
-
-### QA Worker Workflow
-
-1. **Pull latest**: \`git pull\` on base branch
-2. **Verify deployment**: Check the deployed version shows the changes
-3. **Run tests**: Execute test suite, check for regressions
-4. **Report**: Call \`task_complete\` with result "pass", "fail", or "refine"
+- \`work_start\`, \`status\`, \`auto_pickup\`, \`project_register\`
 
 ---
 
@@ -124,10 +98,10 @@ All orchestration goes through these tools. You do NOT manually manage sessions,
 |---|---|
 | \`project_register\` | One-time project setup: creates labels, scaffolds role files, adds to projects.json |
 | \`task_create\` | Create issues from chat (bugs, features, tasks) |
-| \`queue_status\` | Scans issue queue (To Do, To Test, To Improve) + shows worker state |
-| \`task_pickup\` | End-to-end: label transition, tier assignment, session create/reuse, dispatch with role instructions, state update |
-| \`task_complete\` | End-to-end: label transition, state update, issue close/reopen. Auto-chains if enabled. |
-| \`session_health\` | Detects zombie workers, stale sessions. Can auto-fix. |
+| \`task_update\` | Update issue title, description, or labels |
+| \`status\` | Scans issue queue + worker state + health checks |
+| \`work_start\` | End-to-end: label transition, tier assignment, session create/reuse, dispatch with role instructions |
+| \`work_finish\` | End-to-end: label transition, state update, issue close/reopen. Auto-chains if enabled. |
 
 ### Pipeline Flow
 
@@ -143,7 +117,7 @@ Issue labels are the single source of truth for task state.
 
 ### Developer Assignment
 
-Evaluate each task and pass the appropriate developer tier to \`task_pickup\`:
+Evaluate each task and pass the appropriate developer tier to \`work_start\`:
 
 - **junior** — trivial: typos, single-file fix, quick change
 - **medior** — standard: features, bug fixes, multi-file changes
@@ -152,15 +126,15 @@ Evaluate each task and pass the appropriate developer tier to \`task_pickup\`:
 
 ### Picking Up Work
 
-1. Use \`queue_status\` to see what's available
+1. Use \`status\` to see what's available
 2. Priority: \`To Improve\` (fix failures) > \`To Test\` (QA) > \`To Do\` (new work)
 3. Evaluate complexity, choose developer tier
-4. Call \`task_pickup\` with \`issueId\`, \`role\`, \`projectGroupId\`, \`model\` (tier name)
+4. Call \`work_start\` with \`issueId\`, \`role\`, \`projectGroupId\`, \`model\` (tier name)
 5. Post the \`announcement\` from the tool response to Telegram
 
 ### When Work Completes
 
-Workers call \`task_complete\` themselves — the label transition, state update, and audit log happen atomically.
+Workers call \`work_finish\` themselves — the label transition, state update, and audit log happen atomically.
 
 **If \`autoChain\` is enabled on the project:**
 - DEV "done" → QA is dispatched automatically (qa tier)
@@ -168,7 +142,7 @@ Workers call \`task_complete\` themselves — the label transition, state update
 - QA "pass" / "refine" → pipeline done or needs human input, no chaining
 
 **If \`autoChain\` is disabled:**
-- The \`task_complete\` response includes a \`nextAction\` hint
+- The \`work_finish\` response includes a \`nextAction\` hint
 - \`"qa_pickup"\` → pick up QA for this issue
 - \`"dev_fix"\` → pick up DEV to fix
 - absent → pipeline done or needs human input
@@ -181,7 +155,7 @@ Workers receive role-specific instructions appended to their task message. These
 
 ### Heartbeats
 
-On heartbeat, follow \`HEARTBEAT.md\`.
+On heartbeat, call \`auto_pickup\` — it runs health checks and picks up available work automatically.
 
 ### Safety
 
@@ -193,31 +167,15 @@ On heartbeat, follow \`HEARTBEAT.md\`.
 
 export const HEARTBEAT_MD_TEMPLATE = `# HEARTBEAT.md
 
-On each heartbeat, run these checks using DevClaw tools:
+On each heartbeat, call \`auto_pickup\` (no parameters needed for a full sweep).
 
-## 1. Health Check
+It will automatically:
+1. Run health checks (zombie workers, stale sessions)
+2. Scan queues across all projects
+3. Pick up available work by priority: To Improve > To Test > To Do
+4. Choose appropriate developer tier based on task complexity
 
-Call \`session_health\` with \`projectGroupId\` and \`autoFix: true\`.
-- Detects zombie workers (active but session dead)
-- Auto-fixes stale state in projects.json
+If you want to target a single project, pass \`projectGroupId\`.
 
-## 2. Queue Scan
-
-Call \`queue_status\` with \`projectGroupId\`.
-- Shows issues in To Do, To Test, To Improve
-- Shows current worker state (active/idle)
-
-## 3. Pick Up Work (if slots free)
-
-If a worker slot is free (DEV or QA not active), pick up work by priority:
-
-1. \`To Improve\` issues → \`task_pickup\` with role \`dev\`
-2. \`To Test\` issues → \`task_pickup\` with role \`qa\`
-3. \`To Do\` issues → \`task_pickup\` with role \`dev\`
-
-Choose the developer tier based on task complexity (see AGENTS.md developer assignment guide).
-
-## 4. Nothing to do?
-
-If no issues in queue and no active workers → reply \`HEARTBEAT_OK\`.
+If nothing needs attention, it reports HEARTBEAT_OK.
 `;

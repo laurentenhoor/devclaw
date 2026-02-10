@@ -10,7 +10,7 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
 import { readProjects } from "../projects.js";
-import { createProvider } from "../task-managers/index.js";
+import { createProvider } from "../providers/index.js";
 import { log as auditLog } from "../audit.js";
 
 /** Valid author roles for attribution */

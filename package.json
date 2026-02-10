@@ -26,9 +26,17 @@
       "./index.ts"
     ]
   },
+  "main": "./dist/index.js",
+  "files": [
+    "dist/",
+    "roles/",
+    "docs/"
+  ],
   "scripts": {
+    "build": "tsc",
     "check": "tsc --noEmit",
-    "watch": "tsc --noEmit --watch"
+    "watch": "tsc --noEmit --watch",
+    "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
     "openclaw": ">=2026.0.0"

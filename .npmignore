@@ -1,0 +1,17 @@
+# Source files (dist/ contains compiled output)
+*.ts
+!*.d.ts
+tsconfig.json
+
+# Development
+.git/
+.gitignore
+node_modules/
+
+# Tests (removed)
+test/
+
+# IDE
+.vscode/
+.idea/
+*.swp

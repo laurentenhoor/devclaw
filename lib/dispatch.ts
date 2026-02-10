@@ -1,5 +1,5 @@
 /**
- * dispatch.ts — Core dispatch logic shared by task_pickup and task_complete (auto-chain).
+ * dispatch.ts — Core dispatch logic shared by work_start and work_finish (auto-chain).
  *
  * Handles: session lookup, spawn/reuse via Gateway RPC, task dispatch via CLI,
  * state update (activateWorker), and audit logging.
@@ -132,15 +132,15 @@ export async function buildTaskMessage(opts: {
     ``,
     `## MANDATORY: Task Completion`,
     ``,
-    `When you finish this task, you MUST call \`task_complete\` with:`,
+    `When you finish this task, you MUST call \`work_finish\` with:`,
     `- \`role\`: "${role}"`,
     `- \`projectGroupId\`: "${groupId}"`,
     `- \`result\`: ${availableResults}`,
     `- \`summary\`: brief description of what you did`,
     ``,
-    `⚠️ You MUST call task_complete even if you encounter errors or cannot finish.`,
+    `⚠️ You MUST call work_finish even if you encounter errors or cannot finish.`,
     `Use "blocked" with a summary explaining why you're stuck.`,
-    `Never end your session without calling task_complete.`,
+    `Never end your session without calling work_finish.`,
   );
 
   return parts.join("\n");
@@ -219,7 +219,7 @@ export async function dispatchTask(
     // Dispatch via `gateway call agent --expect-final` as a detached background process.
     // Without --expect-final the gateway accepts but never processes the request.
     // Running with --expect-final in a detached process ensures the agent runs
-    // while task_pickup returns immediately.
+    // while work_start returns immediately.
     // Using the gateway RPC (not `openclaw agent` CLI) lets us set lane, spawnedBy,
     // and deliver — matching the official sessions_spawn internals.
     const orchestratorSessionKey = opts.sessionKey;
@@ -269,7 +269,7 @@ export async function dispatchTask(
   } catch (err) {
     if (dispatched) {
       // State update failed but session IS running — log warning, don't rollback
-      await auditLog(workspaceDir, "task_pickup", {
+      await auditLog(workspaceDir, "work_start", {
         project: project.name,
         groupId,
         issue: issueId,
@@ -296,7 +296,7 @@ export async function dispatchTask(
   }
 
   // Audit
-  await auditLog(workspaceDir, "task_pickup", {
+  await auditLog(workspaceDir, "work_start", {
     project: project.name,
     groupId,
     issue: issueId,

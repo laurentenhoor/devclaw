@@ -2,9 +2,9 @@
  * context-guard.ts — Detect interaction context and provide guardrails.
  *
  * DevClaw should respond differently based on how it's being contacted:
- * 1. Via another agent (setup/onboarding) - guide to devclaw_onboard/devclaw_setup
- * 2. Direct to DevClaw agent (status queries) - use queue_status, session_health
- * 3. Via Telegram group (project work) - use task_pickup, task_complete, task_create
+ * 1. Via another agent (setup/onboarding) - guide to onboard/setup
+ * 2. Direct to DevClaw agent (status queries) - use status
+ * 3. Via Telegram group (project work) - use work_start, work_finish, task_create
  */
 import type { ToolContext } from "./types.js";
 import fs from "node:fs/promises";
@@ -94,13 +94,13 @@ export function generateGuardrails(context: InteractionContext): string {
 You're being called by another agent. This is likely a **setup or onboarding** scenario.
 
 **What you should do:**
-- If the user mentions "setup", "install", "configure", or "onboard" → call \`devclaw_onboard\` first
-- Then follow the guidance to call \`devclaw_setup\` with collected answers
+- If the user mentions "setup", "install", "configure", or "onboard" → call \`onboard\` first
+- Then follow the guidance to call \`setup\` with collected answers
 - After setup, offer to register a project via \`project_register\`
 
 **What to avoid:**
 - Don't discuss ongoing development tasks (those happen in group chats)
-- Don't use task_pickup/task_complete/queue_status (not relevant during setup)
+- Don't use work_start/work_finish/status (not relevant during setup)
 `;
 
     case "direct":
@@ -109,13 +109,12 @@ You're being called by another agent. This is likely a **setup or onboarding** s
 You're in a **direct message** with the DevClaw agent (not a project group).
 
 **What you should do:**
-- Provide **general status** via \`queue_status\` (across all projects)
-- Check system health via \`session_health\`
+- Provide **general status** via \`status\` (across all projects)
 - Answer questions about DevClaw configuration
 - Guide to project-specific work: "For project tasks, please message the relevant Telegram/WhatsApp group"
 
 **What to avoid:**
-- Don't start development tasks here (use \`task_pickup\` only in project groups)
+- Don't start development tasks here (use \`work_start\` only in project groups)
 - Don't discuss project-specific issues (redirect to the group)
 `;
 
@@ -125,9 +124,9 @@ You're in a **direct message** with the DevClaw agent (not a project group).
 You're in a **Telegram/WhatsApp group** bound to ${context.projectName ? `project **${context.projectName}**` : "a project"}.
 
 **What you should do:**
-- Handle task lifecycle: \`task_pickup\` (start work), \`task_complete\` (finish)
+- Handle task lifecycle: \`work_start\` (start work), \`work_finish\` (finish)
 - Create new issues via \`task_create\`
-- Check this project's queue via \`queue_status\` (with projectName filter)
+- Check this project's queue via \`status\`
 - Discuss implementation details, code reviews, bugs
 
 **What to avoid:**

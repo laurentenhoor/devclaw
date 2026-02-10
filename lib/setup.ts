@@ -1,7 +1,7 @@
 /**
  * setup.ts — Shared setup logic for DevClaw onboarding.
  *
- * Used by both the `devclaw_setup` tool and the `openclaw devclaw setup` CLI command.
+ * Used by both the `setup` tool and the `openclaw devclaw setup` CLI command.
  * Handles: agent creation, model configuration, workspace file writes.
  */
 import { execFile } from "node:child_process";
@@ -328,7 +328,7 @@ async function writePluginConfig(
 
     // Add tool restrictions to the agent
     // Workers shouldn't spawn sub-agents or message other sessions directly
-    // All coordination should go through DevClaw tools (task_pickup, task_complete, etc.)
+    // All coordination should go through DevClaw tools (work_start, work_finish, etc.)
     const agent = config.agents?.list?.find((a: { id: string }) => a.id === agentId);
     if (agent) {
       if (!agent.tools) {
