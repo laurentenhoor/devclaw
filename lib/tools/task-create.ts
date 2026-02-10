@@ -114,6 +114,19 @@ The issue is created with a state label (defaults to "Planning"). Returns the cr
 
       // 5. Build response
       const hasBody = description && description.trim().length > 0;
+      
+      // Build announcement with URL
+      let announcement = `📋 Created #${issue.iid}: "${title}" (${label})`;
+      if (hasBody) {
+        announcement += "\nWith detailed description.";
+      }
+      announcement += `\n🔗 ${issue.web_url}`;
+      if (pickup) {
+        announcement += "\nPicking up for DEV...";
+      } else {
+        announcement += "\nReady for pickup when needed.";
+      }
+      
       const result = {
         success: true,
         issue: {
@@ -126,9 +139,7 @@ The issue is created with a state label (defaults to "Planning"). Returns the cr
         project: project.name,
         provider: providerType,
         pickup,
-        announcement: pickup
-          ? `📋 Created #${issue.iid}: "${title}" (${label}).${hasBody ? " With detailed description." : ""} Picking up for DEV...`
-          : `📋 Created #${issue.iid}: "${title}" (${label}).${hasBody ? " With detailed description." : ""} Ready for pickup when needed.`,
+        announcement,
       };
 
       return jsonResult(result);
