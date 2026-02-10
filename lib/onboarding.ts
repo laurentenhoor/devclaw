@@ -5,7 +5,7 @@
  */
 import fs from "node:fs/promises";
 import path from "node:path";
-import { ALL_TIERS, defaultModel } from "./tiers.js";
+import { DEFAULT_MODELS } from "./tiers.js";
 
 // ---------------------------------------------------------------------------
 // Detection
@@ -38,12 +38,15 @@ export async function hasWorkspaceFiles(
 // ---------------------------------------------------------------------------
 
 function buildModelTable(pluginConfig?: Record<string, unknown>): string {
-  const models =
-    (pluginConfig as { models?: Record<string, string> })?.models ?? {};
-  return ALL_TIERS.map(
-    (t) =>
-      `  - **${t}**: ${models[t] || defaultModel(t)} (default: ${defaultModel(t)})`,
-  ).join("\n");
+  const cfg = (pluginConfig as { models?: { dev?: Record<string, string>; qa?: Record<string, string> } })?.models;
+  const lines: string[] = [];
+  for (const [role, levels] of Object.entries(DEFAULT_MODELS)) {
+    for (const [level, defaultModel] of Object.entries(levels)) {
+      const model = cfg?.[role as "dev" | "qa"]?.[level] || defaultModel;
+      lines.push(`  - **${role} ${level}**: ${model} (default: ${defaultModel})`);
+    }
+  }
+  return lines.join("\n");
 }
 
 export function buildReconfigContext(
@@ -57,7 +60,7 @@ The user wants to reconfigure DevClaw. Current model configuration:
 ${modelTable}
 
 ## What can be changed
-1. **Model tiers** — call \`setup\` with a \`models\` object containing only the tiers to change
+1. **Model levels** — call \`setup\` with a \`models\` object containing only the levels to change
 2. **Workspace files** — \`setup\` re-writes AGENTS.md, HEARTBEAT.md (backs up existing files)
 3. **Register new projects** — use \`project_register\`
 
@@ -67,12 +70,28 @@ Ask what they want to change, then call the appropriate tool.
 }
 
 export function buildOnboardToolContext(): string {
+  // Build the model table dynamically from DEFAULT_MODELS
+  const rows: string[] = [];
+  const purposes: Record<string, string> = {
+    junior: "Typos, single-file fixes",
+    medior: "Features, bug fixes",
+    senior: "Architecture, refactoring",
+    reviewer: "Code review",
+    tester: "Testing",
+  };
+  for (const [role, levels] of Object.entries(DEFAULT_MODELS)) {
+    for (const [level, model] of Object.entries(levels)) {
+      rows.push(`| ${role} | ${level} | ${model} | ${purposes[level] ?? ""} |`);
+    }
+  }
+  const modelTable = rows.join("\n");
+
   return `# DevClaw Onboarding
 
 ## What is DevClaw?
 DevClaw turns each Telegram group into an autonomous development team:
 - An **orchestrator** that manages backlogs and delegates work
-- **DEV workers** (junior/medior/senior tiers) that write code in isolated sessions
+- **DEV workers** (junior/medior/senior levels) that write code in isolated sessions
 - **QA workers** that review code and run tests
 - Atomic tools for label transitions, session dispatch, state management, and audit logging
 
@@ -92,21 +111,17 @@ Ask: "Do you want to configure DevClaw for the current agent, or create a new de
      - If none selected, user can add bindings manually later via openclaw.json
 
 **Step 2: Model Configuration**
-Show the default tier-to-model mapping and ask if they want to customize:
+Show the default level-to-model mapping and ask if they want to customize:
 
-| Tier | Default Model | Purpose |
-|------|---------------|---------|
-| dev.junior | anthropic/claude-haiku-4-5 | Typos, single-file fixes |
-| dev.medior | anthropic/claude-sonnet-4-5 | Features, bug fixes |
-| dev.senior | anthropic/claude-opus-4-5 | Architecture, refactoring |
-| qa.reviewer | anthropic/claude-sonnet-4-5 | Code review |
-| qa.tester | anthropic/claude-haiku-4-5 | Testing |
+| Role | Level | Default Model | Purpose |
+|------|-------|---------------|---------|
+${modelTable}
 
-If the defaults are fine, proceed. If customizing, ask which tiers to change.
+If the defaults are fine, proceed. If customizing, ask which levels to change.
 
 **Step 3: Run Setup**
 Call \`setup\` with the collected answers:
-- Current agent: \`setup({})\` or \`setup({ models: { ... } })\`
+- Current agent: \`setup({})\` or \`setup({ models: { dev: { ... }, qa: { ... } } })\`
 - New agent: \`setup({ newAgentName: "<name>", channelBinding: "telegram"|"whatsapp"|null, migrateFrom: "<agentId>"|null, models: { ... } })\`
   - \`migrateFrom\`: Include if user wants to migrate an existing channel-wide binding
 

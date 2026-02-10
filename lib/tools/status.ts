@@ -62,8 +62,8 @@ export function createStatusTool(api: OpenClawPluginApi) {
             name: project.name,
             groupId: pid,
             roleExecution: project.roleExecution ?? "parallel",
-            dev: { active: project.dev.active, issueId: project.dev.issueId, tier: project.dev.tier, startTime: project.dev.startTime },
-            qa: { active: project.qa.active, issueId: project.qa.issueId, tier: project.qa.tier, startTime: project.qa.startTime },
+            dev: { active: project.dev.active, issueId: project.dev.issueId, level: project.dev.level, startTime: project.dev.startTime },
+            qa: { active: project.qa.active, issueId: project.qa.issueId, level: project.qa.level, startTime: project.qa.startTime },
             queue: { toImprove: count("To Improve"), toTest: count("To Test"), toDo: count("To Do") },
           };
         }),

@@ -1,20 +1,20 @@
 /**
  * setup — Agent-driven DevClaw setup.
  *
- * Creates agent, configures model tiers, writes workspace files.
+ * Creates agent, configures model levels, writes workspace files.
  * Thin wrapper around lib/setup/.
  */
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
-import { runSetup } from "../setup/index.js";
-import { ALL_TIERS, DEFAULT_MODELS, type Tier } from "../tiers.js";
+import { runSetup, type SetupOpts } from "../setup/index.js";
+import { DEV_LEVELS, QA_LEVELS, DEFAULT_MODELS } from "../tiers.js";
 
 export function createSetupTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
     name: "setup",
     label: "Setup",
-    description: `Execute DevClaw setup. Creates AGENTS.md, HEARTBEAT.md, projects/projects.json, and model tier config. Optionally creates a new agent with channel binding. Called after onboard collects configuration.`,
+    description: `Execute DevClaw setup. Creates AGENTS.md, HEARTBEAT.md, projects/projects.json, and model level config. Optionally creates a new agent with channel binding. Called after onboard collects configuration.`,
     parameters: {
       type: "object",
       properties: {
@@ -35,11 +35,11 @@ export function createSetupTool(api: OpenClawPluginApi) {
         },
         models: {
           type: "object",
-          description: "Model overrides per role and tier.",
+          description: "Model overrides per role and level.",
           properties: {
             dev: {
               type: "object",
-              description: "Developer tier models",
+              description: "Developer level models",
               properties: {
                 junior: {
                   type: "string",
@@ -57,7 +57,7 @@ export function createSetupTool(api: OpenClawPluginApi) {
             },
             qa: {
               type: "object",
-              description: "QA tier models",
+              description: "QA level models",
               properties: {
                 reviewer: {
                   type: "string",
@@ -87,7 +87,7 @@ export function createSetupTool(api: OpenClawPluginApi) {
         migrateFrom: params.migrateFrom as string | undefined,
         agentId: params.newAgentName ? undefined : ctx.agentId,
         workspacePath: params.newAgentName ? undefined : ctx.workspaceDir,
-        models: params.models as Partial<Record<Tier, string>> | undefined,
+        models: params.models as SetupOpts["models"],
         projectExecution: params.projectExecution as
           | "parallel"
           | "sequential"
@@ -108,7 +108,8 @@ export function createSetupTool(api: OpenClawPluginApi) {
       }
       lines.push(
         "Models:",
-        ...ALL_TIERS.map((t) => `  ${t}: ${result.models[t]}`),
+        ...DEV_LEVELS.map((t) => `  dev.${t}: ${result.models.dev[t]}`),
+        ...QA_LEVELS.map((t) => `  qa.${t}: ${result.models.qa[t]}`),
         "",
         "Files:",
         ...result.filesWritten.map((f) => `  ${f}`),

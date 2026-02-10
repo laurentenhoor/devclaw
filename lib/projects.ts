@@ -9,7 +9,7 @@ export type WorkerState = {
   active: boolean;
   issueId: string | null;
   startTime: string | null;
-  tier: string | null;
+  level: string | null;
   sessions: Record<string, string | null>;
 };
 
@@ -39,36 +39,36 @@ function parseWorkerState(worker: Record<string, unknown>): WorkerState {
     active: worker.active as boolean,
     issueId: worker.issueId as string | null,
     startTime: worker.startTime as string | null,
-    tier: worker.tier as string | null,
+    level: (worker.level ?? worker.tier ?? null) as string | null,
     sessions: (worker.sessions as Record<string, string | null>) ?? {},
   };
 }
 
 /**
- * Create a blank WorkerState with null sessions for given tier names.
+ * Create a blank WorkerState with null sessions for given level names.
  */
-export function emptyWorkerState(tiers: string[]): WorkerState {
+export function emptyWorkerState(levels: string[]): WorkerState {
   const sessions: Record<string, string | null> = {};
-  for (const t of tiers) {
-    sessions[t] = null;
+  for (const l of levels) {
+    sessions[l] = null;
   }
   return {
     active: false,
     issueId: null,
     startTime: null,
-    tier: null,
+    level: null,
     sessions,
   };
 }
 
 /**
- * Get session key for a specific tier from a worker's sessions map.
+ * Get session key for a specific level from a worker's sessions map.
  */
-export function getSessionForTier(
+export function getSessionForLevel(
   worker: WorkerState,
-  tier: string,
+  level: string,
 ): string | null {
-  return worker.sessions[tier] ?? null;
+  return worker.sessions[level] ?? null;
 }
 
 function projectsPath(workspaceDir: string): string {
@@ -148,7 +148,7 @@ export async function updateWorker(
 
 /**
  * Mark a worker as active with a new task.
- * Stores session key in sessions[tier] when a new session is spawned.
+ * Stores session key in sessions[level] when a new session is spawned.
  */
 export async function activateWorker(
   workspaceDir: string,
@@ -156,7 +156,7 @@ export async function activateWorker(
   role: "dev" | "qa",
   params: {
     issueId: string;
-    tier: string;
+    level: string;
     sessionKey?: string;
     startTime?: string;
   },
@@ -164,10 +164,10 @@ export async function activateWorker(
   const updates: Partial<WorkerState> = {
     active: true,
     issueId: params.issueId,
-    tier: params.tier,
+    level: params.level,
   };
   if (params.sessionKey !== undefined) {
-    updates.sessions = { [params.tier]: params.sessionKey };
+    updates.sessions = { [params.level]: params.sessionKey };
   }
   if (params.startTime !== undefined) {
     updates.startTime = params.startTime;
@@ -177,7 +177,7 @@ export async function activateWorker(
 
 /**
  * Mark a worker as inactive after task completion.
- * Preserves sessions map and tier for reuse via updateWorker's spread.
+ * Preserves sessions map and level for reuse via updateWorker's spread.
  * Clears startTime to prevent stale timestamps on inactive workers.
  */
 export async function deactivateWorker(

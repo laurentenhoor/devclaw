@@ -1,36 +1,20 @@
 /**
  * setup/config.ts — Plugin config writer (openclaw.json).
  *
- * Handles: model tier config, devClawAgentIds, tool restrictions, subagent cleanup.
+ * Handles: model level config, devClawAgentIds, tool restrictions, subagent cleanup.
  */
 import fs from "node:fs/promises";
 import path from "node:path";
-import { DEV_TIERS, QA_TIERS, tierName, type Tier } from "../tiers.js";
 import { HEARTBEAT_DEFAULTS } from "../services/heartbeat.js";
+
+type ModelConfig = { dev: Record<string, string>; qa: Record<string, string> };
 
 function openclawConfigPath(): string {
   return path.join(process.env.HOME ?? "/home/lauren", ".openclaw", "openclaw.json");
 }
 
 /**
- * Convert flat tier map to nested role-tier structure.
- */
-function buildRoleTierModels(models: Record<Tier, string>): { dev: Record<string, string>; qa: Record<string, string> } {
-  const dev: Record<string, string> = {};
-  const qa: Record<string, string> = {};
-
-  for (const tier of DEV_TIERS) {
-    dev[tierName(tier)] = models[tier];
-  }
-  for (const tier of QA_TIERS) {
-    qa[tierName(tier)] = models[tier];
-  }
-
-  return { dev, qa };
-}
-
-/**
- * Write DevClaw model tier config and devClawAgentIds to openclaw.json plugins section.
+ * Write DevClaw model level config and devClawAgentIds to openclaw.json plugins section.
  *
  * Also configures:
  * - Tool restrictions (deny sessions_spawn, sessions_send) for DevClaw agents
@@ -39,7 +23,7 @@ function buildRoleTierModels(models: Record<Tier, string>): { dev: Record<string
  * Read-modify-write to preserve existing config.
  */
 export async function writePluginConfig(
-  models: Record<Tier, string>,
+  models: ModelConfig,
   agentId?: string,
   projectExecution?: "parallel" | "sequential",
 ): Promise<void> {
@@ -47,7 +31,7 @@ export async function writePluginConfig(
   const config = JSON.parse(await fs.readFile(configPath, "utf-8"));
 
   ensurePluginStructure(config);
-  config.plugins.entries.devclaw.config.models = buildRoleTierModels(models);
+  config.plugins.entries.devclaw.config.models = models;
 
   if (projectExecution) {
     config.plugins.entries.devclaw.config.projectExecution = projectExecution;

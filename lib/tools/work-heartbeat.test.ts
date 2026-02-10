@@ -22,17 +22,17 @@ import type { StateLabel } from "../providers/provider.js";
 // ---------------------------------------------------------------------------
 
 const INACTIVE_WORKER: WorkerState = {
-  active: false, issueId: null, startTime: null, tier: null, sessions: {},
+  active: false, issueId: null, startTime: null, level: null, sessions: {},
 };
 
 const ACTIVE_DEV: WorkerState = {
-  active: true, issueId: "42", startTime: new Date().toISOString(), tier: "dev.medior",
-  sessions: { "dev.medior": "session-dev-42" },
+  active: true, issueId: "42", startTime: new Date().toISOString(), level: "medior",
+  sessions: { medior: "session-dev-42" },
 };
 
 const ACTIVE_QA: WorkerState = {
-  active: true, issueId: "42", startTime: new Date().toISOString(), tier: "qa.reviewer",
-  sessions: { "qa.reviewer": "session-qa-42" },
+  active: true, issueId: "42", startTime: new Date().toISOString(), level: "reviewer",
+  sessions: { reviewer: "session-qa-42" },
 };
 
 function makeProject(overrides: Partial<Project> = {}): Project {
@@ -280,11 +280,11 @@ describe("work_heartbeat: worker slot guards", () => {
   });
 });
 
-describe("work_heartbeat: tier assignment", () => {
+describe("work_heartbeat: level assignment", () => {
   afterEach(async () => { if (tmpDir) await fs.rm(tmpDir, { recursive: true }).catch(() => {}); });
 
-  it("uses label-based tier when present", async () => {
-    // Given: issue with "dev.senior" label → tier should be "dev.senior"
+  it("uses label-based level when present", async () => {
+    // Given: issue with "dev.senior" label → level should be "senior"
     const workspaceDir = await setupWorkspace({
       "-100": makeProject({ name: "Alpha", repo: "https://github.com/test/alpha" }),
     });
@@ -299,12 +299,12 @@ describe("work_heartbeat: tier assignment", () => {
 
     const pickup = result.pickups.find((p) => p.role === "dev");
     assert.ok(pickup);
-    assert.strictEqual(pickup.tier, "dev.senior", "Should use label-based tier");
+    assert.strictEqual(pickup.level, "senior", "Should use label-based level");
   });
 
-  it("overrides to reviewer tier for qa role regardless of label", async () => {
+  it("overrides to reviewer level for qa role regardless of label", async () => {
     // Given: issue with "dev.senior" label but picked up by QA
-    // Expected: tier = "qa.reviewer" (QA always uses reviewer tier)
+    // Expected: level = "reviewer" (QA always uses reviewer level)
     const workspaceDir = await setupWorkspace({
       "-100": makeProject({ name: "Alpha", repo: "https://github.com/test/alpha" }),
     });
@@ -319,11 +319,11 @@ describe("work_heartbeat: tier assignment", () => {
 
     const qaPickup = result.pickups.find((p) => p.role === "qa");
     assert.ok(qaPickup);
-    assert.strictEqual(qaPickup.tier, "qa.reviewer", "QA always uses reviewer tier regardless of issue label");
+    assert.strictEqual(qaPickup.level, "reviewer", "QA always uses reviewer level regardless of issue label");
   });
 
-  it("falls back to heuristic when no tier label", async () => {
-    // Given: issue with no tier label → heuristic selects based on title/description
+  it("falls back to heuristic when no level label", async () => {
+    // Given: issue with no level label → heuristic selects based on title/description
     const workspaceDir = await setupWorkspace({
       "-100": makeProject({ name: "Alpha", repo: "https://github.com/test/alpha" }),
     });
@@ -339,7 +339,7 @@ describe("work_heartbeat: tier assignment", () => {
     const pickup = result.pickups.find((p) => p.role === "dev");
     assert.ok(pickup);
     // Heuristic should select junior for a typo fix
-    assert.strictEqual(pickup.tier, "dev.junior", "Heuristic should assign junior for simple typo fix");
+    assert.strictEqual(pickup.level, "junior", "Heuristic should assign junior for simple typo fix");
   });
 });
 
@@ -394,7 +394,7 @@ describe("work_heartbeat: TickAction output shape", () => {
     assert.strictEqual(pickup.issueTitle, "Build feature");
     assert.strictEqual(pickup.issueUrl, "https://github.com/test/alpha/issues/10");
     assert.ok(["dev", "qa"].includes(pickup.role));
-    assert.ok(typeof pickup.tier === "string");
+    assert.ok(typeof pickup.level === "string");
     assert.ok(["spawn", "send"].includes(pickup.sessionAction));
     assert.ok(pickup.announcement.includes("[DRY RUN]"));
   });

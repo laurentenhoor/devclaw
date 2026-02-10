@@ -12,10 +12,10 @@ import { log as auditLog } from "./audit.js";
 import {
   type Project,
   activateWorker,
-  getSessionForTier,
+  getSessionForLevel,
   getWorker,
 } from "./projects.js";
-import { tierEmoji, resolveTierToModel } from "./tiers.js";
+import { resolveModel, levelEmoji } from "./tiers.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -29,8 +29,8 @@ export type DispatchOpts = {
   issueDescription: string;
   issueUrl: string;
   role: "dev" | "qa";
-  /** Developer tier (junior, medior, senior, qa) or raw model ID */
-  tier: string;
+  /** Developer level (junior, medior, senior, reviewer) or raw model ID */
+  level: string;
   /** Label to transition FROM (e.g. "To Do", "To Test", "To Improve") */
   fromLabel: string;
   /** Label to transition TO (e.g. "Doing", "Testing") */
@@ -46,14 +46,14 @@ export type DispatchOpts = {
 export type DispatchResult = {
   sessionAction: "spawn" | "send";
   sessionKey: string;
-  tier: string;
+  level: string;
   model: string;
   announcement: string;
 };
 
 /**
  * Build the task message sent to a worker session.
- * Reads role-specific instructions from workspace/projects/prompts/<project>/<role>.md.
+ * Reads role-specific instructions from workspace/projects/roles/<project>/<role>.md (falls back to projects/roles/default/).
  */
 export async function buildTaskMessage(opts: {
   workspaceDir: string;
@@ -125,13 +125,13 @@ export async function dispatchTask(
 ): Promise<DispatchResult> {
   const {
     workspaceDir, agentId, groupId, project, issueId, issueTitle,
-    issueDescription, issueUrl, role, tier, fromLabel, toLabel,
+    issueDescription, issueUrl, role, level, fromLabel, toLabel,
     transitionLabel, pluginConfig,
   } = opts;
 
-  const model = resolveTierToModel(tier, pluginConfig);
+  const model = resolveModel(role, level, pluginConfig);
   const worker = getWorker(project, role);
-  const existingSessionKey = getSessionForTier(worker, tier);
+  const existingSessionKey = getSessionForLevel(worker, level);
   const sessionAction = existingSessionKey ? "send" : "spawn";
 
   const taskMessage = await buildTaskMessage({
@@ -147,7 +147,7 @@ export async function dispatchTask(
 
   try {
     sessionKey = await ensureSession(sessionAction, sessionKey, {
-      agentId, projectName: project.name, role, tier, model,
+      agentId, projectName: project.name, role, level, model,
     });
 
     await sendToAgent(sessionKey!, taskMessage, {
@@ -158,7 +158,7 @@ export async function dispatchTask(
     dispatched = true;
 
     await recordWorkerState(workspaceDir, groupId, role, {
-      issueId, tier, sessionKey: sessionKey!, sessionAction,
+      issueId, level, sessionKey: sessionKey!, sessionAction,
     });
   } catch (err) {
     if (dispatched) {
@@ -179,13 +179,13 @@ export async function dispatchTask(
 
   await auditDispatch(workspaceDir, {
     project: project.name, groupId, issueId, issueTitle,
-    role, tier, model, sessionAction, sessionKey: sessionKey!,
+    role, level, model, sessionAction, sessionKey: sessionKey!,
     fromLabel, toLabel,
   });
 
-  const announcement = buildAnnouncement(tier, role, sessionAction, issueId, issueTitle, issueUrl);
+  const announcement = buildAnnouncement(level, role, sessionAction, issueId, issueTitle, issueUrl);
 
-  return { sessionAction, sessionKey: sessionKey!, tier, model, announcement };
+  return { sessionAction, sessionKey: sessionKey!, level, model, announcement };
 }
 
 // ---------------------------------------------------------------------------
@@ -195,19 +195,21 @@ export async function dispatchTask(
 async function loadRoleInstructions(
   workspaceDir: string, projectName: string, role: "dev" | "qa",
 ): Promise<string> {
-  const projectFile = path.join(workspaceDir, "projects", "prompts", projectName, `${role}.md`);
+  const projectFile = path.join(workspaceDir, "projects", "roles", projectName, `${role}.md`);
   try { return await fs.readFile(projectFile, "utf-8"); } catch { /* none */ }
+  const defaultFile = path.join(workspaceDir, "projects", "roles", "default", `${role}.md`);
+  try { return await fs.readFile(defaultFile, "utf-8"); } catch { /* none */ }
   return "";
 }
 
 async function ensureSession(
   action: "spawn" | "send",
   existingKey: string | null,
-  opts: { agentId?: string; projectName: string; role: string; tier: string; model: string },
+  opts: { agentId?: string; projectName: string; role: string; level: string; model: string },
 ): Promise<string> {
   if (action === "send") return existingKey!;
 
-  const sessionKey = `agent:${opts.agentId ?? "unknown"}:subagent:${opts.projectName}-${opts.role}-${opts.tier}`;
+  const sessionKey = `agent:${opts.agentId ?? "unknown"}:subagent:${opts.projectName}-${opts.role}-${opts.level}`;
   await execFileAsync(
     "openclaw",
     ["gateway", "call", "sessions.patch", "--params", JSON.stringify({ key: sessionKey, model: opts.model })],
@@ -239,12 +241,12 @@ function sendToAgent(
 
 async function recordWorkerState(
   workspaceDir: string, groupId: string, role: "dev" | "qa",
-  opts: { issueId: number; tier: string; sessionKey: string; sessionAction: "spawn" | "send" },
+  opts: { issueId: number; level: string; sessionKey: string; sessionAction: "spawn" | "send" },
 ): Promise<void> {
-  const params: { issueId: string; tier: string; sessionKey?: string; startTime: string } = {
+  const params: { issueId: string; level: string; sessionKey?: string; startTime: string } = {
     issueId: String(opts.issueId),
-    tier: opts.tier,
-    startTime: new Date().toISOString(), // Always reset startTime for new task assignment
+    level: opts.level,
+    startTime: new Date().toISOString(),
   };
   if (opts.sessionAction === "spawn") {
     params.sessionKey = opts.sessionKey;
@@ -256,27 +258,27 @@ async function auditDispatch(
   workspaceDir: string,
   opts: {
     project: string; groupId: string; issueId: number; issueTitle: string;
-    role: string; tier: string; model: string; sessionAction: string;
+    role: string; level: string; model: string; sessionAction: string;
     sessionKey: string; fromLabel: string; toLabel: string;
   },
 ): Promise<void> {
   await auditLog(workspaceDir, "work_start", {
     project: opts.project, groupId: opts.groupId,
     issue: opts.issueId, issueTitle: opts.issueTitle,
-    role: opts.role, tier: opts.tier,
+    role: opts.role, level: opts.level,
     sessionAction: opts.sessionAction, sessionKey: opts.sessionKey,
     labelTransition: `${opts.fromLabel} → ${opts.toLabel}`,
   });
   await auditLog(workspaceDir, "model_selection", {
-    issue: opts.issueId, role: opts.role, tier: opts.tier, model: opts.model,
+    issue: opts.issueId, role: opts.role, level: opts.level, model: opts.model,
   });
 }
 
 function buildAnnouncement(
-  tier: string, role: string, sessionAction: "spawn" | "send",
+  level: string, role: string, sessionAction: "spawn" | "send",
   issueId: number, issueTitle: string, issueUrl: string,
 ): string {
-  const emoji = tierEmoji(tier) ?? (role === "qa" ? "🔍" : "🔧");
+  const emoji = levelEmoji(role as "dev" | "qa", level) ?? (role === "qa" ? "🔍" : "🔧");
   const actionVerb = sessionAction === "spawn" ? "Spawning" : "Sending";
-  return `${emoji} ${actionVerb} ${role.toUpperCase()} (${tier}) for #${issueId}: ${issueTitle}\n🔗 ${issueUrl}`;
+  return `${emoji} ${actionVerb} ${role.toUpperCase()} (${level}) for #${issueId}: ${issueTitle}\n🔗 ${issueUrl}`;
 }

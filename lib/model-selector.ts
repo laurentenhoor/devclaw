@@ -1,11 +1,11 @@
 /**
  * Model selection for dev/qa tasks.
- * Keyword heuristic fallback — used when the orchestrator doesn't specify a tier.
- * Returns full tier names (dev.junior, dev.medior, dev.senior, qa.reviewer, qa.tester).
+ * Keyword heuristic fallback — used when the orchestrator doesn't specify a level.
+ * Returns plain level names (junior, medior, senior, reviewer, tester).
  */
 
-export type TierRecommendation = {
-  tier: string;
+export type LevelSelection = {
+  level: string;
   reason: string;
 };
 
@@ -39,24 +39,24 @@ const COMPLEX_KEYWORDS = [
 ];
 
 /**
- * Select appropriate developer tier based on task description.
+ * Select appropriate developer level based on task description.
  *
- * Developer tiers:
- * - dev.junior: very simple (typos, single-file fixes, CSS tweaks)
- * - dev.medior: standard DEV (features, bug fixes, multi-file changes)
- * - dev.senior: deep/architectural (system-wide refactoring, novel design)
- * - qa.reviewer: QA code inspection and validation
- * - qa.tester: QA manual testing
+ * Developer levels:
+ * - junior: very simple (typos, single-file fixes, CSS tweaks)
+ * - medior: standard DEV (features, bug fixes, multi-file changes)
+ * - senior: deep/architectural (system-wide refactoring, novel design)
+ * - reviewer: QA code inspection and validation
+ * - tester: QA manual testing
  */
-export function selectTier(
+export function selectLevel(
   issueTitle: string,
   issueDescription: string,
   role: "dev" | "qa",
-): TierRecommendation {
+): LevelSelection {
   if (role === "qa") {
     return {
-      tier: "qa.reviewer",
-      reason: "Default QA tier for code inspection and validation",
+      level: "reviewer",
+      reason: "Default QA level for code inspection and validation",
     };
   }
 
@@ -67,7 +67,7 @@ export function selectTier(
   const isSimple = SIMPLE_KEYWORDS.some((kw) => text.includes(kw));
   if (isSimple && wordCount < 100) {
     return {
-      tier: "dev.junior",
+      level: "junior",
       reason: `Simple task detected (keywords: ${SIMPLE_KEYWORDS.filter((kw) => text.includes(kw)).join(", ")})`,
     };
   }
@@ -76,14 +76,14 @@ export function selectTier(
   const isComplex = COMPLEX_KEYWORDS.some((kw) => text.includes(kw));
   if (isComplex || wordCount > 500) {
     return {
-      tier: "dev.senior",
+      level: "senior",
       reason: `Complex task detected (${isComplex ? "keywords: " + COMPLEX_KEYWORDS.filter((kw) => text.includes(kw)).join(", ") : "long description"})`,
     };
   }
 
   // Default: medior for standard dev work
   return {
-    tier: "dev.medior",
+    level: "medior",
     reason: "Standard dev task — multi-file changes, features, bug fixes",
   };
 }

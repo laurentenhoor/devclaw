@@ -5,7 +5,7 @@
  */
 import type { Command } from "commander";
 import { runSetup } from "./setup/index.js";
-import { ALL_TIERS, DEFAULT_MODELS, type Tier } from "./tiers.js";
+import { DEV_LEVELS, QA_LEVELS, DEFAULT_MODELS } from "./tiers.js";
 
 /**
  * Register the `devclaw` CLI command group on a Commander program.
@@ -27,18 +27,24 @@ export function registerCli(program: Command): void {
     .option("--reviewer <model>", `Reviewer model (default: ${DEFAULT_MODELS.qa.reviewer})`)
     .option("--tester <model>", `Tester model (default: ${DEFAULT_MODELS.qa.tester})`)
     .action(async (opts) => {
-      const models: Partial<Record<Tier, string>> = {};
-      if (opts.junior) models["dev.junior"] = opts.junior;
-      if (opts.medior) models["dev.medior"] = opts.medior;
-      if (opts.senior) models["dev.senior"] = opts.senior;
-      if (opts.reviewer) models["qa.reviewer"] = opts.reviewer;
-      if (opts.tester) models["qa.tester"] = opts.tester;
+      const dev: Record<string, string> = {};
+      const qa: Record<string, string> = {};
+      if (opts.junior) dev.junior = opts.junior;
+      if (opts.medior) dev.medior = opts.medior;
+      if (opts.senior) dev.senior = opts.senior;
+      if (opts.reviewer) qa.reviewer = opts.reviewer;
+      if (opts.tester) qa.tester = opts.tester;
+
+      const hasOverrides = Object.keys(dev).length > 0 || Object.keys(qa).length > 0;
+      const models = hasOverrides
+        ? { ...(Object.keys(dev).length > 0 && { dev }), ...(Object.keys(qa).length > 0 && { qa }) }
+        : undefined;
 
       const result = await runSetup({
         newAgentName: opts.newAgent,
         agentId: opts.agent,
         workspacePath: opts.workspace,
-        models: Object.keys(models).length > 0 ? models : undefined,
+        models,
       });
 
       if (result.agentCreated) {
@@ -46,9 +52,8 @@ export function registerCli(program: Command): void {
       }
 
       console.log("Models configured:");
-      for (const tier of ALL_TIERS) {
-        console.log(`  ${tier}: ${result.models[tier]}`);
-      }
+      for (const t of DEV_LEVELS) console.log(`  dev.${t}: ${result.models.dev[t]}`);
+      for (const t of QA_LEVELS) console.log(`  qa.${t}: ${result.models.qa[t]}`);
 
       console.log("Files written:");
       for (const file of result.filesWritten) {

@@ -8,6 +8,8 @@ import path from "node:path";
 import {
   AGENTS_MD_TEMPLATE,
   HEARTBEAT_MD_TEMPLATE,
+  DEFAULT_DEV_INSTRUCTIONS,
+  DEFAULT_QA_INSTRUCTIONS,
 } from "../templates.js";
 
 /**
@@ -32,6 +34,20 @@ export async function scaffoldWorkspace(workspacePath: string): Promise<string[]
   if (!await fileExists(projectsJsonPath)) {
     await fs.writeFile(projectsJsonPath, JSON.stringify({ projects: {} }, null, 2) + "\n", "utf-8");
     filesWritten.push("projects/projects.json");
+  }
+
+  // projects/roles/default/ (fallback role instructions)
+  const defaultRolesDir = path.join(projectsDir, "roles", "default");
+  await fs.mkdir(defaultRolesDir, { recursive: true });
+  const devRolePath = path.join(defaultRolesDir, "dev.md");
+  if (!await fileExists(devRolePath)) {
+    await fs.writeFile(devRolePath, DEFAULT_DEV_INSTRUCTIONS, "utf-8");
+    filesWritten.push("projects/roles/default/dev.md");
+  }
+  const qaRolePath = path.join(defaultRolesDir, "qa.md");
+  if (!await fileExists(qaRolePath)) {
+    await fs.writeFile(qaRolePath, DEFAULT_QA_INSTRUCTIONS, "utf-8");
+    filesWritten.push("projects/roles/default/qa.md");
   }
 
   // log/ directory (audit.log created on first write)

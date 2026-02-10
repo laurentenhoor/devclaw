@@ -6,7 +6,7 @@
  */
 import type { StateLabel } from "../providers/provider.js";
 import {
-  getSessionForTier,
+  getSessionForLevel,
   getWorker,
   updateWorker,
   type Project,
@@ -19,7 +19,7 @@ export type HealthIssue = {
   groupId: string;
   role: "dev" | "qa";
   message: string;
-  tier?: string | null;
+  level?: string | null;
   sessionKey?: string | null;
   hoursActive?: number;
   issueId?: string | null;
@@ -46,7 +46,7 @@ export async function checkWorkerHealth(opts: {
   const { workspaceDir, groupId, project, role, activeSessions, autoFix, provider } = opts;
   const fixes: HealthFix[] = [];
   const worker = getWorker(project, role);
-  const sessionKey = worker.tier ? getSessionForTier(worker, worker.tier) : null;
+  const sessionKey = worker.level ? getSessionForLevel(worker, worker.level) : null;
 
   const revertLabel: StateLabel = role === "dev" ? "To Do" : "To Test";
   const currentLabel: StateLabel = role === "dev" ? "Doing" : "Testing";
@@ -62,14 +62,14 @@ export async function checkWorkerHealth(opts: {
     }
   }
 
-  // Check 1: Active but no session key for current tier
+  // Check 1: Active but no session key for current level
   if (worker.active && !sessionKey) {
     const fix: HealthFix = {
       issue: {
         type: "active_no_session", severity: "critical",
         project: project.name, groupId, role,
-        tier: worker.tier,
-        message: `${role.toUpperCase()} active but no session for tier "${worker.tier}"`,
+        level: worker.level,
+        message: `${role.toUpperCase()} active but no session for level "${worker.level}"`,
       },
       fixed: false,
     };
@@ -86,7 +86,7 @@ export async function checkWorkerHealth(opts: {
       issue: {
         type: "zombie_session", severity: "critical",
         project: project.name, groupId, role,
-        sessionKey, tier: worker.tier,
+        sessionKey, level: worker.level,
         message: `${role.toUpperCase()} session not in active sessions list`,
       },
       fixed: false,
@@ -94,7 +94,7 @@ export async function checkWorkerHealth(opts: {
     if (autoFix) {
       await revertIssueLabel(fix);
       const sessions = { ...worker.sessions };
-      if (worker.tier) sessions[worker.tier] = null;
+      if (worker.level) sessions[worker.level] = null;
       await updateWorker(workspaceDir, groupId, role, { active: false, issueId: null, startTime: null, sessions });
       fix.fixed = true;
     }

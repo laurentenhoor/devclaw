@@ -34,7 +34,7 @@ export type NotifyEvent =
       issueTitle: string;
       issueUrl: string;
       role: "dev" | "qa";
-      tier: string;
+      level: string;
       sessionAction: "spawn" | "send";
     }
   | {
@@ -69,7 +69,7 @@ function buildMessage(event: NotifyEvent): string {
   switch (event.type) {
     case "workerStart": {
       const action = event.sessionAction === "spawn" ? "🚀 Started" : "▶️ Resumed";
-      return `${action} ${event.role.toUpperCase()} (${event.tier}) on #${event.issueId}: ${event.issueTitle}\n🔗 ${event.issueUrl}`;
+      return `${action} ${event.role.toUpperCase()} (${event.level}) on #${event.issueId}: ${event.issueTitle}\n🔗 ${event.issueUrl}`;
     }
 
     case "workerComplete": {
@@ -253,7 +253,7 @@ export async function notifyTickPickups(
         issueTitle: pickup.issueTitle,
         issueUrl: pickup.issueUrl,
         role: pickup.role,
-        tier: pickup.tier,
+        level: pickup.level,
         sessionAction: pickup.sessionAction,
       },
       {

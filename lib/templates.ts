@@ -101,7 +101,7 @@ All orchestration goes through these tools. You do NOT manually manage sessions,
 | \`task_update\` | Update issue title, description, or labels |
 | \`status\` | Task queue and worker state per project (lightweight dashboard) |
 | \`health\` | Scan worker health: zombies, stale workers, orphaned state. Pass fix=true to auto-fix |
-| \`work_start\` | End-to-end: label transition, tier assignment, session create/reuse, dispatch with role instructions |
+| \`work_start\` | End-to-end: label transition, level assignment, session create/reuse, dispatch with role instructions |
 | \`work_finish\` | End-to-end: label transition, state update, issue close/reopen. Auto-ticks queue after completion. |
 
 ### Pipeline Flow
@@ -118,19 +118,19 @@ Issue labels are the single source of truth for task state.
 
 ### Developer Assignment
 
-Evaluate each task and pass the appropriate developer tier to \`work_start\`:
+Evaluate each task and pass the appropriate developer level to \`work_start\`:
 
 - **junior** — trivial: typos, single-file fix, quick change
 - **medior** — standard: features, bug fixes, multi-file changes
 - **senior** — complex: architecture, system-wide refactoring, 5+ services
-- **qa** — review: code inspection, validation, test runs
+- **reviewer** — QA: code inspection, validation, test runs
 
 ### Picking Up Work
 
 1. Use \`status\` to see what's available
 2. Priority: \`To Improve\` (fix failures) > \`To Test\` (QA) > \`To Do\` (new work)
-3. Evaluate complexity, choose developer tier
-4. Call \`work_start\` with \`issueId\`, \`role\`, \`projectGroupId\`, \`model\` (tier name)
+3. Evaluate complexity, choose developer level
+4. Call \`work_start\` with \`issueId\`, \`role\`, \`projectGroupId\`, \`level\`
 5. Post the \`announcement\` from the tool response to Telegram
 
 ### When Work Completes
@@ -146,7 +146,7 @@ The response includes \`tickPickups\` showing any tasks that were auto-dispatche
 
 ### Prompt Instructions
 
-Workers receive role-specific instructions appended to their task message. These are loaded from \`projects/prompts/<project-name>/<role>.md\` in the workspace. \`project_register\` scaffolds these files automatically — edit them to customize worker behavior per project.
+Workers receive role-specific instructions appended to their task message. These are loaded from \`projects/roles/<project-name>/<role>.md\` in the workspace, falling back to \`projects/roles/default/<role>.md\` if no project-specific file exists. \`project_register\` scaffolds these files automatically — edit them to customize worker behavior per project.
 
 ### Heartbeats
 

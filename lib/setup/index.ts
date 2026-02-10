@@ -4,11 +4,13 @@
  * Coordinates: agent creation → model config → workspace scaffolding.
  * Used by both the `setup` tool and the `openclaw devclaw setup` CLI command.
  */
-import { ALL_TIERS, allDefaultModels, type Tier } from "../tiers.js";
+import { DEFAULT_MODELS } from "../tiers.js";
 import { migrateChannelBinding } from "../binding-manager.js";
 import { createAgent, resolveWorkspacePath } from "./agent.js";
 import { writePluginConfig } from "./config.js";
 import { scaffoldWorkspace } from "./workspace.js";
+
+export type ModelConfig = { dev: Record<string, string>; qa: Record<string, string> };
 
 export type SetupOpts = {
   /** Create a new agent with this name. Mutually exclusive with agentId. */
@@ -21,8 +23,8 @@ export type SetupOpts = {
   agentId?: string;
   /** Override workspace path (auto-detected from agent if not given). */
   workspacePath?: string;
-  /** Model overrides per tier. Missing tiers use defaults. */
-  models?: Partial<Record<Tier, string>>;
+  /** Model overrides per role.level. Missing levels use defaults. */
+  models?: { dev?: Partial<Record<string, string>>; qa?: Partial<Record<string, string>> };
   /** Plugin-level project execution mode: parallel or sequential. Default: parallel. */
   projectExecution?: "parallel" | "sequential";
 };
@@ -31,7 +33,7 @@ export type SetupResult = {
   agentId: string;
   agentCreated: boolean;
   workspacePath: string;
-  models: Record<Tier, string>;
+  models: ModelConfig;
   filesWritten: string[];
   warnings: string[];
   bindingMigrated?: {
@@ -107,14 +109,20 @@ async function tryMigrateBinding(
   }
 }
 
-function buildModelConfig(overrides?: Partial<Record<Tier, string>>): Record<Tier, string> {
-  const models = allDefaultModels();
-  if (overrides) {
-    for (const [tier, model] of Object.entries(overrides)) {
-      if (model && (ALL_TIERS as readonly string[]).includes(tier)) {
-        models[tier as Tier] = model;
-      }
+function buildModelConfig(overrides?: SetupOpts["models"]): ModelConfig {
+  const dev: Record<string, string> = { ...DEFAULT_MODELS.dev };
+  const qa: Record<string, string> = { ...DEFAULT_MODELS.qa };
+
+  if (overrides?.dev) {
+    for (const [level, model] of Object.entries(overrides.dev)) {
+      if (model) dev[level] = model;
     }
   }
-  return models;
+  if (overrides?.qa) {
+    for (const [level, model] of Object.entries(overrides.qa)) {
+      if (model) qa[level] = model;
+    }
+  }
+
+  return { dev, qa };
 }

@@ -2,33 +2,33 @@
  * work_start — Pick up a task from the issue queue.
  *
  * Context-aware: ONLY works in project group chats.
- * Auto-detects: projectGroupId, role, tier, issueId.
+ * Auto-detects: projectGroupId, role, level, issueId.
  * After dispatch, ticks the project queue to fill parallel slots.
  */
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
 import type { StateLabel } from "../providers/provider.js";
-import { selectTier } from "../model-selector.js";
+import { selectLevel } from "../model-selector.js";
 import { getWorker } from "../projects.js";
 import { dispatchTask } from "../dispatch.js";
 import { notify, getNotificationConfig } from "../notify.js";
-import { findNextIssue, detectRoleFromLabel, detectTierFromLabels } from "../services/tick.js";
-import { isDevTier } from "../tiers.js";
+import { findNextIssue, detectRoleFromLabel, detectLevelFromLabels } from "../services/tick.js";
+import { isDevLevel } from "../tiers.js";
 import { requireWorkspaceDir, resolveContext, resolveProject, resolveProvider, groupOnlyError, getPluginConfig, tickAndNotify } from "../tool-helpers.js";
 
 export function createWorkStartTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
     name: "work_start",
     label: "Work Start",
-    description: `Pick up a task from the issue queue. ONLY works in project group chats. Handles label transition, tier assignment, session creation, dispatch, audit, and ticks the queue to fill parallel slots.`,
+    description: `Pick up a task from the issue queue. ONLY works in project group chats. Handles label transition, level assignment, session creation, dispatch, audit, and ticks the queue to fill parallel slots.`,
     parameters: {
       type: "object",
       properties: {
         issueId: { type: "number", description: "Issue ID. If omitted, picks next by priority." },
         role: { type: "string", enum: ["dev", "qa"], description: "Worker role. Auto-detected from label if omitted." },
         projectGroupId: { type: "string", description: "Project group ID. Auto-detected from group context." },
-        tier: { type: "string", description: "Developer tier (junior/medior/senior/qa). Auto-detected if omitted." },
+        level: { type: "string", description: "Developer level (junior/medior/senior/reviewer). Auto-detected if omitted." },
       },
     },
 
@@ -36,7 +36,7 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
       const issueIdParam = params.issueId as number | undefined;
       const roleParam = params.role as "dev" | "qa" | undefined;
       const groupIdParam = params.projectGroupId as string | undefined;
-      const tierParam = params.tier as string | undefined;
+      const levelParam = (params.level ?? params.tier) as string | undefined;
       const workspaceDir = requireWorkspaceDir(ctx);
 
       // Context guard: group only
@@ -76,20 +76,20 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
         if (getWorker(project, other).active) throw new Error(`Sequential roleExecution: ${other.toUpperCase()} is active`);
       }
 
-      // Select tier
+      // Select level
       const targetLabel: StateLabel = role === "dev" ? "Doing" : "Testing";
-      let selectedTier: string, tierReason: string, tierSource: string;
-      if (tierParam) {
-        selectedTier = tierParam; tierReason = "LLM-selected"; tierSource = "llm";
+      let selectedLevel: string, levelReason: string, levelSource: string;
+      if (levelParam) {
+        selectedLevel = levelParam; levelReason = "LLM-selected"; levelSource = "llm";
       } else {
-        const labelTier = detectTierFromLabels(issue.labels);
-        if (labelTier) {
-          if (role === "qa" && isDevTier(labelTier)) { const s = selectTier(issue.title, issue.description ?? "", role); selectedTier = s.tier; tierReason = `QA overrides dev tier "${labelTier}"`; tierSource = "role-override"; }
-          else if (role === "dev" && !isDevTier(labelTier)) { const s = selectTier(issue.title, issue.description ?? "", role); selectedTier = s.tier; tierReason = s.reason; tierSource = "heuristic"; }
-          else { selectedTier = labelTier; tierReason = `Label: "${labelTier}"`; tierSource = "label"; }
+        const labelLevel = detectLevelFromLabels(issue.labels);
+        if (labelLevel) {
+          if (role === "qa" && isDevLevel(labelLevel)) { const s = selectLevel(issue.title, issue.description ?? "", role); selectedLevel = s.level; levelReason = `QA overrides dev level "${labelLevel}"`; levelSource = "role-override"; }
+          else if (role === "dev" && !isDevLevel(labelLevel)) { const s = selectLevel(issue.title, issue.description ?? "", role); selectedLevel = s.level; levelReason = s.reason; levelSource = "heuristic"; }
+          else { selectedLevel = labelLevel; levelReason = `Label: "${labelLevel}"`; levelSource = "label"; }
         } else {
-          const s = selectTier(issue.title, issue.description ?? "", role);
-          selectedTier = s.tier; tierReason = s.reason; tierSource = "heuristic";
+          const s = selectLevel(issue.title, issue.description ?? "", role);
+          selectedLevel = s.level; levelReason = s.reason; levelSource = "heuristic";
         }
       }
 
@@ -98,7 +98,7 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
       const dr = await dispatchTask({
         workspaceDir, agentId: ctx.agentId, groupId, project, issueId: issue.iid,
         issueTitle: issue.title, issueDescription: issue.description ?? "", issueUrl: issue.web_url,
-        role, tier: selectedTier, fromLabel: currentLabel, toLabel: targetLabel,
+        role, level: selectedLevel, fromLabel: currentLabel, toLabel: targetLabel,
         transitionLabel: (id, from, to) => provider.transitionLabel(id, from as StateLabel, to as StateLabel),
         pluginConfig, sessionKey: ctx.sessionKey,
       });
@@ -106,7 +106,7 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
       // Notify
       const notifyConfig = getNotificationConfig(pluginConfig);
       await notify(
-        { type: "workerStart", project: project.name, groupId, issueId: issue.iid, issueTitle: issue.title, issueUrl: issue.web_url, role, tier: dr.tier, sessionAction: dr.sessionAction },
+        { type: "workerStart", project: project.name, groupId, issueId: issue.iid, issueTitle: issue.title, issueUrl: issue.web_url, role, level: dr.level, sessionAction: dr.sessionAction },
         { workspaceDir, config: notifyConfig, groupId, channel: context.channel },
       );
 
@@ -119,10 +119,10 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
 
       const output: Record<string, unknown> = {
         success: true, project: project.name, groupId, issueId: issue.iid, issueTitle: issue.title,
-        role, tier: dr.tier, model: dr.model, sessionAction: dr.sessionAction,
+        role, level: dr.level, model: dr.model, sessionAction: dr.sessionAction,
         announcement: dr.announcement, labelTransition: `${currentLabel} → ${targetLabel}`,
-        tierReason, tierSource,
-        autoDetected: { projectGroupId: !groupIdParam, role: !roleParam, issueId: issueIdParam === undefined, tier: !tierParam },
+        levelReason, levelSource,
+        autoDetected: { projectGroupId: !groupIdParam, role: !roleParam, issueId: issueIdParam === undefined, level: !levelParam },
       };
       if (tickPickups.length) output.tickPickups = tickPickups;
 

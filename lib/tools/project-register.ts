@@ -15,7 +15,7 @@ import { readProjects, writeProjects, emptyWorkerState } from "../projects.js";
 import { resolveRepoPath } from "../projects.js";
 import { createProvider } from "../providers/index.js";
 import { log as auditLog } from "../audit.js";
-import { DEV_TIERS, QA_TIERS } from "../tiers.js";
+import { DEV_LEVELS, QA_LEVELS } from "../tiers.js";
 import { DEFAULT_DEV_INSTRUCTIONS, DEFAULT_QA_INSTRUCTIONS } from "../templates.js";
 import { detectContext, generateGuardrails } from "../context-guard.js";
 
@@ -24,7 +24,7 @@ import { detectContext, generateGuardrails } from "../context-guard.js";
  * Returns true if files were created, false if they already existed.
  */
 async function scaffoldPromptFiles(workspaceDir: string, projectName: string): Promise<boolean> {
-  const projectDir = path.join(workspaceDir, "projects", "prompts", projectName);
+  const projectDir = path.join(workspaceDir, "projects", "roles", projectName);
   await fs.mkdir(projectDir, { recursive: true });
 
   const projectDev = path.join(projectDir, "dev.md");
@@ -185,8 +185,8 @@ export function createProjectRegisterTool(api: OpenClawPluginApi) {
         deployBranch,
         channel: context.channel,
         roleExecution,
-        dev: emptyWorkerState([...DEV_TIERS]),
-        qa: emptyWorkerState([...QA_TIERS]),
+        dev: emptyWorkerState([...DEV_LEVELS]),
+        qa: emptyWorkerState([...QA_LEVELS]),
       };
 
       await writeProjects(workspaceDir, data);
