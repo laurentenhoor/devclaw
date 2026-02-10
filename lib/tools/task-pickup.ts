@@ -17,7 +17,7 @@ import { dispatchTask } from "../dispatch.js";
 import { type Issue, type StateLabel } from "../task-managers/task-manager.js";
 import { createProvider } from "../task-managers/index.js";
 import { selectModel } from "../model-selector.js";
-import { getProject, getWorker, readProjects } from "../projects.js";
+import { activateWorker, getProject, getWorker, readProjects } from "../projects.js";
 import type { ToolContext } from "../types.js";
 import { detectContext, generateGuardrails } from "../context-guard.js";
 import { isDevTier, isTier, type Tier } from "../tiers.js";
@@ -312,6 +312,27 @@ export function createTaskPickupTool(api: OpenClawPluginApi) {
           provider.transitionLabel(id, from as StateLabel, to as StateLabel),
         pluginConfig,
       });
+
+      // 8b. Explicitly update worker state in projects.json
+      // Defense in depth: ensure state is set even if dispatchTask had issues
+      const now = new Date().toISOString();
+      const stateUpdateParams: {
+        issueId: string;
+        model: string;
+        sessionKey?: string;
+        startTime?: string;
+      } = {
+        issueId: String(issue.iid),
+        model: modelAlias,
+      };
+
+      // Only set sessionKey and startTime on new spawn (not on reuse)
+      if (dispatchResult.sessionAction === "spawn") {
+        stateUpdateParams.sessionKey = dispatchResult.sessionKey;
+        stateUpdateParams.startTime = now;
+      }
+
+      await activateWorker(workspaceDir, groupId, role, stateUpdateParams);
 
       // 9. Send notification to project group
       const notifyConfig = getNotificationConfig(pluginConfig);
