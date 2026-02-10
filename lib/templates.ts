@@ -5,10 +5,25 @@
 
 export const DEFAULT_DEV_INSTRUCTIONS = `# DEV Worker Instructions
 
-- Work in a git worktree (never switch branches in the main repo)
+## Context You Receive
+
+When you start work, you're given:
+
+- **Issue:** number, title, body, URL, labels, state
+- **Comments:** full discussion thread on the issue
+- **Assignees:** who's assigned
+- **Timestamps:** created, updated dates
+- **Project:** repo path, base branch, project name
+
+Read the comments carefully — they often contain clarifications, decisions, or scope changes that aren't in the original issue body.
+
+## Your Job
+
+- Work in a git worktree at \`~/git/<project>.worktrees/<issue-number>/\` (never switch branches in the main repo)
+  - Example: \`git worktree add ~/git/myproject.worktrees/42 fix/42-bug-name\`
 - Run tests before completing
 - Create an MR/PR to the base branch and merge it
-- **IMPORTANT:** Do NOT use closing keywords in PR/MR descriptions (no "Closes #X", "Fixes #X", "Resolves #X"). Instead use "As described in issue #X" or "Addresses issue #X". DevClaw manages issue state via task_complete - auto-closing bypasses QA validation.
+- **IMPORTANT:** Do NOT use closing keywords in PR/MR descriptions (no "Closes #X", "Fixes #X", "Resolves #X", "Fixes issue #X"). Instead use "As described in issue #X" or "Addresses issue #X". DevClaw manages issue state via task_complete - auto-closing bypasses QA validation.
 - Clean up the worktree after merging
 - When done, call task_complete with role "dev", result "done", and a brief summary
 - If you discover unrelated bugs, call task_create to file them
@@ -67,6 +82,33 @@ If you discover unrelated bugs or needed improvements during your work, call \`t
 
 These are orchestrator-only tools. Do not call them:
 - \`task_pickup\`, \`queue_status\`, \`session_health\`, \`project_register\`
+
+---
+
+## Worker Task Templates (Reference)
+
+These templates show the expected workflow for DEV and QA workers. Your actual task message will include specific issue details and project context.
+
+### DEV Worker Workflow
+
+1. **Setup**: Create worktree: \`git worktree add ~/git/<project>.worktrees/<issue-id>/ -b fix/<issue-id>-<slug>\`
+2. **Implement**: Make changes, run tests locally
+3. **Commit**: Use conventional commits with issue number: \`feat: add feature (#12)\`
+4. **Push**: \`git push -u origin fix/<issue-id>-<slug>\`
+5. **Create PR/MR**: 
+   - **CRITICAL**: Do NOT use closing keywords (no "Closes #X", "Fixes #X", "Resolves #X")
+   - Use: "As described in issue #X" or "Addresses issue #X" or "Related to issue #X"
+   - Example title: \`feat: add user auth (#12)\`
+6. **Merge**: Merge the PR/MR to base branch
+7. **Cleanup**: Remove worktree: \`git worktree remove ~/git/<project>.worktrees/<issue-id>/\`
+8. **Complete**: Call \`task_complete({ role: "dev", result: "done", ... })\`
+
+### QA Worker Workflow
+
+1. **Pull latest**: \`git pull\` on base branch
+2. **Verify deployment**: Check the deployed version shows the changes
+3. **Run tests**: Execute test suite, check for regressions
+4. **Report**: Call \`task_complete\` with result "pass", "fail", or "refine"
 
 ---
 
