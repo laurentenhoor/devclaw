@@ -14,6 +14,7 @@ import { getWorker } from "../projects.js";
 import { dispatchTask } from "../dispatch.js";
 import { notify, getNotificationConfig } from "../notify.js";
 import { findNextIssue, detectRoleFromLabel, detectTierFromLabels } from "../services/tick.js";
+import { isDevTier } from "../tiers.js";
 import { requireWorkspaceDir, resolveContext, resolveProject, resolveProvider, groupOnlyError, getPluginConfig, tickAndNotify } from "../tool-helpers.js";
 
 export function createWorkStartTool(api: OpenClawPluginApi) {
@@ -83,8 +84,8 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
       } else {
         const labelTier = detectTierFromLabels(issue.labels);
         if (labelTier) {
-          if (role === "qa" && labelTier !== "qa") { selectedTier = "qa"; tierReason = `QA overrides "${labelTier}"`; tierSource = "role-override"; }
-          else if (role === "dev" && labelTier === "qa") { const s = selectTier(issue.title, issue.description ?? "", role); selectedTier = s.tier; tierReason = s.reason; tierSource = "heuristic"; }
+          if (role === "qa" && isDevTier(labelTier)) { const s = selectTier(issue.title, issue.description ?? "", role); selectedTier = s.tier; tierReason = `QA overrides dev tier "${labelTier}"`; tierSource = "role-override"; }
+          else if (role === "dev" && !isDevTier(labelTier)) { const s = selectTier(issue.title, issue.description ?? "", role); selectedTier = s.tier; tierReason = s.reason; tierSource = "heuristic"; }
           else { selectedTier = labelTier; tierReason = `Label: "${labelTier}"`; tierSource = "label"; }
         } else {
           const s = selectTier(issue.title, issue.description ?? "", role);

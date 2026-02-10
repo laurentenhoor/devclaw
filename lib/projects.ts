@@ -5,8 +5,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { homedir } from "node:os";
-import { TIER_MIGRATION } from "./tiers.js";
-
 export type WorkerState = {
   active: boolean;
   issueId: string | null;
@@ -36,63 +34,13 @@ export type ProjectsData = {
   projects: Record<string, Project>;
 };
 
-/**
- * Migrate old WorkerState schema to current format.
- *
- * Handles three migrations:
- * 1. Old sessionId field → sessions map (pre-sessions era)
- * 2. Model-alias session keys → tier-name keys (haiku→junior, sonnet→medior, etc.)
- * 3. Old "model" field name → "tier" field name
- */
-function migrateWorkerState(worker: Record<string, unknown>): WorkerState {
-  // Read tier from either "tier" (new) or "model" (old) field
-  const rawTier = (worker.tier ?? worker.model) as string | null;
-
-  // Migration 1: old sessionId field → sessions map
-  if (!worker.sessions || typeof worker.sessions !== "object") {
-    const sessionId = worker.sessionId as string | null;
-    const sessions: Record<string, string | null> = {};
-
-    if (sessionId && rawTier) {
-      const tierKey = TIER_MIGRATION[rawTier] ?? rawTier;
-      sessions[tierKey] = sessionId;
-    }
-
-    return {
-      active: worker.active as boolean,
-      issueId: worker.issueId as string | null,
-      startTime: worker.startTime as string | null,
-      tier: rawTier ? (TIER_MIGRATION[rawTier] ?? rawTier) : null,
-      sessions,
-    };
-  }
-
-  // Migration 2: model-alias session keys → tier-name keys
-  const oldSessions = worker.sessions as Record<string, string | null>;
-  const needsMigration = Object.keys(oldSessions).some((key) => key in TIER_MIGRATION);
-
-  if (needsMigration) {
-    const newSessions: Record<string, string | null> = {};
-    for (const [key, value] of Object.entries(oldSessions)) {
-      const newKey = TIER_MIGRATION[key] ?? key;
-      newSessions[newKey] = value;
-    }
-    return {
-      active: worker.active as boolean,
-      issueId: worker.issueId as string | null,
-      startTime: worker.startTime as string | null,
-      tier: rawTier ? (TIER_MIGRATION[rawTier] ?? rawTier) : null,
-      sessions: newSessions,
-    };
-  }
-
-  // Migration 3: "model" field → "tier" field (already handled by rawTier above)
+function parseWorkerState(worker: Record<string, unknown>): WorkerState {
   return {
     active: worker.active as boolean,
     issueId: worker.issueId as string | null,
     startTime: worker.startTime as string | null,
-    tier: rawTier ? (TIER_MIGRATION[rawTier] ?? rawTier) : null,
-    sessions: oldSessions,
+    tier: worker.tier as string | null,
+    sessions: (worker.sessions as Record<string, string | null>) ?? {},
   };
 }
 
@@ -133,10 +81,10 @@ export async function readProjects(workspaceDir: string): Promise<ProjectsData> 
 
   for (const project of Object.values(data.projects)) {
     project.dev = project.dev
-      ? migrateWorkerState(project.dev as unknown as Record<string, unknown>)
+      ? parseWorkerState(project.dev as unknown as Record<string, unknown>)
       : emptyWorkerState([]);
     project.qa = project.qa
-      ? migrateWorkerState(project.qa as unknown as Record<string, unknown>)
+      ? parseWorkerState(project.qa as unknown as Record<string, unknown>)
       : emptyWorkerState([]);
     if (!project.channel) {
       project.channel = "telegram";

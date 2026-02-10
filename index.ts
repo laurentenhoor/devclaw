@@ -38,8 +38,8 @@ const plugin = {
             type: "object",
             description: "QA tier models",
             properties: {
-              "qa-engineer": { type: "string" },
-              "manual-tester": { type: "string" },
+              reviewer: { type: "string" },
+              tester: { type: "string" },
             },
           },
         },
@@ -47,7 +47,8 @@ const plugin = {
       projectExecution: {
         type: "string",
         enum: ["parallel", "sequential"],
-        description: "Plugin-level: parallel (each project independent) or sequential (one project at a time)",
+        description:
+          "Plugin-level: parallel (each project independent) or sequential (one project at a time)",
         default: "parallel",
       },
       notifications: {
@@ -61,11 +62,24 @@ const plugin = {
       },
       work_heartbeat: {
         type: "object",
-        description: "Token-free interval-based heartbeat service. Runs health checks + queue dispatch automatically.",
+        description:
+          "Token-free interval-based heartbeat service. Runs health checks + queue dispatch automatically.",
         properties: {
-          enabled: { type: "boolean", default: true, description: "Enable the heartbeat service." },
-          intervalSeconds: { type: "number", default: 60, description: "Seconds between ticks." },
-          maxPickupsPerTick: { type: "number", default: 4, description: "Max worker dispatches per tick." },
+          enabled: {
+            type: "boolean",
+            default: true,
+            description: "Enable the heartbeat service.",
+          },
+          intervalSeconds: {
+            type: "number",
+            default: 60,
+            description: "Seconds between ticks.",
+          },
+          maxPickupsPerTick: {
+            type: "number",
+            default: 4,
+            description: "Max worker dispatches per tick.",
+          },
         },
       },
     },
@@ -84,10 +98,14 @@ const plugin = {
     // Operations
     api.registerTool(createStatusTool(api), { names: ["status"] });
     api.registerTool(createHealthTool(api), { names: ["health"] });
-    api.registerTool(createWorkHeartbeatTool(api), { names: ["work_heartbeat"] });
+    api.registerTool(createWorkHeartbeatTool(api), {
+      names: ["work_heartbeat"],
+    });
 
     // Setup & config
-    api.registerTool(createProjectRegisterTool(api), { names: ["project_register"] });
+    api.registerTool(createProjectRegisterTool(api), {
+      names: ["project_register"],
+    });
     api.registerTool(createSetupTool(api), { names: ["setup"] });
     api.registerTool(createOnboardTool(api), { names: ["onboard"] });
 
@@ -99,7 +117,9 @@ const plugin = {
     // Services
     registerHeartbeatService(api);
 
-    api.logger.info("DevClaw plugin registered (11 tools, 1 service, 1 CLI command)");
+    api.logger.info(
+      "DevClaw plugin registered (11 tools, 1 service, 1 CLI command)",
+    );
   },
 };
 

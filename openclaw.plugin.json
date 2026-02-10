@@ -5,26 +5,55 @@
   "configSchema": {
     "type": "object",
     "properties": {
+      "devClawAgentIds": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Agent IDs recognized as DevClaw orchestrators"
+      },
       "models": {
         "type": "object",
-        "description": "Model mapping per developer tier (junior, medior, senior, qa)",
+        "description": "Model mapping per role and tier",
         "properties": {
-          "junior": {
-            "type": "string",
-            "description": "Junior dev model (default: anthropic/claude-haiku-4-5)"
-          },
-          "medior": {
-            "type": "string",
-            "description": "Medior dev model (default: anthropic/claude-sonnet-4-5)"
-          },
-          "senior": {
-            "type": "string",
-            "description": "Senior dev model (default: anthropic/claude-opus-4-5)"
+          "dev": {
+            "type": "object",
+            "description": "Developer tier models",
+            "properties": {
+              "junior": { "type": "string" },
+              "medior": { "type": "string" },
+              "senior": { "type": "string" }
+            }
           },
           "qa": {
-            "type": "string",
-            "description": "QA engineer model (default: anthropic/claude-sonnet-4-5)"
+            "type": "object",
+            "description": "QA tier models",
+            "properties": {
+              "reviewer": { "type": "string" },
+              "tester": { "type": "string" }
+            }
           }
+        }
+      },
+      "projectExecution": {
+        "type": "string",
+        "enum": ["parallel", "sequential"],
+        "description": "Project execution mode. Default: parallel."
+      },
+      "notifications": {
+        "type": "object",
+        "description": "Notification settings",
+        "properties": {
+          "heartbeatDm": { "type": "boolean" },
+          "workerStart": { "type": "boolean" },
+          "workerComplete": { "type": "boolean" }
+        }
+      },
+      "work_heartbeat": {
+        "type": "object",
+        "description": "Token-free interval-based heartbeat service.",
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "intervalSeconds": { "type": "number" },
+          "maxPickupsPerTick": { "type": "number" }
         }
       }
     }

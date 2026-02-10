@@ -10,7 +10,7 @@ import { createProvider } from "../providers/index.js";
 import { selectTier } from "../model-selector.js";
 import { getWorker, getSessionForTier, readProjects } from "../projects.js";
 import { dispatchTask } from "../dispatch.js";
-import { ALL_TIERS, type Tier } from "../tiers.js";
+import { ALL_TIERS, isDevTier, type Tier } from "../tiers.js";
 
 // ---------------------------------------------------------------------------
 // Shared constants + helpers (used by tick, work-start, auto-pickup)
@@ -189,8 +189,10 @@ export async function projectTick(opts: {
 function resolveTierForIssue(issue: Issue, role: "dev" | "qa"): string {
   const labelTier = detectTierFromLabels(issue.labels);
   if (labelTier) {
-    if (role === "qa" && labelTier !== "qa") return "qa";
-    if (role === "dev" && labelTier === "qa") return selectTier(issue.title, issue.description ?? "", role).tier;
+    // QA role but label specifies a dev tier → heuristic picks the right QA tier
+    if (role === "qa" && isDevTier(labelTier)) return selectTier(issue.title, issue.description ?? "", role).tier;
+    // DEV role but label specifies a QA tier → heuristic picks the right dev tier
+    if (role === "dev" && !isDevTier(labelTier)) return selectTier(issue.title, issue.description ?? "", role).tier;
     return labelTier;
   }
   return selectTier(issue.title, issue.description ?? "", role).tier;

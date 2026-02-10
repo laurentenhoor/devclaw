@@ -6,7 +6,7 @@
  */
 
 export const DEV_TIERS = ["junior", "medior", "senior"] as const;
-export const QA_TIERS = ["qa-engineer", "manual-tester"] as const;
+export const QA_TIERS = ["reviewer", "tester"] as const;
 export const ALL_TIERS = [...DEV_TIERS, ...QA_TIERS] as const;
 
 export type DevTier = (typeof DEV_TIERS)[number];
@@ -17,8 +17,8 @@ export const DEFAULT_MODELS: Record<Tier, string> = {
   junior: "anthropic/claude-haiku-4-5",
   medior: "anthropic/claude-sonnet-4-5",
   senior: "anthropic/claude-opus-4-5",
-  "qa-engineer": "anthropic/claude-sonnet-4-5",
-  "manual-tester": "anthropic/claude-haiku-4-5",
+  reviewer: "anthropic/claude-sonnet-4-5",
+  tester: "anthropic/claude-haiku-4-5",
 };
 
 /** Default models by role-tier structure. */
@@ -29,8 +29,8 @@ export const DEFAULT_MODELS_BY_ROLE = {
     senior: "anthropic/claude-opus-4-5",
   },
   qa: {
-    "qa-engineer": "anthropic/claude-sonnet-4-5",
-    "manual-tester": "anthropic/claude-haiku-4-5",
+    reviewer: "anthropic/claude-sonnet-4-5",
+    tester: "anthropic/claude-haiku-4-5",
   },
 };
 
@@ -39,8 +39,8 @@ export const TIER_EMOJI: Record<Tier, string> = {
   junior: "⚡",
   medior: "🔧",
   senior: "🧠",
-  "qa-engineer": "🔍",
-  "manual-tester": "👀",
+  reviewer: "🔍",
+  tester: "👀",
 };
 
 /** Check if a string is a valid tier name. */
@@ -83,15 +83,3 @@ export function resolveTierToModel(
 
   return DEFAULT_MODELS[tier as Tier] ?? tier;
 }
-
-/**
- * Migration map from old model-alias session keys to tier names.
- * Used by migrateWorkerState() in projects.ts.
- */
-export const TIER_MIGRATION: Record<string, string> = {
-  haiku: "junior",
-  sonnet: "medior",
-  opus: "senior",
-  grok: "qa-engineer",
-  qa: "qa-engineer",
-};

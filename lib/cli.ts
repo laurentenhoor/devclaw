@@ -24,13 +24,15 @@ export function registerCli(program: Command): void {
     .option("--junior <model>", `Junior dev model (default: ${DEFAULT_MODELS.junior})`)
     .option("--medior <model>", `Medior dev model (default: ${DEFAULT_MODELS.medior})`)
     .option("--senior <model>", `Senior dev model (default: ${DEFAULT_MODELS.senior})`)
-    .option("--qa <model>", `QA engineer model (default: ${DEFAULT_MODELS.qa})`)
+    .option("--reviewer <model>", `Reviewer model (default: ${DEFAULT_MODELS.reviewer})`)
+    .option("--tester <model>", `Tester model (default: ${DEFAULT_MODELS.tester})`)
     .action(async (opts) => {
       const models: Partial<Record<Tier, string>> = {};
       if (opts.junior) models.junior = opts.junior;
       if (opts.medior) models.medior = opts.medior;
       if (opts.senior) models.senior = opts.senior;
-      if (opts.qa) models.qa = opts.qa;
+      if (opts.reviewer) models.reviewer = opts.reviewer;
+      if (opts.tester) models.tester = opts.tester;
 
       const result = await runSetup({
         newAgentName: opts.newAgent,
