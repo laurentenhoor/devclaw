@@ -42,6 +42,7 @@ export type NotifyEvent =
       project: string;
       groupId: string;
       issueId: number;
+      issueUrl: string;
       role: "dev" | "qa";
       result: "done" | "pass" | "fail" | "refine" | "blocked";
       summary?: string;
@@ -95,6 +96,7 @@ function buildMessage(event: NotifyEvent): string {
       if (event.nextState) {
         msg += ` → ${event.nextState}`;
       }
+      msg += `\n🔗 ${event.issueUrl}`;
       return msg;
     }
 

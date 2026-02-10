@@ -56,6 +56,7 @@ export function createWorkFinishTool(api: OpenClawPluginApi) {
 
       const { provider } = resolveProvider(project);
       const repoPath = resolveRepoPath(project.repo);
+      const issue = await provider.getIssue(issueId);
 
       // Execute completion (pipeline service)
       const completion = await executeCompletion({
@@ -71,7 +72,7 @@ export function createWorkFinishTool(api: OpenClawPluginApi) {
       const pluginConfig = getPluginConfig(api);
       const notifyConfig = getNotificationConfig(pluginConfig);
       await notify(
-        { type: "workerComplete", project: project.name, groupId, issueId, role, result: result as "done" | "pass" | "fail" | "refine" | "blocked", summary, nextState: NEXT_STATE[`${role}:${result}`] },
+        { type: "workerComplete", project: project.name, groupId, issueId, issueUrl: issue.web_url, role, result: result as "done" | "pass" | "fail" | "refine" | "blocked", summary, nextState: NEXT_STATE[`${role}:${result}`] },
         { workspaceDir, config: notifyConfig, groupId, channel: project.channel ?? "telegram" },
       );
 
