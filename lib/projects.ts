@@ -171,6 +171,11 @@ export function getWorker(
 /**
  * Update worker state for a project. Only provided fields are updated.
  * This prevents accidentally nulling out fields that should be preserved.
+ * 
+ * Session Preservation:
+ * - If updates.sessions is provided, it's merged with existing sessions (new keys added/updated, existing keys preserved)
+ * - If updates.sessions is NOT provided, existing sessions are preserved via spread operator
+ * - Sessions should NEVER be accidentally cleared during state updates
  */
 export async function updateWorker(
   workspaceDir: string,
@@ -185,10 +190,14 @@ export async function updateWorker(
   }
 
   const worker = project[role];
+  
   // Merge sessions maps if both exist
+  // This ensures we preserve existing sessions while adding/updating new ones
   if (updates.sessions && worker.sessions) {
     updates.sessions = { ...worker.sessions, ...updates.sessions };
   }
+  
+  // Spread worker first, then updates - this preserves any fields not in updates
   project[role] = { ...worker, ...updates };
 
   await writeProjects(workspaceDir, data);
@@ -198,6 +207,21 @@ export async function updateWorker(
 /**
  * Mark a worker as active with a new task.
  * Sets active=true, issueId, model (tier). Stores session key in sessions[tier].
+ * 
+ * Session Handling:
+ * - If sessionKey is provided: new session spawned, stored in sessions[model]
+ * - If sessionKey is omitted: existing session reused (sessions map preserved)
+ * - Other tier sessions in the sessions map are ALWAYS preserved
+ * 
+ * Example flow:
+ * 1. First senior task: activateWorker({model: "senior", sessionKey: "abc"}) 
+ *    → sessions = {junior: null, medior: null, senior: "abc"}
+ * 2. Task completes: deactivateWorker() 
+ *    → sessions = {junior: null, medior: null, senior: "abc"} (preserved!)
+ * 3. Next senior task: activateWorker({model: "senior"}) [no sessionKey]
+ *    → sessions = {junior: null, medior: null, senior: "abc"} (reused!)
+ * 4. Medior task: activateWorker({model: "medior", sessionKey: "xyz"})
+ *    → sessions = {junior: null, medior: "xyz", senior: "abc"} (both preserved!)
  */
 export async function activateWorker(
   workspaceDir: string,
@@ -215,7 +239,8 @@ export async function activateWorker(
     issueId: params.issueId,
     model: params.model,
   };
-  // Store session key in the sessions map for this tier
+  // Store session key in the sessions map for this tier (if new spawn)
+  // If sessionKey is omitted, existing sessions are preserved via updateWorker
   if (params.sessionKey !== undefined) {
     updates.sessions = { [params.model]: params.sessionKey };
   }
@@ -228,16 +253,52 @@ export async function activateWorker(
 /**
  * Mark a worker as inactive after task completion.
  * Clears issueId and active, PRESERVES sessions map, model, startTime for reuse.
+ * 
+ * IMPORTANT: This function MUST preserve the sessions map to enable session reuse
+ * across multiple tasks of the same tier. Do NOT pass `sessions` in the updates
+ * object, as this would overwrite the existing sessions.
  */
 export async function deactivateWorker(
   workspaceDir: string,
   groupId: string,
   role: "dev" | "qa",
 ): Promise<ProjectsData> {
-  return updateWorker(workspaceDir, groupId, role, {
+  // Read current state to verify sessions will be preserved
+  const data = await readProjects(workspaceDir);
+  const project = data.projects[groupId];
+  if (!project) {
+    throw new Error(`Project not found for groupId: ${groupId}`);
+  }
+  
+  const worker = project[role];
+  const sessionsBefore = worker.sessions;
+  
+  // Update worker state (active=false, issueId=null)
+  // Sessions are preserved via spread operator in updateWorker
+  const result = await updateWorker(workspaceDir, groupId, role, {
     active: false,
     issueId: null,
+    // Explicitly DO NOT set sessions here to preserve them
   });
+  
+  // Defensive verification: ensure sessions were not accidentally cleared
+  const updatedWorker = result.projects[groupId][role];
+  const sessionsAfter = updatedWorker.sessions;
+  
+  // Verify sessions map was preserved
+  if (sessionsBefore && sessionsAfter) {
+    for (const [tier, sessionKey] of Object.entries(sessionsBefore)) {
+      if (sessionKey !== null && sessionsAfter[tier] !== sessionKey) {
+        throw new Error(
+          `BUG: Session for tier "${tier}" was lost during deactivateWorker! ` +
+          `Before: ${sessionKey}, After: ${sessionsAfter[tier]}. ` +
+          `This should never happen - sessions must persist for reuse.`
+        );
+      }
+    }
+  }
+  
+  return result;
 }
 
 /**
