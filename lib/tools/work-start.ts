@@ -3,7 +3,7 @@
  *
  * Context-aware: ONLY works in project group chats.
  * Auto-detects: projectGroupId, role, level, issueId.
- * After dispatch, ticks the project queue to fill parallel slots.
+ * Picks up only the explicitly requested issue (auto-tick disabled).
  */
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
@@ -21,7 +21,7 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
     name: "work_start",
     label: "Work Start",
-    description: `Pick up a task from the issue queue. ONLY works in project group chats. Handles label transition, level assignment, session creation, dispatch, audit, and ticks the queue to fill parallel slots.`,
+    description: `Pick up a task from the issue queue. ONLY works in project group chats. Handles label transition, level assignment, session creation, dispatch, and audit. Picks up only the explicitly requested issue.`,
     parameters: {
       type: "object",
       properties: {
@@ -110,12 +110,9 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
         { workspaceDir, config: notifyConfig, groupId, channel: context.channel },
       );
 
-      // Tick: fill parallel slots + notify starts
-      const tickPickups = await tickAndNotify({
-        workspaceDir, groupId, agentId: ctx.agentId, pluginConfig, sessionKey: ctx.sessionKey,
-        targetRole: role === "dev" ? "qa" : "dev",
-        channel: context.channel,
-      });
+      // Auto-tick disabled per issue #125 - work_start should only pick up the explicitly requested issue
+      // To fill parallel slots, use work_heartbeat instead
+      // const tickPickups = await tickAndNotify({ ... });
 
       const output: Record<string, unknown> = {
         success: true, project: project.name, groupId, issueId: issue.iid, issueTitle: issue.title,
@@ -124,7 +121,7 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
         levelReason, levelSource,
         autoDetected: { projectGroupId: !groupIdParam, role: !roleParam, issueId: issueIdParam === undefined, level: !levelParam },
       };
-      if (tickPickups.length) output.tickPickups = tickPickups;
+      // tickPickups removed with auto-tick
 
       return jsonResult(output);
     },
