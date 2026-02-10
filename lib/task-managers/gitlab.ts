@@ -187,6 +187,38 @@ export class GitLabProvider implements TaskManager {
     }
   }
 
+  async getMergedMRUrl(issueId: number): Promise<string | null> {
+    try {
+      const raw = await this.glab([
+        "mr", "list", "--output", "json", "--state", "merged",
+      ]);
+      const mrs = JSON.parse(raw) as Array<{
+        iid: number;
+        title: string;
+        description: string;
+        web_url: string;
+        merged_at: string;
+      }>;
+      
+      const pattern = `#${issueId}`;
+      
+      // Find the most recently merged MR that references this issue
+      // Sort by merged_at to get the most recent first
+      const matchingMr = mrs
+        .filter(
+          (mr) =>
+            mr.title.includes(pattern) || (mr.description ?? "").includes(pattern),
+        )
+        .sort((a, b) => 
+          new Date(b.merged_at).getTime() - new Date(a.merged_at).getTime()
+        )[0];
+      
+      return matchingMr?.web_url ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   async addComment(issueId: number, body: string): Promise<void> {
     // Write body to temp file to preserve newlines
     const tempFile = join(tmpdir(), `devclaw-comment-${Date.now()}.md`);

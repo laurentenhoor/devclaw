@@ -57,6 +57,10 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
           type: "string",
           description: "Brief summary for group announcement",
         },
+        prUrl: {
+          type: "string",
+          description: "Pull Request or Merge Request URL (optional, auto-detected if not provided)",
+        },
       },
     },
 
@@ -65,6 +69,7 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
       const result = params.result as "done" | "pass" | "fail" | "refine" | "blocked";
       const groupId = params.projectGroupId as string;
       const summary = params.summary as string | undefined;
+      let prUrl = params.prUrl as string | undefined;
       const workspaceDir = ctx.workspaceDir;
 
       if (!workspaceDir) {
@@ -133,11 +138,34 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
           output.gitPull = `warning: ${(err as Error).message}`;
         }
 
+        // Auto-detect PR/MR URL if not provided
+        if (!prUrl) {
+          try {
+            prUrl = await provider.getMergedMRUrl(issueId) ?? undefined;
+          } catch (err) {
+            // Ignore errors in PR URL detection
+          }
+        }
+
         await deactivateWorker(workspaceDir, groupId, "dev");
         await provider.transitionLabel(issueId, "Doing", "To Test");
 
         output.labelTransition = "Doing → To Test";
-        output.announcement = `✅ DEV done #${issueId}${summary ? ` — ${summary}` : ""}. Moved to QA queue.`;
+        
+        // Build announcement with PR URL if available
+        let announcement = `✅ DEV done #${issueId}`;
+        if (summary) {
+          announcement += ` — ${summary}`;
+        }
+        if (prUrl) {
+          announcement += `\n🔗 PR: ${prUrl}`;
+        }
+        announcement += `. Moved to QA queue.`;
+        
+        output.announcement = announcement;
+        if (prUrl) {
+          output.prUrl = prUrl;
+        }
 
         if (project.autoChain) {
           try {

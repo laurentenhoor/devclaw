@@ -75,6 +75,9 @@ export interface TaskManager {
   /** Check if any merged MR/PR exists for a specific issue. */
   hasMergedMR(issueId: number): Promise<boolean>;
 
+  /** Get the URL of the most recently merged MR/PR for a specific issue. Returns null if not found. */
+  getMergedMRUrl(issueId: number): Promise<string | null>;
+
   /** Add a comment to an issue. */
   addComment(issueId: number, body: string): Promise<void>;
 

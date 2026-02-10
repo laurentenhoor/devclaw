@@ -224,6 +224,37 @@ export class GitHubProvider implements TaskManager {
     }
   }
 
+  async getMergedMRUrl(issueId: number): Promise<string | null> {
+    try {
+      const raw = await this.gh([
+        "pr", "list",
+        "--state", "merged",
+        "--json", "number,title,body,url,mergedAt",
+        "--limit", "20",
+      ]);
+      const prs = JSON.parse(raw) as Array<{
+        number: number;
+        title: string;
+        body: string;
+        url: string;
+        mergedAt: string;
+      }>;
+      
+      const pattern = `#${issueId}`;
+      
+      // Find the most recently merged PR that references this issue
+      // PRs are returned in reverse chronological order by default
+      const matchingPr = prs.find(
+        (pr) =>
+          pr.title.includes(pattern) || (pr.body ?? "").includes(pattern),
+      );
+      
+      return matchingPr?.url ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   async addComment(issueId: number, body: string): Promise<void> {
     // Write body to temp file to preserve newlines
     const tempFile = join(tmpdir(), `devclaw-comment-${Date.now()}.md`);
