@@ -244,12 +244,13 @@ async function recordWorkerState(
   workspaceDir: string, groupId: string, role: "dev" | "qa",
   opts: { issueId: number; tier: string; sessionKey: string; sessionAction: "spawn" | "send" },
 ): Promise<void> {
-  const params: { issueId: string; tier: string; sessionKey?: string; startTime?: string } = {
-    issueId: String(opts.issueId), tier: opts.tier,
+  const params: { issueId: string; tier: string; sessionKey?: string; startTime: string } = {
+    issueId: String(opts.issueId),
+    tier: opts.tier,
+    startTime: new Date().toISOString(), // Always reset startTime for new task assignment
   };
   if (opts.sessionAction === "spawn") {
     params.sessionKey = opts.sessionKey;
-    params.startTime = new Date().toISOString();
   }
   await activateWorker(workspaceDir, groupId, role, params);
 }
