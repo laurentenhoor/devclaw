@@ -11,6 +11,8 @@ import type { InteractionContext } from "./context-guard.js";
 import { detectContext, generateGuardrails } from "./context-guard.js";
 import { readProjects, getProject, type Project, type ProjectsData } from "./projects.js";
 import { createProvider, type ProviderWithType } from "./providers/index.js";
+import { projectTick, type TickAction } from "./services/tick.js";
+import { notifyTickPickups, getNotificationConfig } from "./notify.js";
 
 /**
  * Require workspaceDir from context or throw a clear error.
@@ -76,4 +78,42 @@ export function groupOnlyError(toolName: string, context: InteractionContext) {
  */
 export function getPluginConfig(api: OpenClawPluginApi): Record<string, unknown> | undefined {
   return api.pluginConfig as Record<string, unknown> | undefined;
+}
+
+/**
+ * Run projectTick (non-fatal) and send workerStart notifications for any pickups.
+ * Returns the pickups array (empty on failure).
+ */
+export async function tickAndNotify(opts: {
+  workspaceDir: string;
+  groupId: string;
+  agentId?: string;
+  pluginConfig?: Record<string, unknown>;
+  sessionKey?: string;
+  targetRole?: "dev" | "qa";
+  channel?: string;
+}): Promise<TickAction[]> {
+  let pickups: TickAction[] = [];
+  try {
+    const result = await projectTick({
+      workspaceDir: opts.workspaceDir,
+      groupId: opts.groupId,
+      agentId: opts.agentId,
+      pluginConfig: opts.pluginConfig,
+      sessionKey: opts.sessionKey,
+      targetRole: opts.targetRole,
+    });
+    pickups = result.pickups;
+  } catch { /* non-fatal: tick failure shouldn't break the caller */ }
+
+  if (pickups.length) {
+    const notifyConfig = getNotificationConfig(opts.pluginConfig);
+    await notifyTickPickups(pickups, {
+      workspaceDir: opts.workspaceDir,
+      config: notifyConfig,
+      channel: opts.channel,
+    });
+  }
+
+  return pickups;
 }

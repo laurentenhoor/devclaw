@@ -9,7 +9,7 @@ import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
 import { readProjects } from "../projects.js";
 import { log as auditLog } from "../audit.js";
-import { notify, getNotificationConfig } from "../notify.js";
+import { notify, notifyTickPickups, getNotificationConfig } from "../notify.js";
 import { checkWorkerHealth, type HealthFix } from "../services/health.js";
 import { projectTick, type TickAction } from "../services/tick.js";
 import { requireWorkspaceDir, resolveContext, resolveProvider, getPluginConfig } from "../tool-helpers.js";
@@ -91,6 +91,12 @@ export function createAutoPickupTool(api: OpenClawPluginApi) {
         pickups.push(...result.pickups.map((p) => ({ ...p, project: current.name })));
         skipped.push(...result.skipped.map((s) => ({ project: current.name, ...s })));
         pickupCount += result.pickups.length;
+
+        // Send workerStart notifications for each pickup in this project
+        if (!dryRun && result.pickups.length > 0) {
+          const notifyConfig = getNotificationConfig(pluginConfig);
+          await notifyTickPickups(result.pickups, { workspaceDir, config: notifyConfig, channel: current.channel ?? "telegram" });
+        }
         for (const p of result.pickups) {
           if (p.role === "dev") globalActiveDev++; else globalActiveQa++;
         }

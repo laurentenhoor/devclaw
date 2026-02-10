@@ -75,6 +75,7 @@ export type TickAction = {
   groupId: string;
   issueId: number;
   issueTitle: string;
+  issueUrl: string;
   role: "dev" | "qa";
   tier: string;
   sessionAction: "spawn" | "send";
@@ -147,7 +148,7 @@ export async function projectTick(opts: {
 
     if (dryRun) {
       pickups.push({
-        project: project.name, groupId, issueId: issue.iid, issueTitle: issue.title,
+        project: project.name, groupId, issueId: issue.iid, issueTitle: issue.title, issueUrl: issue.web_url,
         role, tier: selectedTier,
         sessionAction: getSessionForTier(worker, selectedTier) ? "send" : "spawn",
         announcement: `[DRY RUN] Would pick up #${issue.iid}`,
@@ -162,7 +163,7 @@ export async function projectTick(opts: {
           pluginConfig, sessionKey,
         });
         pickups.push({
-          project: project.name, groupId, issueId: issue.iid, issueTitle: issue.title,
+          project: project.name, groupId, issueId: issue.iid, issueTitle: issue.title, issueUrl: issue.web_url,
           role, tier: dr.tier, sessionAction: dr.sessionAction, announcement: dr.announcement,
         });
       } catch (err) {

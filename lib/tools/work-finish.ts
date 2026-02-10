@@ -9,10 +9,9 @@ import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
 import { getWorker, resolveRepoPath } from "../projects.js";
 import { executeCompletion, getRule, NEXT_STATE } from "../services/pipeline.js";
-import { projectTick, type TickResult } from "../services/tick.js";
 import { log as auditLog } from "../audit.js";
 import { notify, getNotificationConfig } from "../notify.js";
-import { requireWorkspaceDir, resolveProject, resolveProvider, getPluginConfig } from "../tool-helpers.js";
+import { requireWorkspaceDir, resolveProject, resolveProvider, getPluginConfig, tickAndNotify } from "../tool-helpers.js";
 
 export function createWorkFinishTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
@@ -68,28 +67,26 @@ export function createWorkFinishTool(api: OpenClawPluginApi) {
         ...completion,
       };
 
-      // Tick: fill free slots after completion
+      // Notify completion
       const pluginConfig = getPluginConfig(api);
-      let tickResult: TickResult | null = null;
-      try {
-        tickResult = await projectTick({
-          workspaceDir, groupId, agentId: ctx.agentId, pluginConfig, sessionKey: ctx.sessionKey,
-        });
-      } catch { /* non-fatal: tick failure shouldn't break work_finish */ }
-      if (tickResult?.pickups.length) output.tickPickups = tickResult.pickups;
-
-      // Notify
       const notifyConfig = getNotificationConfig(pluginConfig);
       await notify(
         { type: "workerComplete", project: project.name, groupId, issueId, role, result: result as "done" | "pass" | "fail" | "refine" | "blocked", summary, nextState: NEXT_STATE[`${role}:${result}`] },
         { workspaceDir, config: notifyConfig, groupId, channel: project.channel ?? "telegram" },
       );
 
+      // Tick: fill free slots + notify starts
+      const tickPickups = await tickAndNotify({
+        workspaceDir, groupId, agentId: ctx.agentId, pluginConfig, sessionKey: ctx.sessionKey,
+        channel: project.channel ?? "telegram",
+      });
+      if (tickPickups.length) output.tickPickups = tickPickups;
+
       // Audit
       await auditLog(workspaceDir, "work_finish", {
         project: project.name, groupId, issue: issueId, role, result,
         summary: summary ?? null, labelTransition: completion.labelTransition,
-        tickPickups: tickResult?.pickups.length ?? 0,
+        tickPickups: tickPickups.length,
       });
 
       return jsonResult(output);

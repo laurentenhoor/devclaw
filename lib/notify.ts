@@ -12,6 +12,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { log as auditLog } from "./audit.js";
+import type { TickAction } from "./services/tick.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -224,6 +225,43 @@ export async function notify(
   });
 
   return sendMessage(target, message, channel, opts.workspaceDir);
+}
+
+/**
+ * Send workerStart notifications for each tick pickup.
+ *
+ * Called after projectTick() returns pickups — callers pass the array
+ * so each dispatched task gets a visible start notification in the project group.
+ */
+export async function notifyTickPickups(
+  pickups: TickAction[],
+  opts: {
+    workspaceDir: string;
+    config?: NotificationConfig;
+    channel?: string;
+  },
+): Promise<void> {
+  for (const pickup of pickups) {
+    await notify(
+      {
+        type: "workerStart",
+        project: pickup.project,
+        groupId: pickup.groupId,
+        issueId: pickup.issueId,
+        issueTitle: pickup.issueTitle,
+        issueUrl: pickup.issueUrl,
+        role: pickup.role,
+        tier: pickup.tier,
+        sessionAction: pickup.sessionAction,
+      },
+      {
+        workspaceDir: opts.workspaceDir,
+        config: opts.config,
+        groupId: pickup.groupId,
+        channel: opts.channel,
+      },
+    );
+  }
 }
 
 /**

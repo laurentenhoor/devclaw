@@ -13,8 +13,8 @@ import { selectTier } from "../model-selector.js";
 import { getWorker } from "../projects.js";
 import { dispatchTask } from "../dispatch.js";
 import { notify, getNotificationConfig } from "../notify.js";
-import { findNextIssue, detectRoleFromLabel, detectTierFromLabels, projectTick, type TickResult } from "../services/tick.js";
-import { requireWorkspaceDir, resolveContext, resolveProject, resolveProvider, groupOnlyError, getPluginConfig } from "../tool-helpers.js";
+import { findNextIssue, detectRoleFromLabel, detectTierFromLabels } from "../services/tick.js";
+import { requireWorkspaceDir, resolveContext, resolveProject, resolveProvider, groupOnlyError, getPluginConfig, tickAndNotify } from "../tool-helpers.js";
 
 export function createWorkStartTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
@@ -109,14 +109,12 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
         { workspaceDir, config: notifyConfig, groupId, channel: context.channel },
       );
 
-      // Tick: fill parallel slots
-      let tickResult: TickResult | null = null;
-      try {
-        tickResult = await projectTick({
-          workspaceDir, groupId, agentId: ctx.agentId, pluginConfig, sessionKey: ctx.sessionKey,
-          targetRole: role === "dev" ? "qa" : "dev",
-        });
-      } catch { /* non-fatal */ }
+      // Tick: fill parallel slots + notify starts
+      const tickPickups = await tickAndNotify({
+        workspaceDir, groupId, agentId: ctx.agentId, pluginConfig, sessionKey: ctx.sessionKey,
+        targetRole: role === "dev" ? "qa" : "dev",
+        channel: context.channel,
+      });
 
       const output: Record<string, unknown> = {
         success: true, project: project.name, groupId, issueId: issue.iid, issueTitle: issue.title,
@@ -125,7 +123,7 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
         tierReason, tierSource,
         autoDetected: { projectGroupId: !groupIdParam, role: !roleParam, issueId: issueIdParam === undefined, tier: !tierParam },
       };
-      if (tickResult?.pickups.length) output.tickPickups = tickResult.pickups;
+      if (tickPickups.length) output.tickPickups = tickPickups;
 
       return jsonResult(output);
     },
