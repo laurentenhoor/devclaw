@@ -197,6 +197,26 @@ export class GitHubProvider implements TaskManager {
     }
   }
 
+  async addComment(issueId: number, body: string): Promise<void> {
+    // Write body to temp file to preserve newlines
+    const tempFile = join(tmpdir(), `devclaw-comment-${Date.now()}.md`);
+    await writeFile(tempFile, body, "utf-8");
+
+    try {
+      await this.gh([
+        "issue", "comment", String(issueId),
+        "--body-file", tempFile,
+      ]);
+    } finally {
+      // Clean up temp file
+      try {
+        await unlink(tempFile);
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
+  }
+
   async healthCheck(): Promise<boolean> {
     try {
       await this.gh(["auth", "status"]);

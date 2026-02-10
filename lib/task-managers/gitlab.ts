@@ -160,6 +160,31 @@ export class GitLabProvider implements TaskManager {
     }
   }
 
+  async addComment(issueId: number, body: string): Promise<void> {
+    // Write body to temp file to preserve newlines
+    const tempFile = join(tmpdir(), `devclaw-comment-${Date.now()}.md`);
+    await writeFile(tempFile, body, "utf-8");
+
+    try {
+      const { exec } = await import("node:child_process");
+      const { promisify } = await import("node:util");
+      const execAsync = promisify(exec);
+
+      const cmd = `glab issue note ${issueId} --message "$(cat ${tempFile})"`;
+      await execAsync(cmd, {
+        cwd: this.repoPath,
+        timeout: 30_000,
+      });
+    } finally {
+      // Clean up temp file
+      try {
+        await unlink(tempFile);
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
+  }
+
   async healthCheck(): Promise<boolean> {
     try {
       await this.glab(["auth", "status"]);

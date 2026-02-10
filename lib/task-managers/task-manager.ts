@@ -75,6 +75,9 @@ export interface TaskManager {
   /** Check if any merged MR/PR exists for a specific issue. */
   hasMergedMR(issueId: number): Promise<boolean>;
 
+  /** Add a comment to an issue. */
+  addComment(issueId: number, body: string): Promise<void>;
+
   /** Verify the task manager is working (CLI available, auth valid, repo accessible). */
   healthCheck(): Promise<boolean>;
 }

@@ -20,7 +20,7 @@ DevClaw fills that gap with guardrails. It gives the orchestrator atomic tools t
 
 One orchestrator agent manages all your projects. It reads task backlogs, creates issues, decides priorities, and delegates work. For each task, DevClaw assigns a developer from your **team** — a junior, medior, or senior dev writes the code, then a QA engineer reviews it. Every Telegram/WhatsApp group is a separate project — the orchestrator keeps them completely isolated while managing them all from a single process.
 
-DevClaw gives the orchestrator seven tools that replace hundreds of lines of manual orchestration logic. Instead of following a 10-step checklist per task (fetch issue, check labels, pick model, check for existing session, transition label, dispatch task, update state, log audit event...), it calls `task_pickup` and the plugin handles everything atomically — including session dispatch. Workers call `task_complete` themselves for atomic state updates, and can file follow-up issues via `task_create`.
+DevClaw gives the orchestrator nine tools that replace hundreds of lines of manual orchestration logic. Instead of following a 10-step checklist per task (fetch issue, check labels, pick model, check for existing session, transition label, dispatch task, update state, log audit event...), it calls `task_pickup` and the plugin handles everything atomically — including session dispatch. Workers call `task_complete` themselves for atomic state updates, and can file follow-up issues via `task_create`.
 
 ## Developer tiers
 
@@ -253,6 +253,38 @@ Complete a task with one of four results. Called by workers (DEV/QA sub-agent se
 - **QA "fail"** — Moves label `Testing` → `To Improve`, reopens issue. If `autoChain` enabled, automatically dispatches DEV fix (reuses previous DEV tier).
 - **QA "refine"** — Moves label `Testing` → `Refining`, awaits human decision
 
+### `task_update`
+
+Change an issue's state label programmatically without going through the full pickup/complete flow.
+
+**Parameters:**
+
+- `projectGroupId` (string, required) — Telegram/WhatsApp group ID
+- `issueId` (number, required) — Issue ID to update
+- `state` (string, required) — New state label (Planning, To Do, Doing, To Test, Testing, Done, To Improve, Refining)
+- `reason` (string, optional) — Audit log reason for the change
+
+**Use cases:**
+- Manual state adjustments (e.g., Planning → To Do after approval)
+- Failed auto-transitions that need correction
+- Bulk state changes by orchestrator
+
+### `task_comment`
+
+Add a comment to an issue for feedback, notes, or discussion.
+
+**Parameters:**
+
+- `projectGroupId` (string, required) — Telegram/WhatsApp group ID
+- `issueId` (number, required) — Issue ID to comment on
+- `body` (string, required) — Comment body in markdown
+- `authorRole` ("dev" | "qa" | "orchestrator", optional) — Attribution role
+
+**Use cases:**
+- QA adds review feedback without blocking pass/fail
+- DEV posts implementation notes or progress updates
+- Orchestrator adds summary comments
+
 ### `task_create`
 
 Create a new issue in the project's issue tracker. Used by workers to file follow-up bugs, or by the orchestrator to create tasks from chat.
@@ -379,6 +411,8 @@ Restrict tools to your orchestrator agent only:
             "devclaw_setup",
             "task_pickup",
             "task_complete",
+            "task_update",
+            "task_comment",
             "task_create",
             "queue_status",
             "session_health",

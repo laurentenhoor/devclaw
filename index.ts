@@ -1,6 +1,8 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { createTaskPickupTool } from "./lib/tools/task-pickup.js";
 import { createTaskCompleteTool } from "./lib/tools/task-complete.js";
+import { createTaskUpdateTool } from "./lib/tools/task-update.js";
+import { createTaskCommentTool } from "./lib/tools/task-comment.js";
 import { createQueueStatusTool } from "./lib/tools/queue-status.js";
 import { createSessionHealthTool } from "./lib/tools/session-health.js";
 import { createProjectRegisterTool } from "./lib/tools/project-register.js";
@@ -72,6 +74,12 @@ const plugin = {
     api.registerTool(createTaskCompleteTool(api), {
       names: ["task_complete"],
     });
+    api.registerTool(createTaskUpdateTool(api), {
+      names: ["task_update"],
+    });
+    api.registerTool(createTaskCommentTool(api), {
+      names: ["task_comment"],
+    });
     api.registerTool(createQueueStatusTool(api), {
       names: ["queue_status"],
     });
@@ -106,7 +114,7 @@ const plugin = {
     });
 
     api.logger.info(
-      "DevClaw plugin registered (11 tools, 1 CLI command)",
+      "DevClaw plugin registered (13 tools, 1 CLI command)",
     );
   },
 };
