@@ -22,12 +22,23 @@ export function createSetupTool(api: OpenClawPluginApi) {
         channelBinding: { type: "string", enum: ["telegram", "whatsapp"], description: "Channel to bind (optional, with newAgentName only)." },
         migrateFrom: { type: "string", description: "Agent ID to migrate channel binding from. Check openclaw.json bindings first." },
         models: {
-          type: "object", description: "Model overrides per tier.",
+          type: "object", description: "Model overrides per role and tier.",
           properties: {
-            junior: { type: "string", description: `Default: ${DEFAULT_MODELS.junior}` },
-            medior: { type: "string", description: `Default: ${DEFAULT_MODELS.medior}` },
-            senior: { type: "string", description: `Default: ${DEFAULT_MODELS.senior}` },
-            qa: { type: "string", description: `Default: ${DEFAULT_MODELS.qa}` },
+            dev: {
+              type: "object", description: "Developer tier models",
+              properties: {
+                junior: { type: "string", description: `Default: ${DEFAULT_MODELS.junior}` },
+                medior: { type: "string", description: `Default: ${DEFAULT_MODELS.medior}` },
+                senior: { type: "string", description: `Default: ${DEFAULT_MODELS.senior}` },
+              },
+            },
+            qa: {
+              type: "object", description: "QA tier models",
+              properties: {
+                "qa-engineer": { type: "string", description: `Default: ${DEFAULT_MODELS["qa-engineer"]}` },
+                "manual-tester": { type: "string", description: `Default: ${DEFAULT_MODELS["manual-tester"]}` },
+              },
+            },
           },
         },
         projectExecution: { type: "string", enum: ["parallel", "sequential"], description: "Project execution mode. Default: parallel." },

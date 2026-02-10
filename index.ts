@@ -23,12 +23,25 @@ const plugin = {
     properties: {
       models: {
         type: "object",
-        description: "Model mapping per developer tier",
+        description: "Model mapping per role and tier",
         properties: {
-          junior: { type: "string" },
-          medior: { type: "string" },
-          senior: { type: "string" },
-          qa: { type: "string" },
+          dev: {
+            type: "object",
+            description: "Developer tier models",
+            properties: {
+              junior: { type: "string" },
+              medior: { type: "string" },
+              senior: { type: "string" },
+            },
+          },
+          qa: {
+            type: "object",
+            description: "QA tier models",
+            properties: {
+              "qa-engineer": { type: "string" },
+              "manual-tester": { type: "string" },
+            },
+          },
         },
       },
       projectExecution: {

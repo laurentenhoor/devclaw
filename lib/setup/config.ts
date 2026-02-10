@@ -5,11 +5,28 @@
  */
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { Tier } from "../tiers.js";
+import { DEV_TIERS, QA_TIERS, type Tier } from "../tiers.js";
 import { HEARTBEAT_DEFAULTS } from "../services/heartbeat.js";
 
 function openclawConfigPath(): string {
   return path.join(process.env.HOME ?? "/home/lauren", ".openclaw", "openclaw.json");
+}
+
+/**
+ * Convert flat tier map to nested role-tier structure.
+ */
+function buildRoleTierModels(models: Record<Tier, string>): { dev: Record<string, string>; qa: Record<string, string> } {
+  const dev: Record<string, string> = {};
+  const qa: Record<string, string> = {};
+
+  for (const tier of DEV_TIERS) {
+    dev[tier] = models[tier];
+  }
+  for (const tier of QA_TIERS) {
+    qa[tier] = models[tier];
+  }
+
+  return { dev, qa };
 }
 
 /**
@@ -30,7 +47,7 @@ export async function writePluginConfig(
   const config = JSON.parse(await fs.readFile(configPath, "utf-8"));
 
   ensurePluginStructure(config);
-  config.plugins.entries.devclaw.config.models = { ...models };
+  config.plugins.entries.devclaw.config.models = buildRoleTierModels(models);
 
   if (projectExecution) {
     config.plugins.entries.devclaw.config.projectExecution = projectExecution;

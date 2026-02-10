@@ -130,7 +130,7 @@ export async function dispatchTask(
     transitionLabel, pluginConfig,
   } = opts;
 
-  const model = resolveTierToModel(tier, pluginConfig);
+  const model = resolveTierToModel(tier, pluginConfig, role);
   const worker = getWorker(project, role);
   const existingSessionKey = getSessionForTier(worker, tier);
   const sessionAction = existingSessionKey ? "send" : "spawn";
