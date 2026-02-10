@@ -65,10 +65,10 @@ const plugin = {
   register(api: OpenClawPluginApi) {
     // Agent tools (primary interface — agent calls these directly)
     api.registerTool(createTaskPickupTool(api), {
-      names: ["task_pickup"],
+      names: ["task_pickup", "work_start"],
     });
     api.registerTool(createTaskCompleteTool(api), {
-      names: ["task_complete"],
+      names: ["task_complete", "work_finish"],
     });
     api.registerTool(createTaskUpdateTool(api), {
       names: ["task_update"],
@@ -77,7 +77,7 @@ const plugin = {
       names: ["task_comment"],
     });
     api.registerTool(createQueueStatusTool(api), {
-      names: ["queue_status"],
+      names: ["queue_status", "status"],
     });
     api.registerTool(createSessionHealthTool(api), {
       names: ["session_health"],

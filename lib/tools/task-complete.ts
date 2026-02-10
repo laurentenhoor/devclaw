@@ -138,6 +138,10 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
           output.gitPull = `warning: ${(err as Error).message}`;
         }
 
+        // Fetch issue to get URL
+        const issue = await provider.getIssue(issueId);
+        const issueUrl = issue.web_url;
+
         // Auto-detect PR/MR URL if not provided
         if (!prUrl) {
           try {
@@ -152,17 +156,19 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
 
         output.labelTransition = "Doing → To Test";
         
-        // Build announcement with PR URL if available
+        // Build announcement with URLs
         let announcement = `✅ DEV done #${issueId}`;
         if (summary) {
           announcement += ` — ${summary}`;
         }
+        announcement += `\n📋 Issue: ${issueUrl}`;
         if (prUrl) {
           announcement += `\n🔗 PR: ${prUrl}`;
         }
-        announcement += `. Moved to QA queue.`;
+        announcement += `\nMoved to QA queue.`;
         
         output.announcement = announcement;
+        output.issueUrl = issueUrl;
         if (prUrl) {
           output.prUrl = prUrl;
         }
@@ -215,13 +221,18 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
 
       // === QA PASS ===
       if (role === "qa" && result === "pass") {
+        // Fetch issue to get URL
+        const issue = await provider.getIssue(issueId);
+        const issueUrl = issue.web_url;
+
         await deactivateWorker(workspaceDir, groupId, "qa");
         await provider.transitionLabel(issueId, "Testing", "Done");
         await provider.closeIssue(issueId);
 
         output.labelTransition = "Testing → Done";
         output.issueClosed = true;
-        output.announcement = `🎉 QA PASS #${issueId}${summary ? ` — ${summary}` : ""}. Issue closed.`;
+        output.issueUrl = issueUrl;
+        output.announcement = `🎉 QA PASS #${issueId}${summary ? ` — ${summary}` : ""}\n📋 Issue: ${issueUrl}\nIssue closed.`;
       }
 
       // === QA FAIL ===
