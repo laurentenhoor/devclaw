@@ -12,21 +12,9 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
-import { readProjects } from "../projects.js";
-import { createProvider } from "../providers/index.js";
 import { log as auditLog } from "../audit.js";
-import type { StateLabel } from "../providers/provider.js";
-
-const STATE_LABELS: StateLabel[] = [
-  "Planning",
-  "To Do",
-  "Doing",
-  "To Test",
-  "Testing",
-  "Done",
-  "To Improve",
-  "Refining",
-];
+import { STATE_LABELS, type StateLabel } from "../providers/provider.js";
+import { requireWorkspaceDir, resolveProject, resolveProvider } from "../tool-helpers.js";
 
 export function createTaskCreateTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
@@ -80,69 +68,29 @@ The issue is created with a state label (defaults to "Planning"). Returns the cr
       const label = (params.label as StateLabel) ?? "Planning";
       const assignees = (params.assignees as string[] | undefined) ?? [];
       const pickup = (params.pickup as boolean) ?? false;
-      const workspaceDir = ctx.workspaceDir;
+      const workspaceDir = requireWorkspaceDir(ctx);
 
-      if (!workspaceDir) {
-        throw new Error("No workspace directory available in tool context");
-      }
+      const { project } = await resolveProject(workspaceDir, groupId);
+      const { provider, type: providerType } = resolveProvider(project);
 
-      // 1. Resolve project
-      const data = await readProjects(workspaceDir);
-      const project = data.projects[groupId];
-      if (!project) {
-        throw new Error(`Project not found for groupId ${groupId}. Run project_register first.`);
-      }
-
-      // 2. Create provider
-      const { provider, type: providerType } = createProvider({
-        repo: project.repo,
-      });
-
-      // 3. Create the issue
       const issue = await provider.createIssue(title, description, label, assignees);
 
-      // 4. Audit log
       await auditLog(workspaceDir, "task_create", {
-        project: project.name,
-        groupId,
-        issueId: issue.iid,
-        title,
-        label,
-        provider: providerType,
-        pickup,
+        project: project.name, groupId, issueId: issue.iid,
+        title, label, provider: providerType, pickup,
       });
 
-      // 5. Build response
       const hasBody = description && description.trim().length > 0;
-      
-      // Build announcement with URL
       let announcement = `📋 Created #${issue.iid}: "${title}" (${label})`;
-      if (hasBody) {
-        announcement += "\nWith detailed description.";
-      }
+      if (hasBody) announcement += "\nWith detailed description.";
       announcement += `\n🔗 ${issue.web_url}`;
-      if (pickup) {
-        announcement += "\nPicking up for DEV...";
-      } else {
-        announcement += "\nReady for pickup when needed.";
-      }
-      
-      const result = {
-        success: true,
-        issue: {
-          id: issue.iid,
-          title: issue.title,
-          body: hasBody ? description : null,
-          url: issue.web_url,
-          label,
-        },
-        project: project.name,
-        provider: providerType,
-        pickup,
-        announcement,
-      };
+      announcement += pickup ? "\nPicking up for DEV..." : "\nReady for pickup when needed.";
 
-      return jsonResult(result);
+      return jsonResult({
+        success: true,
+        issue: { id: issue.iid, title: issue.title, body: hasBody ? description : null, url: issue.web_url, label },
+        project: project.name, provider: providerType, pickup, announcement,
+      });
     },
   });
 }

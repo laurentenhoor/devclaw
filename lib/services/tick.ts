@@ -7,10 +7,10 @@
 import type { Issue, StateLabel } from "../providers/provider.js";
 import type { IssueProvider } from "../providers/provider.js";
 import { createProvider } from "../providers/index.js";
-import { selectModel } from "../model-selector.js";
-import { getWorker, getSessionForModel, readProjects } from "../projects.js";
+import { selectTier } from "../model-selector.js";
+import { getWorker, getSessionForTier, readProjects } from "../projects.js";
 import { dispatchTask } from "../dispatch.js";
-import type { Tier } from "../tiers.js";
+import { ALL_TIERS, type Tier } from "../tiers.js";
 
 // ---------------------------------------------------------------------------
 // Shared constants + helpers (used by tick, work-start, auto-pickup)
@@ -20,11 +20,9 @@ export const DEV_LABELS: StateLabel[] = ["To Do", "To Improve"];
 export const QA_LABELS: StateLabel[] = ["To Test"];
 export const PRIORITY_ORDER: StateLabel[] = ["To Improve", "To Test", "To Do"];
 
-const TIER_LABELS: Tier[] = ["junior", "medior", "senior", "qa"];
-
 export function detectTierFromLabels(labels: string[]): Tier | null {
   const lower = labels.map((l) => l.toLowerCase());
-  return TIER_LABELS.find((t) => lower.includes(t)) ?? null;
+  return (ALL_TIERS as readonly string[]).find((t) => lower.includes(t)) as Tier | undefined ?? null;
 }
 
 export function detectRoleFromLabel(label: StateLabel): "dev" | "qa" | null {
@@ -78,7 +76,7 @@ export type TickAction = {
   issueId: number;
   issueTitle: string;
   role: "dev" | "qa";
-  model: string;
+  tier: string;
   sessionAction: "spawn" | "send";
   announcement: string;
 };
@@ -145,21 +143,13 @@ export async function projectTick(opts: {
     const targetLabel: StateLabel = role === "dev" ? "Doing" : "Testing";
 
     // Tier selection: label → heuristic
-    let modelAlias: string;
-    const tier = detectTierFromLabels(issue.labels);
-    if (tier) {
-      if (role === "qa" && tier !== "qa") modelAlias = "qa";
-      else if (role === "dev" && tier === "qa") modelAlias = selectModel(issue.title, issue.description ?? "", role).tier;
-      else modelAlias = tier;
-    } else {
-      modelAlias = selectModel(issue.title, issue.description ?? "", role).tier;
-    }
+    const selectedTier = resolveTierForIssue(issue, role);
 
     if (dryRun) {
       pickups.push({
         project: project.name, groupId, issueId: issue.iid, issueTitle: issue.title,
-        role, model: modelAlias,
-        sessionAction: getSessionForModel(worker, modelAlias) ? "send" : "spawn",
+        role, tier: selectedTier,
+        sessionAction: getSessionForTier(worker, selectedTier) ? "send" : "spawn",
         announcement: `[DRY RUN] Would pick up #${issue.iid}`,
       });
     } else {
@@ -167,13 +157,13 @@ export async function projectTick(opts: {
         const dr = await dispatchTask({
           workspaceDir, agentId, groupId, project: fresh, issueId: issue.iid,
           issueTitle: issue.title, issueDescription: issue.description ?? "", issueUrl: issue.web_url,
-          role, modelAlias, fromLabel: currentLabel, toLabel: targetLabel,
+          role, tier: selectedTier, fromLabel: currentLabel, toLabel: targetLabel,
           transitionLabel: (id, from, to) => provider.transitionLabel(id, from as StateLabel, to as StateLabel),
           pluginConfig, sessionKey,
         });
         pickups.push({
           project: project.name, groupId, issueId: issue.iid, issueTitle: issue.title,
-          role, model: dr.modelAlias, sessionAction: dr.sessionAction, announcement: dr.announcement,
+          role, tier: dr.tier, sessionAction: dr.sessionAction, announcement: dr.announcement,
         });
       } catch (err) {
         skipped.push({ role, reason: `Dispatch failed: ${(err as Error).message}` });
@@ -184,4 +174,21 @@ export async function projectTick(opts: {
   }
 
   return { pickups, skipped };
+}
+
+// ---------------------------------------------------------------------------
+// Private helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Determine the tier for an issue based on labels, role overrides, and heuristic fallback.
+ */
+function resolveTierForIssue(issue: Issue, role: "dev" | "qa"): string {
+  const labelTier = detectTierFromLabels(issue.labels);
+  if (labelTier) {
+    if (role === "qa" && labelTier !== "qa") return "qa";
+    if (role === "dev" && labelTier === "qa") return selectTier(issue.title, issue.description ?? "", role).tier;
+    return labelTier;
+  }
+  return selectTier(issue.title, issue.description ?? "", role).tier;
 }

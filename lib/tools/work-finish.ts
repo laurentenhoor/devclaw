@@ -7,12 +7,12 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
-import { readProjects, getProject, getWorker, resolveRepoPath } from "../projects.js";
-import { createProvider } from "../providers/index.js";
+import { getWorker, resolveRepoPath } from "../projects.js";
 import { executeCompletion, getRule, NEXT_STATE } from "../services/pipeline.js";
 import { projectTick, type TickResult } from "../services/tick.js";
 import { log as auditLog } from "../audit.js";
 import { notify, getNotificationConfig } from "../notify.js";
+import { requireWorkspaceDir, resolveProject, resolveProvider, getPluginConfig } from "../tool-helpers.js";
 
 export function createWorkFinishTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
@@ -37,9 +37,7 @@ export function createWorkFinishTool(api: OpenClawPluginApi) {
       const groupId = params.projectGroupId as string;
       const summary = params.summary as string | undefined;
       const prUrl = params.prUrl as string | undefined;
-      const workspaceDir = ctx.workspaceDir;
-
-      if (!workspaceDir) throw new Error("No workspace directory available");
+      const workspaceDir = requireWorkspaceDir(ctx);
 
       // Validate role:result
       if (role === "dev" && result !== "done" && result !== "blocked")
@@ -50,17 +48,14 @@ export function createWorkFinishTool(api: OpenClawPluginApi) {
         throw new Error(`Invalid completion: ${role}:${result}`);
 
       // Resolve project + worker
-      const data = await readProjects(workspaceDir);
-      const project = getProject(data, groupId);
-      if (!project) throw new Error(`Project not found for groupId: ${groupId}`);
-
+      const { project } = await resolveProject(workspaceDir, groupId);
       const worker = getWorker(project, role);
       if (!worker.active) throw new Error(`${role.toUpperCase()} worker not active on ${project.name}`);
 
       const issueId = worker.issueId ? Number(worker.issueId.split(",")[0]) : null;
       if (!issueId) throw new Error(`No issueId for active ${role.toUpperCase()} on ${project.name}`);
 
-      const { provider } = createProvider({ repo: project.repo });
+      const { provider } = resolveProvider(project);
       const repoPath = resolveRepoPath(project.repo);
 
       // Execute completion (pipeline service)
@@ -74,7 +69,7 @@ export function createWorkFinishTool(api: OpenClawPluginApi) {
       };
 
       // Tick: fill free slots after completion
-      const pluginConfig = api.pluginConfig as Record<string, unknown> | undefined;
+      const pluginConfig = getPluginConfig(api);
       let tickResult: TickResult | null = null;
       try {
         tickResult = await projectTick({

@@ -7,13 +7,12 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
-import { createProvider } from "../providers/index.js";
 import { readProjects } from "../projects.js";
-import { detectContext } from "../context-guard.js";
 import { log as auditLog } from "../audit.js";
 import { notify, getNotificationConfig } from "../notify.js";
 import { checkWorkerHealth, type HealthFix } from "../services/health.js";
 import { projectTick, type TickAction } from "../services/tick.js";
+import { requireWorkspaceDir, resolveContext, resolveProvider, getPluginConfig } from "../tool-helpers.js";
 
 type ExecutionMode = "parallel" | "sequential";
 
@@ -37,10 +36,9 @@ export function createAutoPickupTool(api: OpenClawPluginApi) {
       const dryRun = (params.dryRun as boolean) ?? false;
       const maxPickups = params.maxPickups as number | undefined;
       const activeSessions = (params.activeSessions as string[]) ?? [];
-      const workspaceDir = ctx.workspaceDir;
-      if (!workspaceDir) throw new Error("No workspace directory available");
+      const workspaceDir = requireWorkspaceDir(ctx);
 
-      const pluginConfig = api.pluginConfig as Record<string, unknown> | undefined;
+      const pluginConfig = getPluginConfig(api);
       const projectExecution: ExecutionMode = (pluginConfig?.projectExecution as ExecutionMode) ?? "parallel";
 
       const data = await readProjects(workspaceDir);
@@ -59,7 +57,7 @@ export function createAutoPickupTool(api: OpenClawPluginApi) {
 
       // Pass 1: health checks
       for (const [groupId, project] of projectEntries) {
-        const { provider } = createProvider({ repo: project.repo });
+        const { provider } = resolveProvider(project);
         for (const role of ["dev", "qa"] as const) {
           const fixes = await checkWorkerHealth({ workspaceDir, groupId, project, role, activeSessions, autoFix: !dryRun, provider });
           healthFixes.push(...fixes.map((f) => ({ ...f, project: project.name, role })));
@@ -105,8 +103,7 @@ export function createAutoPickupTool(api: OpenClawPluginApi) {
       });
 
       // Notify
-      const devClawAgentIds = ((api.pluginConfig as Record<string, unknown>)?.devClawAgentIds as string[] | undefined) ?? [];
-      const context = await detectContext(ctx, devClawAgentIds);
+      const context = await resolveContext(ctx, api);
       const notifyConfig = getNotificationConfig(pluginConfig);
       await notify(
         { type: "heartbeat", projectsScanned: projectEntries.length, healthFixes: healthFixes.length, pickups: pickups.length, skipped: skipped.length, dryRun, pickupDetails: pickups.map((p) => ({ project: p.project, issueId: p.issueId, role: p.role })) },

@@ -9,9 +9,8 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
-import { readProjects } from "../projects.js";
-import { createProvider } from "../providers/index.js";
 import { log as auditLog } from "../audit.js";
+import { requireWorkspaceDir, resolveProject, resolveProvider } from "../tool-helpers.js";
 
 /** Valid author roles for attribution */
 const AUTHOR_ROLES = ["dev", "qa", "orchestrator"] as const;
@@ -62,73 +61,46 @@ Examples:
       const issueId = params.issueId as number;
       const body = params.body as string;
       const authorRole = (params.authorRole as AuthorRole) ?? undefined;
-      const workspaceDir = ctx.workspaceDir;
+      const workspaceDir = requireWorkspaceDir(ctx);
 
-      if (!workspaceDir) {
-        throw new Error("No workspace directory available in tool context");
-      }
-
-      // Validate body is not empty
       if (!body || body.trim().length === 0) {
         throw new Error("Comment body cannot be empty.");
       }
 
-      // 1. Resolve project
-      const data = await readProjects(workspaceDir);
-      const project = data.projects[groupId];
-      if (!project) {
-        throw new Error(
-          `Project not found for groupId ${groupId}. Run project_register first.`,
-        );
-      }
+      const { project } = await resolveProject(workspaceDir, groupId);
+      const { provider, type: providerType } = resolveProvider(project);
 
-      // 2. Create provider
-      const { provider, type: providerType } = createProvider({
-        repo: project.repo,
-      });
-
-      // 3. Fetch issue to verify it exists and get title
       const issue = await provider.getIssue(issueId);
 
-      // 4. Prepare comment body with optional attribution header
-      let commentBody = body;
-      if (authorRole) {
-        const roleEmoji: Record<AuthorRole, string> = {
-          dev: "👨‍💻",
-          qa: "🔍",
-          orchestrator: "🎛️",
-        };
-        commentBody = `${roleEmoji[authorRole]} **${authorRole.toUpperCase()}**: ${body}`;
-      }
+      const commentBody = authorRole
+        ? `${ROLE_EMOJI[authorRole]} **${authorRole.toUpperCase()}**: ${body}`
+        : body;
 
-      // 5. Add the comment
       await provider.addComment(issueId, commentBody);
 
-      // 6. Audit log
       await auditLog(workspaceDir, "task_comment", {
-        project: project.name,
-        groupId,
-        issueId,
+        project: project.name, groupId, issueId,
         authorRole: authorRole ?? null,
         bodyPreview: body.slice(0, 100) + (body.length > 100 ? "..." : ""),
         provider: providerType,
       });
 
-      // 7. Build response
-      const result = {
-        success: true,
-        issueId,
-        issueTitle: issue.title,
-        issueUrl: issue.web_url,
-        commentAdded: true,
-        authorRole: authorRole ?? null,
-        bodyLength: body.length,
-        project: project.name,
-        provider: providerType,
+      return jsonResult({
+        success: true, issueId, issueTitle: issue.title, issueUrl: issue.web_url,
+        commentAdded: true, authorRole: authorRole ?? null, bodyLength: body.length,
+        project: project.name, provider: providerType,
         announcement: `💬 Comment added to #${issueId}${authorRole ? ` by ${authorRole.toUpperCase()}` : ""}`,
-      };
-
-      return jsonResult(result);
+      });
     },
   });
 }
+
+// ---------------------------------------------------------------------------
+// Private helpers
+// ---------------------------------------------------------------------------
+
+const ROLE_EMOJI: Record<AuthorRole, string> = {
+  dev: "👨‍💻",
+  qa: "🔍",
+  orchestrator: "🎛️",
+};

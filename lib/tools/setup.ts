@@ -2,12 +2,12 @@
  * setup — Agent-driven DevClaw setup.
  *
  * Creates agent, configures model tiers, writes workspace files.
- * Thin wrapper around lib/setup.ts.
+ * Thin wrapper around lib/setup/.
  */
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
-import { runSetup } from "../setup.js";
+import { runSetup } from "../setup/index.js";
 import { ALL_TIERS, DEFAULT_MODELS, type Tier } from "../tiers.js";
 
 export function createSetupTool(api: OpenClawPluginApi) {

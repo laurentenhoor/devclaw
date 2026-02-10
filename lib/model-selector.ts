@@ -4,7 +4,7 @@
  * Returns tier names (junior, medior, senior, qa) instead of model aliases.
  */
 
-export type ModelRecommendation = {
+export type TierRecommendation = {
   tier: string;
   reason: string;
 };
@@ -47,11 +47,11 @@ const COMPLEX_KEYWORDS = [
  * - senior: deep/architectural (system-wide refactoring, novel design)
  * - qa: all QA tasks (code inspection, validation, test runs)
  */
-export function selectModel(
+export function selectTier(
   issueTitle: string,
   issueDescription: string,
   role: "dev" | "qa",
-): ModelRecommendation {
+): TierRecommendation {
   if (role === "qa") {
     return {
       tier: "qa",

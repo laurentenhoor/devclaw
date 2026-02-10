@@ -8,14 +8,14 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
 import { readProjects, getProject, type Project } from "../projects.js";
-import { detectContext, generateGuardrails } from "../context-guard.js";
+import { generateGuardrails } from "../context-guard.js";
 import { log as auditLog } from "../audit.js";
 import { checkWorkerHealth } from "../services/health.js";
 import {
   fetchProjectQueues, buildParallelProjectSequences, buildGlobalTaskSequence,
   formatProjectQueues, type ProjectQueues, type ProjectExecutionConfig,
 } from "../services/queue.js";
-import { createProvider } from "../providers/index.js";
+import { requireWorkspaceDir, resolveContext, resolveProvider, getPluginConfig } from "../tool-helpers.js";
 
 export function createStatusTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
@@ -32,16 +32,11 @@ export function createStatusTool(api: OpenClawPluginApi) {
     },
 
     async execute(_id: string, params: Record<string, unknown>) {
-      const workspaceDir = ctx.workspaceDir;
-      if (!workspaceDir) throw new Error("No workspace directory available");
-
+      const workspaceDir = requireWorkspaceDir(ctx);
       const includeHealth = (params.includeHealth as boolean) ?? true;
       const activeSessions = (params.activeSessions as string[]) ?? [];
 
-      // Context detection
-      const devClawAgentIds = ((api.pluginConfig as Record<string, unknown>)?.devClawAgentIds as string[] | undefined) ?? [];
-      const context = await detectContext(ctx, devClawAgentIds);
-
+      const context = await resolveContext(ctx, api);
       if (context.type === "via-agent") {
         return jsonResult({
           success: false,
@@ -55,7 +50,7 @@ export function createStatusTool(api: OpenClawPluginApi) {
       let groupId = params.projectGroupId as string | undefined;
       if (context.type === "group" && !groupId) groupId = context.groupId;
 
-      const pluginConfig = api.pluginConfig as Record<string, unknown> | undefined;
+      const pluginConfig = getPluginConfig(api);
       const projectExecution = (pluginConfig?.projectExecution as "parallel" | "sequential") ?? "parallel";
 
       const data = await readProjects(workspaceDir);
@@ -81,7 +76,7 @@ export function createStatusTool(api: OpenClawPluginApi) {
       const healthIssues: Array<Record<string, unknown>> = [];
       if (includeHealth) {
         for (const { id, project } of projectList) {
-          const { provider } = createProvider({ repo: project.repo });
+          const { provider } = resolveProvider(project);
           for (const role of ["dev", "qa"] as const) {
             const fixes = await checkWorkerHealth({
               workspaceDir, groupId: id, project, role, activeSessions,
@@ -108,8 +103,8 @@ export function createStatusTool(api: OpenClawPluginApi) {
       // Build project details
       const projects = projectQueues.map(({ projectId, project, queues }) => ({
         name: project.name, groupId: projectId,
-        dev: { active: project.dev.active, issueId: project.dev.issueId, model: project.dev.model, sessions: project.dev.sessions },
-        qa: { active: project.qa.active, issueId: project.qa.issueId, model: project.qa.model, sessions: project.qa.sessions },
+        dev: { active: project.dev.active, issueId: project.dev.issueId, tier: project.dev.tier, sessions: project.dev.sessions },
+        qa: { active: project.qa.active, issueId: project.qa.issueId, tier: project.qa.tier, sessions: project.qa.sessions },
         queue: formatProjectQueues(queues),
       }));
 

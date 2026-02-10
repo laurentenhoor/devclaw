@@ -46,7 +46,7 @@ export function isDevTier(value: string): value is DevTier {
  * 2. DEFAULT_MODELS (hardcoded defaults)
  * 3. Treat input as raw model ID (passthrough for non-tier values)
  */
-export function resolveModel(
+export function resolveTierToModel(
   tier: string,
   pluginConfig?: Record<string, unknown>,
 ): string {

@@ -9,21 +9,9 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
-import { readProjects } from "../projects.js";
-import { createProvider } from "../providers/index.js";
 import { log as auditLog } from "../audit.js";
-import type { StateLabel } from "../providers/provider.js";
-
-const STATE_LABELS: StateLabel[] = [
-  "Planning",
-  "To Do",
-  "Doing",
-  "To Test",
-  "Testing",
-  "Done",
-  "To Improve",
-  "Refining",
-];
+import { STATE_LABELS, type StateLabel } from "../providers/provider.js";
+import { requireWorkspaceDir, resolveProject, resolveProvider } from "../tool-helpers.js";
 
 export function createTaskUpdateTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
@@ -69,76 +57,40 @@ Examples:
       const issueId = params.issueId as number;
       const newState = params.state as StateLabel;
       const reason = (params.reason as string) ?? undefined;
-      const workspaceDir = ctx.workspaceDir;
+      const workspaceDir = requireWorkspaceDir(ctx);
 
-      if (!workspaceDir) {
-        throw new Error("No workspace directory available in tool context");
-      }
+      const { project } = await resolveProject(workspaceDir, groupId);
+      const { provider, type: providerType } = resolveProvider(project);
 
-      // 1. Resolve project
-      const data = await readProjects(workspaceDir);
-      const project = data.projects[groupId];
-      if (!project) {
-        throw new Error(
-          `Project not found for groupId ${groupId}. Run project_register first.`,
-        );
-      }
-
-      // 2. Create provider
-      const { provider, type: providerType } = createProvider({
-        repo: project.repo,
-      });
-
-      // 3. Fetch current issue to get current state
       const issue = await provider.getIssue(issueId);
       const currentState = provider.getCurrentStateLabel(issue);
-
       if (!currentState) {
-        throw new Error(
-          `Issue #${issueId} has no recognized state label. Cannot perform transition.`,
-        );
+        throw new Error(`Issue #${issueId} has no recognized state label. Cannot perform transition.`);
       }
 
       if (currentState === newState) {
         return jsonResult({
-          success: true,
-          issueId,
-          state: newState,
-          changed: false,
+          success: true, issueId, state: newState, changed: false,
           message: `Issue #${issueId} is already in state "${newState}".`,
-          project: project.name,
-          provider: providerType,
+          project: project.name, provider: providerType,
         });
       }
 
-      // 4. Perform the transition
       await provider.transitionLabel(issueId, currentState, newState);
 
-      // 5. Audit log
       await auditLog(workspaceDir, "task_update", {
-        project: project.name,
-        groupId,
-        issueId,
-        fromState: currentState,
-        toState: newState,
-        reason: reason ?? null,
-        provider: providerType,
+        project: project.name, groupId, issueId,
+        fromState: currentState, toState: newState,
+        reason: reason ?? null, provider: providerType,
       });
 
-      // 6. Build response
-      const result = {
-        success: true,
-        issueId,
-        issueTitle: issue.title,
-        state: newState,
-        changed: true,
+      return jsonResult({
+        success: true, issueId, issueTitle: issue.title,
+        state: newState, changed: true,
         labelTransition: `${currentState} → ${newState}`,
-        project: project.name,
-        provider: providerType,
+        project: project.name, provider: providerType,
         announcement: `🔄 Updated #${issueId}: "${currentState}" → "${newState}"${reason ? ` (${reason})` : ""}`,
-      };
-
-      return jsonResult(result);
+      });
     },
   });
 }

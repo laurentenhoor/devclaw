@@ -4,7 +4,7 @@
  * Uses Commander.js (provided by OpenClaw plugin SDK context).
  */
 import type { Command } from "commander";
-import { runSetup } from "./setup.js";
+import { runSetup } from "./setup/index.js";
 import { ALL_TIERS, DEFAULT_MODELS, type Tier } from "./tiers.js";
 
 /**

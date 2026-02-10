@@ -2,20 +2,19 @@
  * work_start — Pick up a task from the issue queue.
  *
  * Context-aware: ONLY works in project group chats.
- * Auto-detects: projectGroupId, role, model, issueId.
+ * Auto-detects: projectGroupId, role, tier, issueId.
  * After dispatch, ticks the project queue to fill parallel slots.
  */
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
 import type { StateLabel } from "../providers/provider.js";
-import { createProvider } from "../providers/index.js";
-import { selectModel } from "../model-selector.js";
-import { activateWorker, getProject, getWorker, readProjects } from "../projects.js";
+import { selectTier } from "../model-selector.js";
+import { getWorker } from "../projects.js";
 import { dispatchTask } from "../dispatch.js";
-import { detectContext, generateGuardrails } from "../context-guard.js";
 import { notify, getNotificationConfig } from "../notify.js";
 import { findNextIssue, detectRoleFromLabel, detectTierFromLabels, projectTick, type TickResult } from "../services/tick.js";
+import { requireWorkspaceDir, resolveContext, resolveProject, resolveProvider, groupOnlyError, getPluginConfig } from "../tool-helpers.js";
 
 export function createWorkStartTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
@@ -28,7 +27,7 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
         issueId: { type: "number", description: "Issue ID. If omitted, picks next by priority." },
         role: { type: "string", enum: ["dev", "qa"], description: "Worker role. Auto-detected from label if omitted." },
         projectGroupId: { type: "string", description: "Project group ID. Auto-detected from group context." },
-        model: { type: "string", description: "Developer tier (junior/medior/senior/qa). Auto-detected if omitted." },
+        tier: { type: "string", description: "Developer tier (junior/medior/senior/qa). Auto-detected if omitted." },
       },
     },
 
@@ -36,28 +35,16 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
       const issueIdParam = params.issueId as number | undefined;
       const roleParam = params.role as "dev" | "qa" | undefined;
       const groupIdParam = params.projectGroupId as string | undefined;
-      const modelParam = params.model as string | undefined;
-      const workspaceDir = ctx.workspaceDir;
-      if (!workspaceDir) throw new Error("No workspace directory available");
+      const tierParam = params.tier as string | undefined;
+      const workspaceDir = requireWorkspaceDir(ctx);
 
       // Context guard: group only
-      const devClawAgentIds = ((api.pluginConfig as Record<string, unknown>)?.devClawAgentIds as string[] | undefined) ?? [];
-      const context = await detectContext(ctx, devClawAgentIds);
-      if (context.type !== "group") {
-        return jsonResult({
-          success: false,
-          error: "work_start can only be used in project group chats.",
-          recommendation: context.type === "via-agent" ? "Use onboard instead for setup." : "Use the relevant project group.",
-          contextGuidance: generateGuardrails(context),
-        });
-      }
+      const context = await resolveContext(ctx, api);
+      if (context.type !== "group") return groupOnlyError("work_start", context);
 
       const groupId = groupIdParam ?? context.groupId;
-      const data = await readProjects(workspaceDir);
-      const project = getProject(data, groupId);
-      if (!project) throw new Error(`Project not found for groupId: ${groupId}`);
-
-      const { provider } = createProvider({ repo: project.repo });
+      const { project } = await resolveProject(workspaceDir, groupId);
+      const { provider } = resolveProvider(project);
 
       // Find issue
       let issue: { iid: number; title: string; description: string; labels: string[]; web_url: string; state: string };
@@ -88,47 +75,37 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
         if (getWorker(project, other).active) throw new Error(`Sequential roleExecution: ${other.toUpperCase()} is active`);
       }
 
-      // Select model
+      // Select tier
       const targetLabel: StateLabel = role === "dev" ? "Doing" : "Testing";
-      let modelAlias: string, modelReason: string, modelSource: string;
-      if (modelParam) {
-        modelAlias = modelParam; modelReason = "LLM-selected"; modelSource = "llm";
+      let selectedTier: string, tierReason: string, tierSource: string;
+      if (tierParam) {
+        selectedTier = tierParam; tierReason = "LLM-selected"; tierSource = "llm";
       } else {
-        const tier = detectTierFromLabels(issue.labels);
-        if (tier) {
-          if (role === "qa" && tier !== "qa") { modelAlias = "qa"; modelReason = `QA overrides "${tier}"`; modelSource = "role-override"; }
-          else if (role === "dev" && tier === "qa") { const s = selectModel(issue.title, issue.description ?? "", role); modelAlias = s.tier; modelReason = s.reason; modelSource = "heuristic"; }
-          else { modelAlias = tier; modelReason = `Label: "${tier}"`; modelSource = "label"; }
+        const labelTier = detectTierFromLabels(issue.labels);
+        if (labelTier) {
+          if (role === "qa" && labelTier !== "qa") { selectedTier = "qa"; tierReason = `QA overrides "${labelTier}"`; tierSource = "role-override"; }
+          else if (role === "dev" && labelTier === "qa") { const s = selectTier(issue.title, issue.description ?? "", role); selectedTier = s.tier; tierReason = s.reason; tierSource = "heuristic"; }
+          else { selectedTier = labelTier; tierReason = `Label: "${labelTier}"`; tierSource = "label"; }
         } else {
-          const s = selectModel(issue.title, issue.description ?? "", role);
-          modelAlias = s.tier; modelReason = s.reason; modelSource = "heuristic";
+          const s = selectTier(issue.title, issue.description ?? "", role);
+          selectedTier = s.tier; tierReason = s.reason; tierSource = "heuristic";
         }
       }
 
       // Dispatch
-      const pluginConfig = api.pluginConfig as Record<string, unknown> | undefined;
+      const pluginConfig = getPluginConfig(api);
       const dr = await dispatchTask({
         workspaceDir, agentId: ctx.agentId, groupId, project, issueId: issue.iid,
         issueTitle: issue.title, issueDescription: issue.description ?? "", issueUrl: issue.web_url,
-        role, modelAlias, fromLabel: currentLabel, toLabel: targetLabel,
+        role, tier: selectedTier, fromLabel: currentLabel, toLabel: targetLabel,
         transitionLabel: (id, from, to) => provider.transitionLabel(id, from as StateLabel, to as StateLabel),
         pluginConfig, sessionKey: ctx.sessionKey,
       });
 
-      // Ensure worker state
-      const stateUpdate: { issueId: string; model: string; sessionKey?: string; startTime?: string } = {
-        issueId: String(issue.iid), model: modelAlias,
-      };
-      if (dr.sessionAction === "spawn") {
-        stateUpdate.sessionKey = dr.sessionKey;
-        stateUpdate.startTime = new Date().toISOString();
-      }
-      await activateWorker(workspaceDir, groupId, role, stateUpdate);
-
       // Notify
       const notifyConfig = getNotificationConfig(pluginConfig);
       await notify(
-        { type: "workerStart", project: project.name, groupId, issueId: issue.iid, issueTitle: issue.title, issueUrl: issue.web_url, role, model: dr.modelAlias, sessionAction: dr.sessionAction },
+        { type: "workerStart", project: project.name, groupId, issueId: issue.iid, issueTitle: issue.title, issueUrl: issue.web_url, role, tier: dr.tier, sessionAction: dr.sessionAction },
         { workspaceDir, config: notifyConfig, groupId, channel: context.channel },
       );
 
@@ -143,10 +120,10 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
 
       const output: Record<string, unknown> = {
         success: true, project: project.name, groupId, issueId: issue.iid, issueTitle: issue.title,
-        role, model: dr.modelAlias, fullModel: dr.fullModel, sessionAction: dr.sessionAction,
+        role, tier: dr.tier, model: dr.model, sessionAction: dr.sessionAction,
         announcement: dr.announcement, labelTransition: `${currentLabel} → ${targetLabel}`,
-        modelReason, modelSource,
-        autoDetected: { projectGroupId: !groupIdParam, role: !roleParam, issueId: issueIdParam === undefined, model: !modelParam },
+        tierReason, tierSource,
+        autoDetected: { projectGroupId: !groupIdParam, role: !roleParam, issueId: issueIdParam === undefined, tier: !tierParam },
       };
       if (tickResult?.pickups.length) output.tickPickups = tickResult.pickups;
 
