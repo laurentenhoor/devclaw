@@ -1,5 +1,5 @@
 /**
- * dispatch.ts — Core dispatch logic shared by work_start and work_finish (auto-chain).
+ * dispatch.ts — Core dispatch logic shared by work_start, auto_pickup, and projectTick.
  *
  * Handles: session lookup, spawn/reuse via Gateway RPC, task dispatch via CLI,
  * state update (activateWorker), and audit logging.

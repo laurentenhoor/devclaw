@@ -1,17 +1,16 @@
 /**
  * work_finish — Complete a task (DEV done, QA pass/fail/refine/blocked).
  *
- * Delegates side-effects to pipeline service, then handles notifications,
- * audit, and optional auto-chain dispatch.
+ * Delegates side-effects to pipeline service, then ticks the project queue
+ * to fill free slots, sends notifications, and logs to audit.
  */
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
-import type { StateLabel } from "../providers/provider.js";
+import { readProjects, getProject, getWorker, resolveRepoPath } from "../projects.js";
 import { createProvider } from "../providers/index.js";
-import { resolveRepoPath, readProjects, getProject, getWorker, getSessionForModel } from "../projects.js";
 import { executeCompletion, getRule, NEXT_STATE } from "../services/pipeline.js";
-import { dispatchTask } from "../dispatch.js";
+import { projectTick, type TickResult } from "../services/tick.js";
 import { log as auditLog } from "../audit.js";
 import { notify, getNotificationConfig } from "../notify.js";
 
@@ -19,7 +18,7 @@ export function createWorkFinishTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
     name: "work_finish",
     label: "Work Finish",
-    description: `Complete a task: DEV done/blocked, QA pass/fail/refine/blocked. Handles label transition, state update, issue close/reopen, notifications, and audit. With auto-scheduling, dispatches the next step automatically.`,
+    description: `Complete a task: DEV done/blocked, QA pass/fail/refine/blocked. Handles label transition, state update, issue close/reopen, notifications, audit, and auto-ticks the queue to fill free slots.`,
     parameters: {
       type: "object",
       required: ["role", "result", "projectGroupId"],
@@ -74,31 +73,15 @@ export function createWorkFinishTool(api: OpenClawPluginApi) {
         ...completion,
       };
 
-      // Auto-chain dispatch
+      // Tick: fill free slots after completion
       const pluginConfig = api.pluginConfig as Record<string, unknown> | undefined;
-      const scheduling = (pluginConfig?.scheduling as string) ?? "auto";
-
-      if (scheduling === "auto") {
-        const chainRole = result === "done" ? "qa" : result === "fail" ? "dev" : null;
-        if (chainRole) {
-          const chainModel = chainRole === "qa" ? "qa" : (getWorker(project, "dev").model ?? "medior");
-          try {
-            const issue = await provider.getIssue(issueId);
-            const chainResult = await dispatchTask({
-              workspaceDir, agentId: ctx.agentId, groupId, project, issueId,
-              issueTitle: issue.title, issueDescription: issue.description ?? "", issueUrl: issue.web_url,
-              role: chainRole, modelAlias: chainModel,
-              fromLabel: result === "done" ? "To Test" : "To Improve",
-              toLabel: chainRole === "qa" ? "Testing" : "Doing",
-              transitionLabel: (id, from, to) => provider.transitionLabel(id, from as StateLabel, to as StateLabel),
-              pluginConfig, sessionKey: ctx.sessionKey,
-            });
-            output.autoChain = { dispatched: true, role: chainRole, model: chainResult.modelAlias, announcement: chainResult.announcement };
-          } catch (err) {
-            output.autoChain = { dispatched: false, error: (err as Error).message };
-          }
-        }
-      }
+      let tickResult: TickResult | null = null;
+      try {
+        tickResult = await projectTick({
+          workspaceDir, groupId, agentId: ctx.agentId, pluginConfig, sessionKey: ctx.sessionKey,
+        });
+      } catch { /* non-fatal: tick failure shouldn't break work_finish */ }
+      if (tickResult?.pickups.length) output.tickPickups = tickResult.pickups;
 
       // Notify
       const notifyConfig = getNotificationConfig(pluginConfig);
@@ -111,7 +94,7 @@ export function createWorkFinishTool(api: OpenClawPluginApi) {
       await auditLog(workspaceDir, "work_finish", {
         project: project.name, groupId, issue: issueId, role, result,
         summary: summary ?? null, labelTransition: completion.labelTransition,
-        autoChain: output.autoChain ?? null,
+        tickPickups: tickResult?.pickups.length ?? 0,
       });
 
       return jsonResult(output);

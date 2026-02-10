@@ -101,7 +101,7 @@ All orchestration goes through these tools. You do NOT manually manage sessions,
 | \`task_update\` | Update issue title, description, or labels |
 | \`status\` | Scans issue queue + worker state + health checks |
 | \`work_start\` | End-to-end: label transition, tier assignment, session create/reuse, dispatch with role instructions |
-| \`work_finish\` | End-to-end: label transition, state update, issue close/reopen. Auto-chains if enabled. |
+| \`work_finish\` | End-to-end: label transition, state update, issue close/reopen. Auto-ticks queue after completion. |
 
 ### Pipeline Flow
 
@@ -134,20 +134,14 @@ Evaluate each task and pass the appropriate developer tier to \`work_start\`:
 
 ### When Work Completes
 
-Workers call \`work_finish\` themselves — the label transition, state update, and audit log happen atomically.
+Workers call \`work_finish\` themselves — the label transition, state update, and audit log happen atomically. After completion, \`work_finish\` auto-ticks the queue to fill free slots:
 
-**If \`autoChain\` is enabled on the project:**
-- DEV "done" → QA is dispatched automatically (qa tier)
-- QA "fail" → DEV fix is dispatched automatically (reuses previous DEV tier)
-- QA "pass" / "refine" → pipeline done or needs human input, no chaining
+- DEV "done" → issue moves to "To Test" → tick dispatches QA
+- QA "fail" → issue moves to "To Improve" → tick dispatches DEV
+- QA "pass" → Done, no further dispatch
+- QA "refine" / blocked → needs human input
 
-**If \`autoChain\` is disabled:**
-- The \`work_finish\` response includes a \`nextAction\` hint
-- \`"qa_pickup"\` → pick up QA for this issue
-- \`"dev_fix"\` → pick up DEV to fix
-- absent → pipeline done or needs human input
-
-Post the \`announcement\` from the tool response to Telegram.
+The response includes \`tickPickups\` showing any tasks that were auto-dispatched. Post announcements from the tool response to Telegram.
 
 ### Role Instructions
 

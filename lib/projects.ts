@@ -22,7 +22,6 @@ export type Project = {
   deployUrl: string;
   baseBranch: string;
   deployBranch: string;
-  autoChain: boolean;
   /** Messaging channel for this project's group (e.g. "telegram", "whatsapp", "discord", "slack"). Stored at registration time. */
   channel?: string;
   /** Project-level role execution: parallel (DEV+QA can run simultaneously) or sequential (only one role at a time). Default: parallel */
@@ -132,9 +131,6 @@ export async function readProjects(workspaceDir: string): Promise<ProjectsData> 
     project.qa = project.qa
       ? migrateWorkerState(project.qa as unknown as Record<string, unknown>)
       : emptyWorkerState([]);
-    if (project.autoChain === undefined) {
-      project.autoChain = false;
-    }
     if (!project.channel) {
       project.channel = "telegram";
     }

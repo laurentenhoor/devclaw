@@ -204,7 +204,6 @@ export function createProjectRegisterTool(api: OpenClawPluginApi) {
         deployUrl,
         baseBranch,
         deployBranch,
-        autoChain: false,
         channel: context.channel,
         roleExecution,
         dev: emptyWorkerState([...DEV_TIERS]),
