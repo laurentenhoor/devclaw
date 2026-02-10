@@ -74,7 +74,7 @@ export async function checkWorkerHealth(opts: {
       fixed: false,
     };
     if (autoFix) {
-      await updateWorker(workspaceDir, groupId, role, { active: false, issueId: null });
+      await updateWorker(workspaceDir, groupId, role, { active: false, issueId: null, startTime: null });
       fix.fixed = true;
     }
     fixes.push(fix);
@@ -95,7 +95,7 @@ export async function checkWorkerHealth(opts: {
       await revertIssueLabel(fix);
       const sessions = { ...worker.sessions };
       if (worker.tier) sessions[worker.tier] = null;
-      await updateWorker(workspaceDir, groupId, role, { active: false, issueId: null, sessions });
+      await updateWorker(workspaceDir, groupId, role, { active: false, issueId: null, startTime: null, sessions });
       fix.fixed = true;
     }
     fixes.push(fix);
@@ -135,7 +135,7 @@ export async function checkWorkerHealth(opts: {
       };
       if (autoFix) {
         await revertIssueLabel(fix);
-        await updateWorker(workspaceDir, groupId, role, { active: false, issueId: null });
+        await updateWorker(workspaceDir, groupId, role, { active: false, issueId: null, startTime: null });
         fix.fixed = true;
       }
       fixes.push(fix);

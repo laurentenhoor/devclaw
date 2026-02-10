@@ -230,6 +230,7 @@ export async function activateWorker(
 /**
  * Mark a worker as inactive after task completion.
  * Preserves sessions map and tier for reuse via updateWorker's spread.
+ * Clears startTime to prevent stale timestamps on inactive workers.
  */
 export async function deactivateWorker(
   workspaceDir: string,
@@ -239,6 +240,7 @@ export async function deactivateWorker(
   return updateWorker(workspaceDir, groupId, role, {
     active: false,
     issueId: null,
+    startTime: null,
   });
 }
 
