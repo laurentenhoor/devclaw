@@ -311,6 +311,7 @@ export function createTaskPickupTool(api: OpenClawPluginApi) {
         transitionLabel: (id, from, to) =>
           provider.transitionLabel(id, from as StateLabel, to as StateLabel),
         pluginConfig,
+        sessionKey: ctx.sessionKey,
       });
 
       // 8b. Explicitly update worker state in projects.json

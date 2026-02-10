@@ -165,6 +165,7 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
                   to as StateLabel,
                 ),
               pluginConfig,
+              sessionKey: ctx.sessionKey,
             });
             output.autoChain = {
               dispatched: true,
@@ -239,6 +240,7 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
                   to as StateLabel,
                 ),
               pluginConfig,
+              sessionKey: ctx.sessionKey,
             });
             output.autoChain = {
               dispatched: true,

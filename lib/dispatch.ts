@@ -4,8 +4,7 @@
  * Handles: session lookup, spawn/reuse via Gateway RPC, task dispatch via CLI,
  * state update (activateWorker), and audit logging.
  */
-import { execFile } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { execFile, spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -40,6 +39,8 @@ export type DispatchOpts = {
   transitionLabel: (issueId: number, from: string, to: string) => Promise<void>;
   /** Plugin config for model resolution */
   pluginConfig?: Record<string, unknown>;
+  /** Orchestrator's session key (used as spawnedBy for subagent tracking) */
+  sessionKey?: string;
 };
 
 export type DispatchResult = {
@@ -201,7 +202,7 @@ export async function dispatchTask(
 
   try {
     if (sessionAction === "spawn") {
-      sessionKey = `agent:${agentId ?? "unknown"}:subagent:${randomUUID()}`;
+      sessionKey = `agent:${agentId ?? "unknown"}:subagent:${project.name}-${role}-${modelAlias}`;
       await execFileAsync(
         "openclaw",
         [
@@ -215,21 +216,38 @@ export async function dispatchTask(
       );
     }
 
-    await execFileAsync(
+    // Dispatch via `gateway call agent --expect-final` as a detached background process.
+    // Without --expect-final the gateway accepts but never processes the request.
+    // Running with --expect-final in a detached process ensures the agent runs
+    // while task_pickup returns immediately.
+    // Using the gateway RPC (not `openclaw agent` CLI) lets us set lane, spawnedBy,
+    // and deliver — matching the official sessions_spawn internals.
+    const orchestratorSessionKey = opts.sessionKey;
+    const gatewayParams = JSON.stringify({
+      idempotencyKey: `devclaw-${project.name}-${issueId}-${role}-${Date.now()}`,
+      agentId: agentId ?? "devclaw",
+      sessionKey: sessionKey!,
+      message: taskMessage,
+      deliver: false,
+      lane: "subagent",
+      ...(orchestratorSessionKey
+        ? { spawnedBy: orchestratorSessionKey }
+        : {}),
+    });
+    const child = spawn(
       "openclaw",
       [
         "gateway",
         "call",
         "agent",
         "--params",
-        JSON.stringify({
-          idempotencyKey: randomUUID(),
-          sessionId: sessionKey!,
-          message: taskMessage,
-        }),
+        gatewayParams,
+        "--expect-final",
+        "--json",
       ],
-      { timeout: 30_000 },
+      { detached: true, stdio: "ignore" },
     );
+    child.unref();
 
     dispatched = true;
 

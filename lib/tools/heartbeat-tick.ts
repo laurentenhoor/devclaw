@@ -510,6 +510,7 @@ export function createHeartbeatTickTool(api: OpenClawPluginApi) {
                 transitionLabel: (id, from, to) =>
                   provider.transitionLabel(id, from as StateLabel, to as StateLabel),
                 pluginConfig,
+                sessionKey: ctx.sessionKey,
               });
 
               result.pickups.push({
