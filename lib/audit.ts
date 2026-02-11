@@ -6,7 +6,7 @@
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 
-const MAX_LOG_LINES = 250;
+const MAX_LOG_LINES = 50;
 
 export async function log(
   workspaceDir: string,
@@ -35,7 +35,7 @@ export async function log(
 async function truncateIfNeeded(filePath: string): Promise<void> {
   try {
     const content = await readFile(filePath, "utf-8");
-    const lines = content.split("\n").filter(line => line.length > 0);
+    const lines = content.split("\n").filter((line) => line.length > 0);
 
     if (lines.length > MAX_LOG_LINES) {
       const keptLines = lines.slice(-MAX_LOG_LINES);

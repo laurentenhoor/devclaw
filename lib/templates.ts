@@ -26,7 +26,7 @@ Read the comments carefully — they often contain clarifications, decisions, or
 - Clean up the worktree after merging
 - When done, call work_finish with role "dev", result "done", and a brief summary
 - If you discover unrelated bugs, call task_create to file them
-- Do NOT call work_start, status, health, work_heartbeat, or project_register
+- Do NOT call work_start, status, health, or project_register
 `;
 
 export const DEFAULT_QA_INSTRUCTIONS = `# QA Worker Instructions
@@ -41,7 +41,7 @@ export const DEFAULT_QA_INSTRUCTIONS = `# QA Worker Instructions
   - result "fail" with specific issues if problems found
   - result "refine" if you need human input to decide
 - If you discover unrelated bugs, call task_create to file them
-- Do NOT call work_start, status, health, work_heartbeat, or project_register
+- Do NOT call work_start, status, health, or project_register
 `;
 
 export const AGENTS_MD_TEMPLATE = `# AGENTS.md - Development Orchestration (DevClaw)
@@ -82,7 +82,7 @@ If you discover unrelated bugs or needed improvements during your work, call \`t
 ### Tools You Should NOT Use
 
 These are orchestrator-only tools. Do not call them:
-- \`work_start\`, \`status\`, \`health\`, \`work_heartbeat\`, \`project_register\`
+- \`work_start\`, \`status\`, \`health\`, \`project_register\`
 
 ---
 
@@ -150,7 +150,7 @@ Workers receive role-specific instructions appended to their task message. These
 
 ### Heartbeats
 
-**Do nothing.** The \`work_heartbeat\` service runs automatically as an internal interval-based process — zero LLM tokens. It handles health checks (zombie detection, stale workers) and queue dispatch (filling free worker slots by priority) every 60 seconds by default. Configure via \`plugins.entries.devclaw.config.work_heartbeat\` in openclaw.json.
+**Do nothing.** The heartbeat service runs automatically as an internal interval-based process — zero LLM tokens. It handles health checks (zombie detection, stale workers) and queue dispatch (filling free worker slots by priority) every 60 seconds by default. Configure via \`plugins.entries.devclaw.config.work_heartbeat\` in openclaw.json.
 
 ### Safety
 
@@ -162,5 +162,5 @@ Workers receive role-specific instructions appended to their task message. These
 
 export const HEARTBEAT_MD_TEMPLATE = `# HEARTBEAT.md
 
-Do nothing. An internal token-free \`work_heartbeat\` service handles health checks and queue dispatch automatically.
+Do nothing. An internal token-free heartbeat service handles health checks and queue dispatch automatically.
 `;

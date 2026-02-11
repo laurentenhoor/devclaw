@@ -2,7 +2,7 @@
  * tick.ts — Project-level queue scan + dispatch.
  *
  * Core function: projectTick() scans one project's queue and fills free worker slots.
- * Called by: work_start (fill parallel slot), work_finish (next pipeline step), work_heartbeat (sweep).
+ * Called by: work_start (fill parallel slot), work_finish (next pipeline step), heartbeat service (sweep).
  */
 import type { Issue, StateLabel } from "../providers/provider.js";
 import type { IssueProvider } from "../providers/provider.js";
@@ -103,7 +103,7 @@ export type TickResult = {
 /**
  * Scan one project's queue and fill free worker slots.
  *
- * Does NOT run health checks (that's work_heartbeat's job).
+ * Does NOT run health checks (that's the heartbeat service's job).
  * Non-destructive: only dispatches if slots are free and issues are queued.
  */
 export async function projectTick(opts: {

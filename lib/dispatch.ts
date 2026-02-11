@@ -1,5 +1,5 @@
 /**
- * dispatch.ts — Core dispatch logic shared by work_start, work_heartbeat, and projectTick.
+ * dispatch.ts — Core dispatch logic shared by work_start and projectTick.
  *
  * Handles: session lookup, spawn/reuse via Gateway RPC, task dispatch via CLI,
  * state update (activateWorker), and audit logging.

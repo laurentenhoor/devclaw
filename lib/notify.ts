@@ -1,13 +1,11 @@
 /**
  * notify.ts — Programmatic alerting for worker lifecycle events.
  *
- * Sends notifications to project groups and orchestrator DM for visibility
- * into the DevClaw pipeline.
+ * Sends notifications to project groups for visibility into the DevClaw pipeline.
  *
  * Event types:
  * - workerStart: Worker spawned/resumed for a task (→ project group)
  * - workerComplete: Worker completed task (→ project group)
- * - heartbeat: Heartbeat tick summary (→ orchestrator DM)
  */
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -16,14 +14,8 @@ import type { TickAction } from "./services/tick.js";
 
 const execFileAsync = promisify(execFile);
 
-export type NotificationConfig = {
-  /** Send heartbeat summaries to orchestrator DM. Default: true */
-  heartbeatDm?: boolean;
-  /** Post when worker starts a task. Default: true */
-  workerStart?: boolean;
-  /** Post when worker completes a task. Default: true */
-  workerComplete?: boolean;
-};
+/** Per-event-type toggle. All default to true — set to false to suppress. */
+export type NotificationConfig = Partial<Record<NotifyEvent["type"], boolean>>;
 
 export type NotifyEvent =
   | {
@@ -47,19 +39,6 @@ export type NotifyEvent =
       result: "done" | "pass" | "fail" | "refine" | "blocked";
       summary?: string;
       nextState?: string;
-    }
-  | {
-      type: "heartbeat";
-      projectsScanned: number;
-      healthFixes: number;
-      pickups: number;
-      skipped: number;
-      dryRun: boolean;
-      pickupDetails?: Array<{
-        project: string;
-        issueId: number;
-        role: "dev" | "qa";
-      }>;
     };
 
 /**
@@ -98,29 +77,6 @@ function buildMessage(event: NotifyEvent): string {
       }
       msg += `\n🔗 ${event.issueUrl}`;
       return msg;
-    }
-
-    case "heartbeat": {
-      if (event.dryRun) {
-        return `🔄 Heartbeat (dry run): scanned ${event.projectsScanned} projects, would pick up ${event.pickups} tasks`;
-      }
-      const parts = [`🔄 Heartbeat: scanned ${event.projectsScanned} projects`];
-      if (event.healthFixes > 0) {
-        parts.push(`fixed ${event.healthFixes} zombie(s)`);
-      }
-      if (event.pickups > 0) {
-        parts.push(`spawned ${event.pickups} worker(s)`);
-        if (event.pickupDetails && event.pickupDetails.length > 0) {
-          const details = event.pickupDetails
-            .map((p) => `${p.project}#${p.issueId}(${p.role})`)
-            .join(", ");
-          parts.push(`[${details}]`);
-        }
-      }
-      if (event.pickups === 0 && event.healthFixes === 0) {
-        parts.push("no actions needed");
-      }
-      return parts.join(", ");
     }
   }
 }
@@ -169,8 +125,7 @@ async function sendMessage(
 /**
  * Send a notification for a worker lifecycle event.
  *
- * Respects notification config settings.
- * Returns true if notification was sent (or skipped due to config), false on error.
+ * Returns true if notification was sent, false on error.
  */
 export async function notify(
   event: NotifyEvent,
@@ -181,36 +136,15 @@ export async function notify(
     groupId?: string;
     /** Channel type for routing (e.g. "telegram", "whatsapp", "discord", "slack") */
     channel?: string;
-    /** Target for DM notifications (orchestrator) */
-    orchestratorDm?: string;
   },
 ): Promise<boolean> {
-  const config = opts.config ?? {};
+  if (opts.config?.[event.type] === false) return true;
+
   const channel = opts.channel ?? "telegram";
-
-  // Check if notification is enabled
-  if (event.type === "workerStart" && config.workerStart === false) {
-    return true; // Skipped, not an error
-  }
-  if (event.type === "workerComplete" && config.workerComplete === false) {
-    return true;
-  }
-  if (event.type === "heartbeat" && config.heartbeatDm === false) {
-    return true;
-  }
-
   const message = buildMessage(event);
-
-  // Determine target
-  let target: string | undefined;
-  if (event.type === "heartbeat") {
-    target = opts.orchestratorDm;
-  } else {
-    target = opts.groupId ?? (event as { groupId?: string }).groupId;
-  }
+  const target = opts.groupId ?? (event as { groupId?: string }).groupId;
 
   if (!target) {
-    // No target specified, can't send
     await auditLog(opts.workspaceDir, "notify_skip", {
       eventType: event.type,
       reason: "no target",
@@ -218,7 +152,6 @@ export async function notify(
     return true; // Not an error, just nothing to do
   }
 
-  // Audit the notification attempt
   await auditLog(opts.workspaceDir, "notify", {
     eventType: event.type,
     target,
@@ -267,15 +200,11 @@ export async function notifyTickPickups(
 }
 
 /**
- * Get notification config from plugin config.
+ * Extract notification config from plugin config.
+ * All event types default to enabled (true).
  */
 export function getNotificationConfig(
   pluginConfig?: Record<string, unknown>,
 ): NotificationConfig {
-  const notifications = pluginConfig?.notifications as NotificationConfig | undefined;
-  return {
-    heartbeatDm: notifications?.heartbeatDm ?? true,
-    workerStart: notifications?.workerStart ?? true,
-    workerComplete: notifications?.workerComplete ?? true,
-  };
+  return (pluginConfig?.notifications as NotificationConfig) ?? {};
 }

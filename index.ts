@@ -6,7 +6,6 @@ import { createTaskUpdateTool } from "./lib/tools/task-update.js";
 import { createTaskCommentTool } from "./lib/tools/task-comment.js";
 import { createStatusTool } from "./lib/tools/status.js";
 import { createHealthTool } from "./lib/tools/health.js";
-import { createWorkHeartbeatTool } from "./lib/tools/work-heartbeat.js";
 import { createProjectRegisterTool } from "./lib/tools/project-register.js";
 import { createSetupTool } from "./lib/tools/setup.js";
 import { createOnboardTool } from "./lib/tools/onboard.js";
@@ -53,9 +52,9 @@ const plugin = {
       },
       notifications: {
         type: "object",
-        description: "Notification settings",
+        description:
+          "Per-event-type notification toggles. All default to true — set to false to suppress.",
         properties: {
-          heartbeatDm: { type: "boolean", default: true },
           workerStart: { type: "boolean", default: true },
           workerComplete: { type: "boolean", default: true },
         },
@@ -63,17 +62,17 @@ const plugin = {
       work_heartbeat: {
         type: "object",
         description:
-          "Token-free interval-based heartbeat service. Runs health checks + queue dispatch automatically. Discovers all DevClaw agents from openclaw.json and processes each independently. Can also be triggered on-demand via CLI command `devclaw heartbeat:tick`.",
+          "Token-free interval-based heartbeat service. Runs health checks + queue dispatch automatically. Discovers all DevClaw agents from openclaw.json and processes each independently.",
         properties: {
           enabled: {
             type: "boolean",
             default: true,
-            description: "Enable automatic periodic heartbeat service. When disabled, heartbeat can still be run on-demand via `devclaw heartbeat:tick` CLI command.",
+            description: "Enable automatic periodic heartbeat service.",
           },
           intervalSeconds: {
             type: "number",
             default: 60,
-            description: "Seconds between automatic heartbeat ticks (only applies when service is enabled). Can be overridden per-tick via CLI option.",
+            description: "Seconds between automatic heartbeat ticks.",
           },
           maxPickupsPerTick: {
             type: "number",
@@ -98,10 +97,6 @@ const plugin = {
     // Operations
     api.registerTool(createStatusTool(api), { names: ["status"] });
     api.registerTool(createHealthTool(api), { names: ["health"] });
-    api.registerTool(createWorkHeartbeatTool(api), {
-      names: ["work_heartbeat"],
-    });
-
     // Setup & config
     api.registerTool(createProjectRegisterTool(api), {
       names: ["project_register"],
@@ -118,7 +113,7 @@ const plugin = {
     registerHeartbeatService(api);
 
     api.logger.info(
-      "DevClaw plugin registered (11 tools, 1 CLI command group, 1 service)",
+      "DevClaw plugin registered (10 tools, 1 CLI command group, 1 service)",
     );
   },
 };

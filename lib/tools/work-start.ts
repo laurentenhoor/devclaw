@@ -111,8 +111,7 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
       );
 
       // Auto-tick disabled per issue #125 - work_start should only pick up the explicitly requested issue
-      // To fill parallel slots, use work_heartbeat instead
-      // const tickPickups = await tickAndNotify({ ... });
+      // The heartbeat service fills parallel slots automatically
 
       const output: Record<string, unknown> = {
         success: true, project: project.name, groupId, issueId: issue.iid, issueTitle: issue.title,
