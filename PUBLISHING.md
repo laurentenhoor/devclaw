@@ -95,7 +95,7 @@ npm pack --dry-run
 npm pack
 
 # Extract and inspect
-tar -xzf openclaw-devclaw-0.1.0.tgz
+tar -xzf laurentenhoor-devclaw-0.1.0.tgz
 ls -la package/
 ```
 

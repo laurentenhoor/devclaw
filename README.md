@@ -8,6 +8,10 @@
 
 DevClaw is a plugin for [OpenClaw](https://openclaw.ai) that turns your orchestrator agent into a development manager. It hires developers, assigns tasks, reviews code, and keeps the pipeline moving — across as many projects as you have group chats. [Get started &rarr;](#getting-started)
 
+```bash
+openclaw plugins install @laurentenhoor/devclaw
+```
+
 ---
 
 ## What it looks like
@@ -331,7 +335,12 @@ Deployment steps, test commands, coding standards, acceptance criteria — all i
 ### Install
 
 ```bash
-cp -r devclaw ~/.openclaw/extensions/
+openclaw plugins install @laurentenhoor/devclaw
+```
+
+Or for local development:
+```bash
+openclaw plugins install -l ./devclaw
 ```
 
 ### Set up through conversation

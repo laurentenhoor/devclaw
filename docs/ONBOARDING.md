@@ -15,8 +15,12 @@ Step-by-step setup: install the plugin, configure an agent, register projects, a
 ## Step 1: Install the plugin
 
 ```bash
-# Copy to extensions directory (auto-discovered on next restart)
-cp -r devclaw ~/.openclaw/extensions/
+openclaw plugins install @laurentenhoor/devclaw
+```
+
+Or for local development:
+```bash
+openclaw plugins install -l ./devclaw
 ```
 
 Verify:
@@ -232,7 +236,7 @@ Change which model powers each level in `openclaw.json` — see [Configuration](
 
 | Responsibility | Who | Details |
 |---|---|---|
-| Plugin installation | You (once) | `cp -r devclaw ~/.openclaw/extensions/` |
+| Plugin installation | You (once) | `openclaw plugins install @laurentenhoor/devclaw` |
 | Agent + workspace setup | Plugin (`setup`) | Creates agent, configures models, writes workspace files |
 | Channel binding migration | Plugin (`setup` with `migrateFrom`) | Automatically moves channel-wide bindings between agents |
 | Label setup | Plugin (`project_register`) | 8 labels, created idempotently via IssueProvider |
