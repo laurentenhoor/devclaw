@@ -68,6 +68,22 @@ Three issues shipped, one sent back for a fix (the scheduler retried it automati
 
 ---
 
+## Why DevClaw
+
+### Autonomous multi-project development
+
+Every project runs in [complete isolation](#execution-modes) with its own queue, workers, and sessions. DEV and QA [execute in parallel](#execution-modes) within each project, and [multiple projects run simultaneously](#execution-modes). The [scheduling engine](#automatic-scheduling) ties it together: a token-free `work_heartbeat` continuously scans queues, dispatches workers, and drives [DEV → QA → DEV feedback loops](#how-tasks-flow-between-roles) — no human in the loop. Workers receive [custom instructions per project per role](#custom-instructions-per-project) at dispatch time: test commands, coding standards, deployment steps.
+
+### Process enforcement
+
+Task state lives in your [existing issue tracker](#your-issues-stay-in-your-tracker) — GitHub or GitLab issues — as the single source of truth. Every tool call is an [atomic operation with rollback](#what-atomic-means-here): label transitions, state updates, session dispatch, and audit logging happen in deterministic code. The agent says what to do; [11 tools enforce how it gets done](#the-toolbox).
+
+### Token savings
+
+[Tier selection](#meet-your-team) routes tasks to the cheapest model that can handle them — Haiku for typos, Opus for architecture (**~30-50%** on simple tasks). [Session reuse](#sessions-accumulate-context) preserves accumulated codebase knowledge across tasks (**~40-60%** per task). The [scheduling engine](#automatic-scheduling) runs on pure CLI calls — **zero** LLM tokens for orchestration. Combined: **~60-80% reduction** versus running everything through one model with fresh context each time.
+
+---
+
 ## The problem DevClaw solves
 
 OpenClaw is a great multi-agent runtime. It handles sessions, tools, channels, gateway RPC — everything you need to run AI agents. But it's a general-purpose platform. It has no opinion about how software gets built.
