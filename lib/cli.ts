@@ -1,5 +1,5 @@
 /**
- * cli.ts — CLI registration for `openclaw devclaw setup`.
+ * cli.ts — CLI registration for `openclaw devclaw setup` and `openclaw devclaw heartbeat`.
  *
  * Uses Commander.js (provided by OpenClaw plugin SDK context).
  */

@@ -63,22 +63,22 @@ const plugin = {
       work_heartbeat: {
         type: "object",
         description:
-          "Token-free interval-based heartbeat service. Runs health checks + queue dispatch automatically.",
+          "Token-free interval-based heartbeat service. Runs health checks + queue dispatch automatically. Discovers all DevClaw agents from openclaw.json and processes each independently. Can also be triggered on-demand via CLI command `devclaw heartbeat:tick`.",
         properties: {
           enabled: {
             type: "boolean",
             default: true,
-            description: "Enable the heartbeat service.",
+            description: "Enable automatic periodic heartbeat service. When disabled, heartbeat can still be run on-demand via `devclaw heartbeat:tick` CLI command.",
           },
           intervalSeconds: {
             type: "number",
             default: 60,
-            description: "Seconds between ticks.",
+            description: "Seconds between automatic heartbeat ticks (only applies when service is enabled). Can be overridden per-tick via CLI option.",
           },
           maxPickupsPerTick: {
             type: "number",
             default: 4,
-            description: "Max worker dispatches per tick.",
+            description: "Max worker dispatches per agent per tick. Applied to each DevClaw agent independently.",
           },
         },
       },
@@ -118,7 +118,7 @@ const plugin = {
     registerHeartbeatService(api);
 
     api.logger.info(
-      "DevClaw plugin registered (11 tools, 1 service, 1 CLI command)",
+      "DevClaw plugin registered (11 tools, 1 CLI command group, 1 service)",
     );
   },
 };
