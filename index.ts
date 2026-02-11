@@ -96,9 +96,9 @@ const plugin = {
 
     // Operations
     api.registerTool(createStatusTool(api), { names: ["status"] });
-    api.registerTool(createHealthTool(api), { names: ["health"] });
+    api.registerTool(createHealthTool(), { names: ["health"] });
     // Setup & config
-    api.registerTool(createProjectRegisterTool(api), {
+    api.registerTool(createProjectRegisterTool(), {
       names: ["project_register"],
     });
     api.registerTool(createSetupTool(api), { names: ["setup"] });

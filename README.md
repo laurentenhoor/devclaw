@@ -395,7 +395,6 @@ Full parameters and usage in the [Tools Reference](docs/TOOLS.md).
 | **[Configuration](docs/CONFIGURATION.md)** | `openclaw.json`, `projects.json`, heartbeat, notifications |
 | **[Onboarding Guide](docs/ONBOARDING.md)** | Full step-by-step setup |
 | **[QA Workflow](docs/QA_WORKFLOW.md)** | QA process and review templates |
-| **[Context Awareness](docs/CONTEXT-AWARENESS.md)** | How tools adapt to group vs. DM vs. agent context |
 | **[Testing](docs/TESTING.md)** | Test suite, fixtures, CI/CD |
 | **[Management Theory](docs/MANAGEMENT.md)** | The delegation model behind the design |
 | **[Roadmap](docs/ROADMAP.md)** | What's coming next |

@@ -2,13 +2,10 @@
  * tool-helpers.ts — Shared resolution helpers for tool execute() functions.
  *
  * Eliminates repeated boilerplate across tools: workspace validation,
- * context detection, project resolution, provider creation.
+ * project resolution, provider creation.
  */
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
-import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "./types.js";
-import type { InteractionContext } from "./context-guard.js";
-import { detectContext, generateGuardrails } from "./context-guard.js";
 import { readProjects, getProject, type Project, type ProjectsData } from "./projects.js";
 import { createProvider, type ProviderWithType } from "./providers/index.js";
 import { projectTick, type TickAction } from "./services/tick.js";
@@ -22,19 +19,6 @@ export function requireWorkspaceDir(ctx: ToolContext): string {
     throw new Error("No workspace directory available in tool context");
   }
   return ctx.workspaceDir;
-}
-
-/**
- * Detect interaction context (via-agent, direct, or group).
- * Extracts devClawAgentIds from plugin config automatically.
- */
-export async function resolveContext(
-  ctx: ToolContext,
-  api: OpenClawPluginApi,
-): Promise<InteractionContext> {
-  const devClawAgentIds =
-    ((api.pluginConfig as Record<string, unknown>)?.devClawAgentIds as string[] | undefined) ?? [];
-  return detectContext(ctx, devClawAgentIds);
 }
 
 /**
@@ -57,20 +41,6 @@ export async function resolveProject(
  */
 export function resolveProvider(project: Project): ProviderWithType {
   return createProvider({ repo: project.repo });
-}
-
-/**
- * Return a standard "group-only" error response for tools restricted to group chats.
- */
-export function groupOnlyError(toolName: string, context: InteractionContext) {
-  return jsonResult({
-    success: false,
-    error: `${toolName} can only be used in project group chats.`,
-    recommendation: context.type === "via-agent"
-      ? "Use onboard instead for setup."
-      : "Use the relevant project group.",
-    contextGuidance: generateGuardrails(context),
-  });
 }
 
 /**

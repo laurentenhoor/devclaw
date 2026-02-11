@@ -11,6 +11,8 @@
  * Workers only consume tokens when they start processing dispatched tasks.
  */
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
+import fs from "node:fs";
+import path from "node:path";
 import { readProjects } from "../projects.js";
 import { log as auditLog } from "../audit.js";
 import { checkWorkerHealth } from "./health.js";
@@ -42,9 +44,6 @@ type ServiceContext = {
   logger: { info(msg: string): void; warn(msg: string): void; error(msg: string): void };
   config: {
     agents?: { list?: Array<{ id: string; workspace?: string }> };
-    plugins?: {
-      entries?: { devclaw?: { config?: { devClawAgentIds?: string[] } } };
-    };
   };
 };
 
@@ -115,21 +114,22 @@ export function registerHeartbeatService(api: OpenClawPluginApi) {
 // ---------------------------------------------------------------------------
 
 /**
- * Extract DevClaw agents from OpenClaw configuration.
+ * Discover DevClaw agents by scanning which agent workspaces have projects.
+ * Self-discovering: any agent whose workspace contains projects/projects.json is processed.
  */
 function discoverAgents(config: ServiceContext["config"]): Agent[] {
-  const devClawAgentIds = config.plugins?.entries?.devclaw?.config?.devClawAgentIds || [];
   const agentsList = config.agents?.list || [];
 
-  return devClawAgentIds
-    .map((agentId) => {
-      const agent = agentsList.find((a) => a.id === agentId);
-      return {
-        agentId,
-        workspace: agent?.workspace || "",
-      };
+  return agentsList
+    .filter((a): a is { id: string; workspace: string } => {
+      if (!a.workspace) return false;
+      try {
+        return fs.existsSync(path.join(a.workspace, "projects", "projects.json"));
+      } catch {
+        return false;
+      }
     })
-    .filter((a): a is Agent => !!a.workspace);
+    .map((a) => ({ agentId: a.id, workspace: a.workspace }));
 }
 
 /**

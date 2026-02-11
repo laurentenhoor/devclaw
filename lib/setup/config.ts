@@ -1,7 +1,7 @@
 /**
  * setup/config.ts — Plugin config writer (openclaw.json).
  *
- * Handles: model level config, devClawAgentIds, tool restrictions, subagent cleanup.
+ * Handles: model level config, tool restrictions, subagent cleanup.
  */
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { HEARTBEAT_DEFAULTS } from "../services/heartbeat.js";
@@ -9,7 +9,7 @@ import { HEARTBEAT_DEFAULTS } from "../services/heartbeat.js";
 type ModelConfig = { dev: Record<string, string>; qa: Record<string, string> };
 
 /**
- * Write DevClaw model level config and devClawAgentIds to openclaw.json plugins section.
+ * Write DevClaw model level config to openclaw.json plugins section.
  *
  * Also configures:
  * - Tool restrictions (deny sessions_spawn, sessions_send) for DevClaw agents
@@ -36,7 +36,6 @@ export async function writePluginConfig(
   configureSubagentCleanup(config);
 
   if (agentId) {
-    addDevClawAgentId(config, agentId);
     addToolRestrictions(config, agentId);
   }
 
@@ -64,14 +63,6 @@ function configureSubagentCleanup(config: Record<string, unknown>): void {
   const defaults = agents.defaults as Record<string, unknown>;
   if (!defaults.subagents) defaults.subagents = {};
   (defaults.subagents as Record<string, unknown>).archiveAfterMinutes = 43200;
-}
-
-function addDevClawAgentId(config: Record<string, unknown>, agentId: string): void {
-  const devclaw = (config as any).plugins.entries.devclaw.config;
-  const existing: string[] = devclaw.devClawAgentIds ?? [];
-  if (!existing.includes(agentId)) {
-    devclaw.devClawAgentIds = [...existing, agentId];
-  }
 }
 
 function addToolRestrictions(config: Record<string, unknown>, agentId: string): void {

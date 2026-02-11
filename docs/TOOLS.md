@@ -320,7 +320,7 @@ Conversational onboarding guide. Returns step-by-step instructions for the agent
 
 **Source:** [`lib/tools/onboard.ts`](../lib/tools/onboard.ts)
 
-**Context:** Works in DMs and via-agent. Blocks group chats (setup should not happen in project groups).
+**Note:** Call this before `setup` to get step-by-step guidance.
 
 **Parameters:**
 

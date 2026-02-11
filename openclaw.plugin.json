@@ -5,11 +5,6 @@
   "configSchema": {
     "type": "object",
     "properties": {
-      "devClawAgentIds": {
-        "type": "array",
-        "items": { "type": "string" },
-        "description": "Agent IDs recognized as DevClaw orchestrators"
-      },
       "models": {
         "type": "object",
         "description": "Model mapping per role and tier",
@@ -40,9 +35,8 @@
       },
       "notifications": {
         "type": "object",
-        "description": "Notification settings",
+        "description": "Per-event-type notification toggles. All default to true — set to false to suppress.",
         "properties": {
-          "heartbeatDm": { "type": "boolean" },
           "workerStart": { "type": "boolean" },
           "workerComplete": { "type": "boolean" }
         }

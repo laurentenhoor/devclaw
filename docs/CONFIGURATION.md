@@ -135,24 +135,6 @@ Control which lifecycle events send notifications:
 | `workerStart` | `true` | Announce when a worker picks up a task |
 | `workerComplete` | `true` | Announce when a worker finishes a task |
 
-### DevClaw Agent IDs
-
-List which agents are recognized as DevClaw orchestrators (used for context detection):
-
-```json
-{
-  "plugins": {
-    "entries": {
-      "devclaw": {
-        "config": {
-          "devClawAgentIds": ["my-orchestrator"]
-        }
-      }
-    }
-  }
-}
-```
-
 ### Agent Tool Permissions
 
 Restrict DevClaw tools to your orchestrator agent:

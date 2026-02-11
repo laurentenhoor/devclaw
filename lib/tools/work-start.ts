@@ -15,7 +15,7 @@ import { dispatchTask } from "../dispatch.js";
 import { notify, getNotificationConfig } from "../notify.js";
 import { findNextIssue, detectRoleFromLabel, detectLevelFromLabels } from "../services/tick.js";
 import { isDevLevel } from "../tiers.js";
-import { requireWorkspaceDir, resolveContext, resolveProject, resolveProvider, groupOnlyError, getPluginConfig, tickAndNotify } from "../tool-helpers.js";
+import { requireWorkspaceDir, resolveProject, resolveProvider, getPluginConfig } from "../tool-helpers.js";
 
 export function createWorkStartTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
@@ -24,10 +24,11 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
     description: `Pick up a task from the issue queue. ONLY works in project group chats. Handles label transition, level assignment, session creation, dispatch, and audit. Picks up only the explicitly requested issue.`,
     parameters: {
       type: "object",
+      required: ["projectGroupId"],
       properties: {
+        projectGroupId: { type: "string", description: "Project group ID." },
         issueId: { type: "number", description: "Issue ID. If omitted, picks next by priority." },
         role: { type: "string", enum: ["dev", "qa"], description: "Worker role. Auto-detected from label if omitted." },
-        projectGroupId: { type: "string", description: "Project group ID. Auto-detected from group context." },
         level: { type: "string", description: "Developer level (junior/medior/senior/reviewer). Auto-detected if omitted." },
       },
     },
@@ -35,15 +36,11 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
     async execute(_id: string, params: Record<string, unknown>) {
       const issueIdParam = params.issueId as number | undefined;
       const roleParam = params.role as "dev" | "qa" | undefined;
-      const groupIdParam = params.projectGroupId as string | undefined;
+      const groupId = params.projectGroupId as string;
       const levelParam = (params.level ?? params.tier) as string | undefined;
       const workspaceDir = requireWorkspaceDir(ctx);
 
-      // Context guard: group only
-      const context = await resolveContext(ctx, api);
-      if (context.type !== "group") return groupOnlyError("work_start", context);
-
-      const groupId = groupIdParam ?? context.groupId;
+      if (!groupId) throw new Error("projectGroupId is required");
       const { project } = await resolveProject(workspaceDir, groupId);
       const { provider } = resolveProvider(project);
 
@@ -107,7 +104,7 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
       const notifyConfig = getNotificationConfig(pluginConfig);
       await notify(
         { type: "workerStart", project: project.name, groupId, issueId: issue.iid, issueTitle: issue.title, issueUrl: issue.web_url, role, level: dr.level, sessionAction: dr.sessionAction },
-        { workspaceDir, config: notifyConfig, groupId, channel: context.channel },
+        { workspaceDir, config: notifyConfig, groupId, channel: project.channel ?? "telegram" },
       );
 
       // Auto-tick disabled per issue #125 - work_start should only pick up the explicitly requested issue
@@ -118,7 +115,7 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
         role, level: dr.level, model: dr.model, sessionAction: dr.sessionAction,
         announcement: dr.announcement, labelTransition: `${currentLabel} → ${targetLabel}`,
         levelReason, levelSource,
-        autoDetected: { projectGroupId: !groupIdParam, role: !roleParam, issueId: issueIdParam === undefined, level: !levelParam },
+        autoDetected: { role: !roleParam, issueId: issueIdParam === undefined, level: !levelParam },
       };
       // tickPickups removed with auto-tick
 

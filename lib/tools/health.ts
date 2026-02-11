@@ -2,17 +2,15 @@
  * health — Worker health scan with optional auto-fix.
  *
  * Read-only by default (surfaces issues). Pass fix=true to apply fixes.
- * Context-aware: auto-filters to project in group chats.
  */
-import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
-import { readProjects, getProject, type Project } from "../projects.js";
+import { readProjects, getProject } from "../projects.js";
 import { log as auditLog } from "../audit.js";
 import { checkWorkerHealth, type HealthFix } from "../services/health.js";
-import { requireWorkspaceDir, resolveContext, resolveProvider } from "../tool-helpers.js";
+import { requireWorkspaceDir, resolveProvider } from "../tool-helpers.js";
 
-export function createHealthTool(api: OpenClawPluginApi) {
+export function createHealthTool() {
   return (ctx: ToolContext) => ({
     name: "health",
     label: "Health",
@@ -31,10 +29,7 @@ export function createHealthTool(api: OpenClawPluginApi) {
       const fix = (params.fix as boolean) ?? false;
       const activeSessions = (params.activeSessions as string[]) ?? [];
 
-      // Auto-filter in group context
-      const context = await resolveContext(ctx, api);
-      let groupId = params.projectGroupId as string | undefined;
-      if (context.type === "group" && !groupId) groupId = context.groupId;
+      const groupId = params.projectGroupId as string | undefined;
 
       const data = await readProjects(workspaceDir);
       const projectIds = groupId ? [groupId] : Object.keys(data.projects);
