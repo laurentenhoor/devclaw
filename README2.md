@@ -12,29 +12,43 @@ DevClaw is a plugin for [OpenClaw](https://openclaw.ai) that turns your orchestr
 
 ## What it looks like
 
-Add your OpenClaw agent to a Telegram group. Register a project. That's it — you now have a dev team:
+You have two projects in two Telegram groups. You go to bed. You wake up:
+
+```
+── Group: "Dev - My Webapp" ──────────────────────────────
+
+Agent:  "⚡ Sending DEV (medior) for #42: Add login page"
+Agent:  "✅ DEV DONE #42 — Login page with OAuth. Moved to QA."
+Agent:  "🔍 Sending QA (reviewer) for #42: Add login page"
+Agent:  "🎉 QA PASS #42. Issue closed."
+Agent:  "⚡ Sending DEV (junior) for #43: Fix button color on /settings"
+Agent:  "✅ DEV DONE #43 — Updated to brand blue. Moved to QA."
+Agent:  "🔍 Sending QA (reviewer) for #43: Fix button color on /settings"
+Agent:  "❌ QA FAIL #43 — Color doesn't match dark mode. Back to DEV."
+Agent:  "⚡ Sending DEV (junior) for #43: Fix button color on /settings"
+
+── Group: "Dev - My API" ─────────────────────────────────
+
+Agent:  "🧠 Spawning DEV (senior) for #18: Migrate auth to OAuth2"
+Agent:  "✅ DEV DONE #18 — OAuth2 provider with refresh tokens. Moved to QA."
+Agent:  "🔍 Sending QA (reviewer) for #18: Migrate auth to OAuth2"
+Agent:  "🎉 QA PASS #18. Issue closed."
+Agent:  "⚡ Sending DEV (medior) for #19: Add rate limiting to /api/search"
+```
+
+Three issues shipped, one sent back for a fix (and auto-retried), another project's migration completed — all while you slept. The heartbeat scanned the queues, dispatched workers, chained DEV into QA, and chained QA failures back to DEV. No human in the loop.
+
+You can also drive it manually:
 
 ```
 You:    "Check the queue"
-Agent:  "3 issues in To Do. DEV is idle. QA is idle."
+Agent:  "2 issues in To Do. DEV is idle. QA is idle."
 
-You:    "Pick up #42 for DEV"
-Agent:  "⚡ Sending DEV (medior) for #42: Add login page"
-        (a Sonnet session opens, reads the repo, starts coding)
-
-        ... 10 minutes later ...
-
-Agent:  "✅ DEV DONE #42 — Login page with OAuth. Moved to QA."
-        (a reviewer session opens automatically, starts reviewing)
-
-        ... 5 minutes later ...
-
-Agent:  "🎉 QA PASS #42. Issue closed."
+You:    "Pick up #44 for DEV"
+Agent:  "⚡ Sending DEV (medior) for #44: Refactor user profile page"
 ```
 
-No configuration between those steps. No manual handoff. The developer finished, QA started automatically, the issue closed itself. You watched it happen in your group chat.
-
-Add another group → another project. Same agent, fully isolated teams.
+Same agent, as many groups as you want, fully isolated teams per project.
 
 ---
 
