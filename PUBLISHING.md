@@ -2,9 +2,9 @@
 
 ## Package Details
 
-- **Name:** `@openclaw/devclaw`
+- **Name:** `@laurentenhoor/devclaw`
 - **npm Profile:** https://www.npmjs.com/settings/laurentenhoor/packages
-- **Package URL:** https://www.npmjs.com/package/@openclaw/devclaw
+- **Package URL:** https://www.npmjs.com/package/@laurentenhoor/devclaw
 
 ## Prerequisites
 
@@ -148,18 +148,18 @@ git push && git push --tags
 After publishing, verify:
 
 1. **Package appears on npm:**
-   - https://www.npmjs.com/package/@openclaw/devclaw
+   - https://www.npmjs.com/package/@laurentenhoor/devclaw
 
 2. **Test installation:**
    ```bash
    # In a temporary directory
    mkdir test-install && cd test-install
-   npm install @openclaw/devclaw
+   npm install @laurentenhoor/devclaw
    ```
 
 3. **Check package contents:**
    ```bash
-   ls -la node_modules/@openclaw/devclaw/
+   ls -la node_modules/@laurentenhoor/devclaw/
    ```
 
 ## Troubleshooting

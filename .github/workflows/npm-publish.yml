@@ -44,6 +44,6 @@ jobs:
         run: |
           echo "## ✅ Published to npm" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Package:** \`@openclaw/devclaw\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Package:** \`@laurentenhoor/devclaw\`" >> $GITHUB_STEP_SUMMARY
           echo "**Version:** \`$(node -p "require('./package.json').version")\`" >> $GITHUB_STEP_SUMMARY
-          echo "**URL:** https://www.npmjs.com/package/@openclaw/devclaw" >> $GITHUB_STEP_SUMMARY
+          echo "**URL:** https://www.npmjs.com/package/@laurentenhoor/devclaw" >> $GITHUB_STEP_SUMMARY

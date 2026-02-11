@@ -1,14 +1,18 @@
 {
-  "name": "@openclaw/devclaw",
+  "name": "@laurentenhoor/devclaw",
   "version": "0.1.0",
   "description": "Multi-project dev/qa pipeline orchestration for OpenClaw",
   "type": "module",
   "license": "MIT",
-  "author": "laurentenhoor",
+  "author": "Lauren ten Hoor <laurentenhoor@gmail.com>",
   "repository": {
     "type": "git",
     "url": "https://github.com/laurentenhoor/devclaw.git"
   },
+  "bugs": {
+    "url": "https://github.com/laurentenhoor/devclaw/issues"
+  },
+  "homepage": "https://github.com/laurentenhoor/devclaw#readme",
   "keywords": [
     "openclaw",
     "openclaw-plugin",
@@ -27,6 +31,7 @@
     ]
   },
   "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "files": [
     "dist/",
     "roles/",
