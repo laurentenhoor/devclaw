@@ -2,7 +2,7 @@
   <img src="assets/DevClaw.png" width="300" alt="DevClaw Logo">
 </p>
 
-# DevClaw
+# DevClaw — Development Plugin for OpenClaw
 
 **Turn any group chat into a dev team that ships.**
 
@@ -52,13 +52,41 @@ Multiple issues shipped, a QA failure automatically retried, and a second projec
 
 Every project runs in [complete isolation](#execution-modes) with its own queue, workers, and sessions. DEV and QA [execute in parallel](#execution-modes) within each project, and [multiple projects run simultaneously](#execution-modes). The [scheduling engine](#automatic-scheduling) ties it together: a token-free `work_heartbeat` continuously scans queues, dispatches workers, and drives [DEV → QA → DEV feedback loops](#how-tasks-flow-between-roles) — no human in the loop. Workers receive [custom instructions per project per role](#custom-instructions-per-project) at dispatch time: test commands, coding standards, deployment steps.
 
+```
+┌─ work_heartbeat ─────────────────┐
+│  health → queue → dispatch       │
+│  every 60s · zero LLM tokens     │
+└──────────┬───────────────────────┘
+           │
+     ┌─────▼─────────────────────┐
+     │  My Webapp                │
+     │                           │
+     │  DEV (medior) ──▶ QA      │
+     │   #43              #42    │
+     │                           │
+     │  dev.md · qa.md           │
+     └───────────────────────────┘
+           │
+     ┌─────▼─────────────────────┐
+     │  My API                   │
+     │                           │
+     │  DEV (senior) ──▶ QA      │
+     │   #19              #18    │
+     │                           │
+     │  dev.md · qa.md           │
+     └───────────────────────────┘
+
+     each project fully isolated:
+     own queue · own workers · own sessions
+```
+
 ### Process enforcement
 
 Task state lives in your [existing issue tracker](#your-issues-stay-in-your-tracker) — GitHub or GitLab issues — as the single source of truth. Every tool call is an [atomic operation with rollback](#what-atomic-means-here): label transitions, state updates, session dispatch, and audit logging happen in deterministic code. The agent says what to do; [11 tools enforce how it gets done](#the-toolbox).
 
-### Token savings
+### ~60-80% token savings
 
-[Tier selection](#meet-your-team) routes tasks to the cheapest model that can handle them — Haiku for typos, Opus for architecture (**~30-50%** on simple tasks). [Session reuse](#sessions-accumulate-context) preserves accumulated codebase knowledge across tasks (**~40-60%** per task). The [scheduling engine](#automatic-scheduling) runs on pure CLI calls — **zero** LLM tokens for orchestration. Combined: **~60-80% reduction** versus running everything through one model with fresh context each time.
+[Tier selection](#meet-your-team) routes tasks to the cheapest model that can handle them — Haiku for typos, Opus for architecture (~30-50% on simple tasks). [Session reuse](#sessions-accumulate-context) preserves accumulated codebase knowledge across tasks (~40-60% per task). The [scheduling engine](#automatic-scheduling) runs on pure CLI calls — zero LLM tokens for orchestration.
 
 ---
 
