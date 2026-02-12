@@ -111,13 +111,26 @@ Ask: "Do you want to configure DevClaw for the current agent, or create a new de
      - If none selected, user can add bindings manually later via openclaw.json
 
 **Step 2: Model Configuration**
-Show the default level-to-model mapping and ask if they want to customize:
+⚠️ **IMPORTANT**: First check what models the user has access to! The defaults below are suggestions.
+
+Ask: "What models do you have access to in your OpenClaw configuration?"
+- Guide them to check their available models (router configuration, API keys, etc.)
+- If they have the default Claude models, great!
+- If not, help them map their available models to these levels:
+
+**Suggested default level-to-model mapping:**
 
 | Role | Level | Default Model | Purpose |
 |------|-------|---------------|---------|
 ${modelTable}
 
-If the defaults are fine, proceed. If customizing, ask which levels to change.
+**Model selection guidance:**
+- **junior/tester**: Fastest, cheapest models (Haiku-class, GPT-4-mini, etc.)
+- **medior/reviewer**: Balanced models (Sonnet-class, GPT-4, etc.)
+- **senior**: Most capable models (Opus-class, o1, etc.)
+
+Ask which levels they want to customize, and collect their actual model IDs.
+💡 **Tip**: Guide users to configure finer-grained mappings rather than accepting unsuitable defaults.
 
 **Step 3: Run Setup**
 Call \`setup\` with the collected answers:
@@ -125,10 +138,43 @@ Call \`setup\` with the collected answers:
 - New agent: \`setup({ newAgentName: "<name>", channelBinding: "telegram"|"whatsapp"|null, migrateFrom: "<agentId>"|null, models: { ... } })\`
   - \`migrateFrom\`: Include if user wants to migrate an existing channel-wide binding
 
-**Step 4: Optional Project Registration**
-After setup, ask: "Would you like to register a project now?"
+**Step 4: Telegram Group Setup (IMPORTANT)**
+After setup completes, explain project isolation best practices:
+
+📱 **Telegram Group Guidance:**
+DevClaw uses **one Telegram group per project** for isolation and clean backlogs.
+
+**Recommended Setup:**
+1. **Create a new Telegram group** for each project
+2. **Add your bot** to the group
+3. **Use mentions** to interact: "@botname status", "@botname pick up #42"
+4. Each group gets its own queue, workers, and audit log
+
+**Why separate groups?**
+- Clean issue backlogs per project
+- Isolated worker state (no cross-project confusion)
+- Clear audit trails
+- Team-specific access control
+
+**Single-project mode:**
+If you REALLY want all projects in one group (not recommended):
+- You can register multiple projects to the same group ID
+- ⚠️ WARNING: Shared queues, workers will see all issues
+- Only use this for personal/solo projects
+
+Ask: "Do you understand the group-per-project model, or do you want single-project mode?"
+- Most users should proceed with the recommended approach
+- Only force single-project if they insist
+
+**Step 5: Project Registration**
+Ask: "Would you like to register a project now?"
 If yes, collect: project name, repo path, Telegram group ID, group name, base branch.
 Then call \`project_register\`.
+
+💡 **Tip**: For the Telegram group ID:
+- Add the bot to your group
+- Send any message with the bot mentioned
+- Bot can tell you the group ID
 
 ## Guidelines
 - Be conversational and friendly. Ask one question at a time.
