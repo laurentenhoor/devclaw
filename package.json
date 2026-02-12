@@ -27,7 +27,7 @@
   },
   "openclaw": {
     "extensions": [
-      "./index.ts"
+      "./dist/index.js"
     ]
   },
   "main": "./dist/index.js",
@@ -35,7 +35,8 @@
   "files": [
     "dist/",
     "roles/",
-    "docs/"
+    "docs/",
+    "openclaw.plugin.json"
   ],
   "publishConfig": {
     "access": "public"
