@@ -324,6 +324,49 @@ Deployment steps, test commands, coding standards, acceptance criteria — all i
 
 ---
 
+## The orchestrator's role
+
+The orchestrator is a **planner and dispatcher** — not a coder. This separation is intentional and enforced.
+
+### What the orchestrator does
+
+- **Plans**: Analyzes requirements, breaks down work, decides priorities
+- **Dispatches**: Creates issues, assigns developer levels, starts workers
+- **Coordinates**: Monitors queue, handles status checks, answers questions
+- **Reads**: Can inspect code to understand context (but never writes)
+
+### What goes through workers
+
+All implementation work flows through the issue → worker pipeline:
+
+| Action | Goes through worker? | Why |
+|---|---|---|
+| Writing or editing code | ✅ Yes | Audit trail, tier selection |
+| Git operations (commits, branches, PRs) | ✅ Yes | Workers own their worktrees |
+| Running tests | ✅ Yes | Part of the dev/QA workflow |
+| Fixing bugs | ✅ Yes | Even quick fixes need tracking |
+| Refactoring | ✅ Yes | Sonnet/Opus for complexity |
+| Reading code to answer questions | ❌ No | Orchestrator can read |
+| Creating issues | ❌ No | Orchestrator's job |
+| Status checks | ❌ No | Orchestrator's job |
+| Architecture discussions | ❌ No | Orchestrator's job |
+
+### Why this boundary exists
+
+1. **Audit trail** — Every code change links to an issue. You can trace any line of code back to a tracked task.
+
+2. **Right model for the job** — A typo fix uses Haiku (~$0.001). A migration uses Opus (~$0.20). Without tier selection, you're either overpaying or underperforming on every task.
+
+3. **Parallelization** — While workers code, the orchestrator stays free to handle new requests, answer questions, create more issues. No bottleneck.
+
+4. **QA pipeline** — Code goes through review before merging. Skip the worker pipeline, skip QA.
+
+5. **Session reuse** — Workers accumulate codebase context over multiple tasks. The orchestrator starting fresh every time wastes tokens.
+
+The orchestrator saying "I'll just make this quick fix myself" is like a manager saying "I'll just write that feature instead of assigning it." Technically possible, but it breaks the system that makes everything else work.
+
+---
+
 ## Getting started
 
 ### Prerequisites

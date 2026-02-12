@@ -589,11 +589,13 @@ graph LR
         Z[Zombie cleanup]
     end
 
-    subgraph "Orchestrator handles"
+    subgraph "Orchestrator handles (planning only)"
         MSG[Telegram announcements]
         HB[Heartbeat scheduling]
         DEC[Task prioritization]
         M[Developer assignment<br/>junior/medior/senior]
+        READ[Code reading for context]
+        PLAN[Requirements & planning]
     end
 
     subgraph "Sub-agent sessions handle"
@@ -608,6 +610,8 @@ graph LR
         HR[Human decisions]
     end
 ```
+
+**Key boundary:** The orchestrator is a planner and dispatcher — it never writes code. All implementation work (code edits, git operations, tests) must go through sub-agent sessions via the `task_create` → `work_start` pipeline. This ensures audit trails, tier selection, and QA review for every code change.
 
 ## IssueProvider abstraction
 
