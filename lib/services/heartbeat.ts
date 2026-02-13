@@ -18,6 +18,7 @@ import { log as auditLog } from "../audit.js";
 import { checkWorkerHealth } from "./health.js";
 import { projectTick } from "./tick.js";
 import { createProvider } from "../providers/index.js";
+import { notifyTickPickups, getNotificationConfig } from "../notify.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -254,6 +255,16 @@ export async function tick(opts: {
 
     result.totalPickups += tickResult.pickups.length;
     result.totalSkipped += tickResult.skipped.length;
+
+    // Notify project group about any pickups
+    if (tickResult.pickups.length > 0) {
+      const notifyConfig = getNotificationConfig(pluginConfig);
+      await notifyTickPickups(tickResult.pickups, {
+        workspaceDir,
+        config: notifyConfig,
+        channel: project.channel,
+      });
+    }
     if (isProjectActive || tickResult.pickups.length > 0) activeProjects++;
   }
 
