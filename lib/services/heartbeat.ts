@@ -15,7 +15,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { readProjects } from "../projects.js";
 import { log as auditLog } from "../audit.js";
-import { checkWorkerHealth } from "./health.js";
+import { checkWorkerHealth, fetchGatewaySessions, type SessionLookup } from "./health.js";
 import { projectTick } from "./tick.js";
 import { createProvider } from "../providers/index.js";
 import { notifyTickPickups, getNotificationConfig } from "../notify.js";
@@ -184,12 +184,16 @@ async function processAllAgents(
     totalSkipped: 0,
   };
 
+  // Fetch gateway sessions once for all agents/projects
+  const sessions = await fetchGatewaySessions();
+
   for (const { agentId, workspace } of agents) {
     const agentResult = await tick({
       workspaceDir: workspace,
       agentId,
       config,
       pluginConfig,
+      sessions,
       logger,
     });
 
@@ -221,9 +225,10 @@ export async function tick(opts: {
   agentId?: string;
   config: HeartbeatConfig;
   pluginConfig?: Record<string, unknown>;
+  sessions: SessionLookup;
   logger: { info(msg: string): void; warn(msg: string): void };
 }): Promise<TickResult> {
-  const { workspaceDir, agentId, config, pluginConfig } = opts;
+  const { workspaceDir, agentId, config, pluginConfig, sessions } = opts;
 
   const data = await readProjects(workspaceDir);
   const projectIds = Object.keys(data.projects);
@@ -250,6 +255,7 @@ export async function tick(opts: {
       workspaceDir,
       groupId,
       project,
+      sessions,
     );
 
     // Budget check: stop if we've hit the limit
@@ -304,6 +310,7 @@ async function performHealthPass(
   workspaceDir: string,
   groupId: string,
   project: any,
+  sessions: SessionLookup,
 ): Promise<number> {
   const { provider } = await createProvider({ repo: project.repo });
   let fixedCount = 0;
@@ -314,7 +321,7 @@ async function performHealthPass(
       groupId,
       project,
       role,
-      activeSessions: [],
+      sessions,
       autoFix: true,
       provider,
     });
@@ -332,5 +339,3 @@ async function checkProjectActive(workspaceDir: string, groupId: string): Promis
   if (!fresh) return false;
   return fresh.dev.active || fresh.qa.active;
 }
-
-
