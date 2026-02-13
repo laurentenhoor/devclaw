@@ -91,7 +91,8 @@ export async function fetchGatewaySessions(): Promise<SessionLookup | null> {
       { timeoutMs: 15_000 },
     );
 
-    const data = JSON.parse(result.stdout);
+    const jsonStart = result.stdout.indexOf("{");
+    const data = JSON.parse(jsonStart >= 0 ? result.stdout.slice(jsonStart) : result.stdout);
     const sessions: GatewaySession[] = data?.sessions?.recent ?? [];
 
     for (const session of sessions) {
