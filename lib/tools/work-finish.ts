@@ -10,7 +10,7 @@ import type { ToolContext } from "../types.js";
 import { getWorker, resolveRepoPath } from "../projects.js";
 import { executeCompletion, getRule, NEXT_STATE } from "../services/pipeline.js";
 import { log as auditLog } from "../audit.js";
-import { requireWorkspaceDir, resolveProject, resolveProvider, getPluginConfig, tickAndNotify } from "../tool-helpers.js";
+import { requireWorkspaceDir, resolveProject, resolveProvider, getPluginConfig } from "../tool-helpers.js";
 
 export function createWorkFinishTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
@@ -73,18 +73,10 @@ export function createWorkFinishTool(api: OpenClawPluginApi) {
         ...completion,
       };
 
-      // Tick: fill free slots (notifications handled by dispatchTask with runtime)
-      const tickPickups = await tickAndNotify({
-        workspaceDir, groupId, agentId: ctx.agentId, pluginConfig, sessionKey: ctx.sessionKey,
-        runtime: api.runtime,
-      });
-      if (tickPickups.length) output.tickPickups = tickPickups;
-
       // Audit
       await auditLog(workspaceDir, "work_finish", {
         project: project.name, groupId, issue: issueId, role, result,
         summary: summary ?? null, labelTransition: completion.labelTransition,
-        tickPickups: tickPickups.length,
       });
 
       return jsonResult(output);
