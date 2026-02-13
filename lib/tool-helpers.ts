@@ -4,11 +4,10 @@
  * Eliminates repeated boilerplate across tools: workspace validation,
  * project resolution, provider creation.
  */
-import type { OpenClawPluginApi, PluginRuntime } from "openclaw/plugin-sdk";
+import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import type { ToolContext } from "./types.js";
 import { readProjects, getProject, type Project, type ProjectsData } from "./projects.js";
 import { createProvider, type ProviderWithType } from "./providers/index.js";
-import { projectTick, type TickAction } from "./services/tick.js";
 
 /**
  * Require workspaceDir from context or throw a clear error.
@@ -47,35 +46,4 @@ export async function resolveProvider(project: Project): Promise<ProviderWithTyp
  */
 export function getPluginConfig(api: OpenClawPluginApi): Record<string, unknown> | undefined {
   return api.pluginConfig as Record<string, unknown> | undefined;
-}
-
-/**
- * Run projectTick (non-fatal). Notifications are now handled by dispatchTask.
- * Returns the pickups array (empty on failure).
- */
-export async function tickAndNotify(opts: {
-  workspaceDir: string;
-  groupId: string;
-  agentId?: string;
-  pluginConfig?: Record<string, unknown>;
-  sessionKey?: string;
-  targetRole?: "dev" | "qa";
-  /** Plugin runtime for direct API access (avoids CLI subprocess timeouts) */
-  runtime?: PluginRuntime;
-}): Promise<TickAction[]> {
-  try {
-    const result = await projectTick({
-      workspaceDir: opts.workspaceDir,
-      groupId: opts.groupId,
-      agentId: opts.agentId,
-      pluginConfig: opts.pluginConfig,
-      sessionKey: opts.sessionKey,
-      targetRole: opts.targetRole,
-      runtime: opts.runtime,
-    });
-    return result.pickups;
-  } catch {
-    /* non-fatal: tick failure shouldn't break the caller */
-    return [];
-  }
 }
