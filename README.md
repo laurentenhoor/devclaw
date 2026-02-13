@@ -221,7 +221,7 @@ Every tick (default: 60 seconds), the scheduler runs two passes:
 1. **Health pass** — detects workers stuck for >2 hours, reverts their labels back to queue, deactivates them. Catches crashed sessions, context overflows, or workers that died without reporting back.
 2. **Queue pass** — scans for available tasks by priority (`To Improve` > `To Test` > `To Do`), fills free worker slots. DEV and QA slots are filled independently.
 
-All CLI calls and JSON reads. Workers only consume tokens when they actually start coding or reviewing. The scheduler also fires immediately after every `work_finish` (as a tick), so transitions happen without waiting for the next interval.
+All CLI calls and JSON reads. Workers only consume tokens when they actually start coding or reviewing. The heartbeat scheduler runs at regular intervals to pick up new tasks.
 
 ### How tasks flow between roles
 
@@ -437,7 +437,7 @@ DevClaw gives the orchestrator 11 tools. These aren't just convenience wrappers 
 | Tool | What it does |
 |---|---|
 | `work_start` | Pick up a task — resolves level, transitions label, dispatches session, logs audit |
-| `work_finish` | Complete a task — transitions label, updates state, ticks queue for next dispatch |
+| `work_finish` | Complete a task — transitions label, updates state, closes/reopens issue |
 | `task_create` | Create a new issue (used by workers to file bugs they discover) |
 | `task_update` | Manually change an issue's state label |
 | `task_comment` | Add a comment to an issue (with role attribution) |
