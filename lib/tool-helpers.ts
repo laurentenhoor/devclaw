@@ -9,7 +9,6 @@ import type { ToolContext } from "./types.js";
 import { readProjects, getProject, type Project, type ProjectsData } from "./projects.js";
 import { createProvider, type ProviderWithType } from "./providers/index.js";
 import { projectTick, type TickAction } from "./services/tick.js";
-import { notifyTickPickups, getNotificationConfig } from "./notify.js";
 
 /**
  * Require workspaceDir from context or throw a clear error.
@@ -51,7 +50,7 @@ export function getPluginConfig(api: OpenClawPluginApi): Record<string, unknown>
 }
 
 /**
- * Run projectTick (non-fatal) and send workerStart notifications for any pickups.
+ * Run projectTick (non-fatal). Notifications are now handled by dispatchTask.
  * Returns the pickups array (empty on failure).
  */
 export async function tickAndNotify(opts: {
@@ -61,9 +60,7 @@ export async function tickAndNotify(opts: {
   pluginConfig?: Record<string, unknown>;
   sessionKey?: string;
   targetRole?: "dev" | "qa";
-  channel?: string;
 }): Promise<TickAction[]> {
-  let pickups: TickAction[] = [];
   try {
     const result = await projectTick({
       workspaceDir: opts.workspaceDir,
@@ -73,17 +70,9 @@ export async function tickAndNotify(opts: {
       sessionKey: opts.sessionKey,
       targetRole: opts.targetRole,
     });
-    pickups = result.pickups;
-  } catch { /* non-fatal: tick failure shouldn't break the caller */ }
-
-  if (pickups.length) {
-    const notifyConfig = getNotificationConfig(opts.pluginConfig);
-    await notifyTickPickups(pickups, {
-      workspaceDir: opts.workspaceDir,
-      config: notifyConfig,
-      channel: opts.channel,
-    });
+    return result.pickups;
+  } catch {
+    /* non-fatal: tick failure shouldn't break the caller */
+    return [];
   }
-
-  return pickups;
 }

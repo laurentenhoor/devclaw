@@ -8,7 +8,6 @@
  * - workerComplete: Worker completed task (→ project group)
  */
 import { log as auditLog } from "./audit.js";
-import type { TickAction } from "./services/tick.js";
 import { runCommand } from "./run-command.js";
 
 /** Per-event-type toggle. All default to true — set to false to suppress. */
@@ -157,43 +156,6 @@ export async function notify(
   });
 
   return sendMessage(target, message, channel, opts.workspaceDir);
-}
-
-/**
- * Send workerStart notifications for each tick pickup.
- *
- * Called after projectTick() returns pickups — callers pass the array
- * so each dispatched task gets a visible start notification in the project group.
- */
-export async function notifyTickPickups(
-  pickups: TickAction[],
-  opts: {
-    workspaceDir: string;
-    config?: NotificationConfig;
-    channel?: string;
-  },
-): Promise<void> {
-  for (const pickup of pickups) {
-    await notify(
-      {
-        type: "workerStart",
-        project: pickup.project,
-        groupId: pickup.groupId,
-        issueId: pickup.issueId,
-        issueTitle: pickup.issueTitle,
-        issueUrl: pickup.issueUrl,
-        role: pickup.role,
-        level: pickup.level,
-        sessionAction: pickup.sessionAction,
-      },
-      {
-        workspaceDir: opts.workspaceDir,
-        config: opts.config,
-        groupId: pickup.groupId,
-        channel: opts.channel,
-      },
-    );
-  }
 }
 
 /**

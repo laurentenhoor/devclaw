@@ -6,6 +6,7 @@
 import type { StateLabel, IssueProvider } from "../providers/provider.js";
 import { deactivateWorker } from "../projects.js";
 import { runCommand } from "../run-command.js";
+import { notify, getNotificationConfig } from "../notify.js";
 
 export type CompletionRule = {
   from: StateLabel;
@@ -70,8 +71,11 @@ export async function executeCompletion(opts: {
   prUrl?: string;
   provider: IssueProvider;
   repoPath: string;
+  projectName: string;
+  channel?: string;
+  pluginConfig?: Record<string, unknown>;
 }): Promise<CompletionOutput> {
-  const { workspaceDir, groupId, role, result, issueId, summary, provider, repoPath } = opts;
+  const { workspaceDir, groupId, role, result, issueId, summary, provider, repoPath, projectName, channel, pluginConfig } = opts;
   const key = `${role}:${result}`;
   const rule = COMPLETION_RULES[key];
   if (!rule) throw new Error(`No completion rule for ${key}`);
@@ -107,6 +111,28 @@ export async function executeCompletion(opts: {
   announcement += `\n📋 Issue: ${issue.web_url}`;
   if (prUrl) announcement += `\n🔗 PR: ${prUrl}`;
   announcement += `\n${NEXT_STATE[key]}.`;
+
+  // Notify workerComplete (non-fatal)
+  const notifyConfig = getNotificationConfig(pluginConfig);
+  await notify(
+    {
+      type: "workerComplete",
+      project: projectName,
+      groupId,
+      issueId,
+      issueUrl: issue.web_url,
+      role,
+      result: result as "done" | "pass" | "fail" | "refine" | "blocked",
+      summary,
+      nextState: NEXT_STATE[key],
+    },
+    {
+      workspaceDir,
+      config: notifyConfig,
+      groupId,
+      channel: channel ?? "telegram",
+    },
+  ).catch(() => { /* non-fatal */ });
 
   return {
     labelTransition: `${rule.from} → ${rule.to}`,

@@ -15,6 +15,7 @@ import {
   getWorker,
 } from "./projects.js";
 import { resolveModel, levelEmoji } from "./tiers.js";
+import { notify, getNotificationConfig } from "./notify.js";
 
 export type DispatchOpts = {
   workspaceDir: string;
@@ -36,8 +37,10 @@ export type DispatchOpts = {
   transitionLabel: (issueId: number, from: string, to: string) => Promise<void>;
   /** Issue provider for fetching comments */
   provider: import("./providers/provider.js").IssueProvider;
-  /** Plugin config for model resolution */
+  /** Plugin config for model resolution and notification config */
   pluginConfig?: Record<string, unknown>;
+  /** Channel for notifications (e.g. "telegram", "whatsapp") */
+  channel?: string;
   /** Orchestrator's session key (used as spawnedBy for subagent tracking) */
   sessionKey?: string;
 };
@@ -203,6 +206,28 @@ export async function dispatchTask(
   });
 
   const announcement = buildAnnouncement(level, role, session.action, issueId, issueTitle, issueUrl);
+
+  // Notify workerStart (non-fatal)
+  const notifyConfig = getNotificationConfig(pluginConfig);
+  await notify(
+    {
+      type: "workerStart",
+      project: project.name,
+      groupId,
+      issueId,
+      issueTitle,
+      issueUrl,
+      role,
+      level,
+      sessionAction: session.action,
+    },
+    {
+      workspaceDir,
+      config: notifyConfig,
+      groupId,
+      channel: opts.channel ?? "telegram",
+    },
+  ).catch(() => { /* non-fatal */ });
 
   return { sessionAction: session.action, sessionKey: session.key, level, model, announcement };
 }

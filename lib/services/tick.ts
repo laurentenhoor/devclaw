@@ -176,7 +176,9 @@ export async function projectTick(opts: {
           role, level: selectedLevel, fromLabel: currentLabel, toLabel: targetLabel,
           transitionLabel: (id, from, to) => provider.transitionLabel(id, from as StateLabel, to as StateLabel),
           provider: provider as IssueProvider,
-          pluginConfig, sessionKey,
+          pluginConfig,
+          channel: fresh.channel,
+          sessionKey,
         });
         pickups.push({
           project: project.name, groupId, issueId: issue.iid, issueTitle: issue.title, issueUrl: issue.web_url,

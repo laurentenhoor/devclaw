@@ -10,7 +10,6 @@ import type { ToolContext } from "../types.js";
 import { getWorker, resolveRepoPath } from "../projects.js";
 import { executeCompletion, getRule, NEXT_STATE } from "../services/pipeline.js";
 import { log as auditLog } from "../audit.js";
-import { notify, getNotificationConfig } from "../notify.js";
 import { requireWorkspaceDir, resolveProject, resolveProvider, getPluginConfig, tickAndNotify } from "../tool-helpers.js";
 
 export function createWorkFinishTool(api: OpenClawPluginApi) {
@@ -58,9 +57,14 @@ export function createWorkFinishTool(api: OpenClawPluginApi) {
       const repoPath = resolveRepoPath(project.repo);
       const issue = await provider.getIssue(issueId);
 
-      // Execute completion (pipeline service)
+      const pluginConfig = getPluginConfig(api);
+
+      // Execute completion (pipeline service handles notification)
       const completion = await executeCompletion({
         workspaceDir, groupId, role, result, issueId, summary, prUrl, provider, repoPath,
+        projectName: project.name,
+        channel: project.channel,
+        pluginConfig,
       });
 
       const output: Record<string, unknown> = {
@@ -68,18 +72,9 @@ export function createWorkFinishTool(api: OpenClawPluginApi) {
         ...completion,
       };
 
-      // Notify completion
-      const pluginConfig = getPluginConfig(api);
-      const notifyConfig = getNotificationConfig(pluginConfig);
-      await notify(
-        { type: "workerComplete", project: project.name, groupId, issueId, issueUrl: issue.web_url, role, result: result as "done" | "pass" | "fail" | "refine" | "blocked", summary, nextState: NEXT_STATE[`${role}:${result}`] },
-        { workspaceDir, config: notifyConfig, groupId, channel: project.channel ?? "telegram" },
-      );
-
-      // Tick: fill free slots + notify starts
+      // Tick: fill free slots (notifications handled by dispatchTask)
       const tickPickups = await tickAndNotify({
         workspaceDir, groupId, agentId: ctx.agentId, pluginConfig, sessionKey: ctx.sessionKey,
-        channel: project.channel ?? "telegram",
       });
       if (tickPickups.length) output.tickPickups = tickPickups;
 

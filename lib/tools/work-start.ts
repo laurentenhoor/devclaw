@@ -12,7 +12,6 @@ import type { StateLabel } from "../providers/provider.js";
 import { selectLevel } from "../model-selector.js";
 import { getWorker } from "../projects.js";
 import { dispatchTask } from "../dispatch.js";
-import { notify, getNotificationConfig } from "../notify.js";
 import { findNextIssue, detectRoleFromLabel, detectLevelFromLabels } from "../services/tick.js";
 import { isDevLevel } from "../tiers.js";
 import { requireWorkspaceDir, resolveProject, resolveProvider, getPluginConfig } from "../tool-helpers.js";
@@ -98,15 +97,10 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
         role, level: selectedLevel, fromLabel: currentLabel, toLabel: targetLabel,
         transitionLabel: (id, from, to) => provider.transitionLabel(id, from as StateLabel, to as StateLabel),
         provider,
-        pluginConfig, sessionKey: ctx.sessionKey,
+        pluginConfig,
+        channel: project.channel,
+        sessionKey: ctx.sessionKey,
       });
-
-      // Notify
-      const notifyConfig = getNotificationConfig(pluginConfig);
-      await notify(
-        { type: "workerStart", project: project.name, groupId, issueId: issue.iid, issueTitle: issue.title, issueUrl: issue.web_url, role, level: dr.level, sessionAction: dr.sessionAction },
-        { workspaceDir, config: notifyConfig, groupId, channel: project.channel ?? "telegram" },
-      );
 
       // Auto-tick disabled per issue #125 - work_start should only pick up the explicitly requested issue
       // The heartbeat service fills parallel slots automatically
