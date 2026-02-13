@@ -4,6 +4,7 @@
  * Core function: projectTick() scans one project's queue and fills free worker slots.
  * Called by: work_start (fill parallel slot), work_finish (next pipeline step), heartbeat service (sweep).
  */
+import type { PluginRuntime } from "openclaw/plugin-sdk";
 import type { Issue, StateLabel } from "../providers/provider.js";
 import type { IssueProvider } from "../providers/provider.js";
 import { createProvider } from "../providers/index.js";
@@ -118,8 +119,10 @@ export async function projectTick(opts: {
   targetRole?: "dev" | "qa";
   /** Optional provider override (for testing). Uses createProvider if omitted. */
   provider?: Pick<IssueProvider, "listIssuesByLabel" | "transitionLabel" | "listComments">;
+  /** Plugin runtime for direct API access (avoids CLI subprocess timeouts) */
+  runtime?: PluginRuntime;
 }): Promise<TickResult> {
-  const { workspaceDir, groupId, agentId, sessionKey, pluginConfig, dryRun, maxPickups, targetRole } = opts;
+  const { workspaceDir, groupId, agentId, sessionKey, pluginConfig, dryRun, maxPickups, targetRole, runtime } = opts;
 
   const project = (await readProjects(workspaceDir)).projects[groupId];
   if (!project) return { pickups: [], skipped: [{ reason: `Project not found: ${groupId}` }] };
@@ -179,6 +182,7 @@ export async function projectTick(opts: {
           pluginConfig,
           channel: fresh.channel,
           sessionKey,
+          runtime,
         });
         pickups.push({
           project: project.name, groupId, issueId: issue.iid, issueTitle: issue.title, issueUrl: issue.web_url,

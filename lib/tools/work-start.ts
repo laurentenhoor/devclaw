@@ -89,7 +89,7 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
         }
       }
 
-      // Dispatch
+      // Dispatch (pass runtime for direct API access)
       const pluginConfig = getPluginConfig(api);
       const dr = await dispatchTask({
         workspaceDir, agentId: ctx.agentId, groupId, project, issueId: issue.iid,
@@ -100,6 +100,7 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
         pluginConfig,
         channel: project.channel,
         sessionKey: ctx.sessionKey,
+        runtime: api.runtime,
       });
 
       // Auto-tick disabled per issue #125 - work_start should only pick up the explicitly requested issue

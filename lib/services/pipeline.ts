@@ -3,6 +3,7 @@
  *
  * Replaces 7 if-blocks with a data-driven lookup table.
  */
+import type { PluginRuntime } from "openclaw/plugin-sdk";
 import type { StateLabel, IssueProvider } from "../providers/provider.js";
 import { deactivateWorker } from "../projects.js";
 import { runCommand } from "../run-command.js";
@@ -74,8 +75,10 @@ export async function executeCompletion(opts: {
   projectName: string;
   channel?: string;
   pluginConfig?: Record<string, unknown>;
+  /** Plugin runtime for direct API access (avoids CLI subprocess timeouts) */
+  runtime?: PluginRuntime;
 }): Promise<CompletionOutput> {
-  const { workspaceDir, groupId, role, result, issueId, summary, provider, repoPath, projectName, channel, pluginConfig } = opts;
+  const { workspaceDir, groupId, role, result, issueId, summary, provider, repoPath, projectName, channel, pluginConfig, runtime } = opts;
   const key = `${role}:${result}`;
   const rule = COMPLETION_RULES[key];
   if (!rule) throw new Error(`No completion rule for ${key}`);
@@ -94,27 +97,13 @@ export async function executeCompletion(opts: {
     try { prUrl = await provider.getMergedMRUrl(issueId) ?? undefined; } catch { /* ignore */ }
   }
 
-  // Deactivate worker + transition label
-  await deactivateWorker(workspaceDir, groupId, role);
-  await provider.transitionLabel(issueId, rule.from, rule.to);
-
-  // Close/reopen
-  if (rule.closeIssue) await provider.closeIssue(issueId);
-  if (rule.reopenIssue) await provider.reopenIssue(issueId);
-
-  // Build announcement
+  // Get issue early (for URL in notification)
   const issue = await provider.getIssue(issueId);
-  const emoji = EMOJI[key] ?? "📋";
-  const label = key.replace(":", " ").toUpperCase();
-  let announcement = `${emoji} ${label} #${issueId}`;
-  if (summary) announcement += ` — ${summary}`;
-  announcement += `\n📋 Issue: ${issue.web_url}`;
-  if (prUrl) announcement += `\n🔗 PR: ${prUrl}`;
-  announcement += `\n${NEXT_STATE[key]}.`;
 
-  // Notify workerComplete (non-fatal)
+  // Send notification early (before deactivation and label transition which can fail)
+  // This ensures users see the notification even if subsequent steps have issues
   const notifyConfig = getNotificationConfig(pluginConfig);
-  await notify(
+  notify(
     {
       type: "workerComplete",
       project: projectName,
@@ -131,8 +120,26 @@ export async function executeCompletion(opts: {
       config: notifyConfig,
       groupId,
       channel: channel ?? "telegram",
+      runtime,
     },
   ).catch(() => { /* non-fatal */ });
+
+  // Deactivate worker + transition label
+  await deactivateWorker(workspaceDir, groupId, role);
+  await provider.transitionLabel(issueId, rule.from, rule.to);
+
+  // Close/reopen
+  if (rule.closeIssue) await provider.closeIssue(issueId);
+  if (rule.reopenIssue) await provider.reopenIssue(issueId);
+
+  // Build announcement
+  const emoji = EMOJI[key] ?? "📋";
+  const label = key.replace(":", " ").toUpperCase();
+  let announcement = `${emoji} ${label} #${issueId}`;
+  if (summary) announcement += ` — ${summary}`;
+  announcement += `\n📋 Issue: ${issue.web_url}`;
+  if (prUrl) announcement += `\n🔗 PR: ${prUrl}`;
+  announcement += `\n${NEXT_STATE[key]}.`;
 
   return {
     labelTransition: `${rule.from} → ${rule.to}`,

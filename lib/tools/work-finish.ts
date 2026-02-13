@@ -59,12 +59,13 @@ export function createWorkFinishTool(api: OpenClawPluginApi) {
 
       const pluginConfig = getPluginConfig(api);
 
-      // Execute completion (pipeline service handles notification)
+      // Execute completion (pipeline service handles notification with runtime)
       const completion = await executeCompletion({
         workspaceDir, groupId, role, result, issueId, summary, prUrl, provider, repoPath,
         projectName: project.name,
         channel: project.channel,
         pluginConfig,
+        runtime: api.runtime,
       });
 
       const output: Record<string, unknown> = {
@@ -72,9 +73,10 @@ export function createWorkFinishTool(api: OpenClawPluginApi) {
         ...completion,
       };
 
-      // Tick: fill free slots (notifications handled by dispatchTask)
+      // Tick: fill free slots (notifications handled by dispatchTask with runtime)
       const tickPickups = await tickAndNotify({
         workspaceDir, groupId, agentId: ctx.agentId, pluginConfig, sessionKey: ctx.sessionKey,
+        runtime: api.runtime,
       });
       if (tickPickups.length) output.tickPickups = tickPickups;
 

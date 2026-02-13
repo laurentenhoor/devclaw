@@ -8,7 +8,7 @@
  * - workerComplete: Worker completed task (→ project group)
  */
 import { log as auditLog } from "./audit.js";
-import { runCommand } from "./run-command.js";
+import type { PluginRuntime } from "openclaw/plugin-sdk";
 
 /** Per-event-type toggle. All default to true — set to false to suppress. */
 export type NotificationConfig = Partial<Record<NotifyEvent["type"], boolean>>;
@@ -78,19 +78,46 @@ function buildMessage(event: NotifyEvent): string {
 }
 
 /**
- * Send a notification message via the native OpenClaw messaging CLI.
+ * Send a notification message via the plugin runtime API.
  *
- * Uses `openclaw message send` which handles target resolution, chunking,
- * retries, and error reporting for all supported channels.
- * Fails silently (logs error but doesn't throw) to avoid breaking the main flow.
+ * Uses the runtime's native send functions to bypass CLI → WebSocket timeouts.
+ * Falls back gracefully on error (notifications shouldn't break the main flow).
  */
 async function sendMessage(
   target: string,
   message: string,
   channel: string,
   workspaceDir: string,
+  runtime?: PluginRuntime,
 ): Promise<boolean> {
   try {
+    // Use runtime API when available (avoids CLI subprocess timeouts)
+    if (runtime) {
+      if (channel === "telegram") {
+        await runtime.channel.telegram.sendMessageTelegram(target, message, { silent: true });
+        return true;
+      }
+      if (channel === "whatsapp") {
+        await runtime.channel.whatsapp.sendMessageWhatsApp(target, message, { verbose: false });
+        return true;
+      }
+      if (channel === "discord") {
+        await runtime.channel.discord.sendMessageDiscord(target, message);
+        return true;
+      }
+      if (channel === "slack") {
+        await runtime.channel.slack.sendMessageSlack(target, message);
+        return true;
+      }
+      if (channel === "signal") {
+        await runtime.channel.signal.sendMessageSignal(target, message);
+        return true;
+      }
+    }
+
+    // Fallback: use CLI (for unsupported channels or when runtime isn't available)
+    // Import lazily to avoid circular dependency issues
+    const { runCommand } = await import("./run-command.js");
     await runCommand(
       [
         "openclaw",
@@ -132,6 +159,8 @@ export async function notify(
     groupId?: string;
     /** Channel type for routing (e.g. "telegram", "whatsapp", "discord", "slack") */
     channel?: string;
+    /** Plugin runtime for direct API access (avoids CLI subprocess timeouts) */
+    runtime?: PluginRuntime;
   },
 ): Promise<boolean> {
   if (opts.config?.[event.type] === false) return true;
@@ -155,7 +184,7 @@ export async function notify(
     message,
   });
 
-  return sendMessage(target, message, channel, opts.workspaceDir);
+  return sendMessage(target, message, channel, opts.workspaceDir, opts.runtime);
 }
 
 /**
