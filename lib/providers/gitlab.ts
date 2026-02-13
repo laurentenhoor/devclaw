@@ -1,11 +1,6 @@
 /**
  * GitLabProvider — IssueProvider implementation using glab CLI.
  */
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import { writeFile, unlink } from "node:fs/promises";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
 import {
   type IssueProvider,
   type Issue,
@@ -13,16 +8,15 @@ import {
   STATE_LABELS,
   LABEL_COLORS,
 } from "./provider.js";
-
-const execFileAsync = promisify(execFile);
+import { runCommand } from "../run-command.js";
 
 export class GitLabProvider implements IssueProvider {
   private repoPath: string;
   constructor(opts: { repoPath: string }) { this.repoPath = opts.repoPath; }
 
   private async glab(args: string[]): Promise<string> {
-    const { stdout } = await execFileAsync("glab", args, { cwd: this.repoPath, timeout: 30_000 });
-    return stdout.trim();
+    const result = await runCommand(["glab", ...args], { timeoutMs: 30_000, cwd: this.repoPath });
+    return result.stdout.trim();
   }
 
   async ensureLabel(name: string, color: string): Promise<void> {
@@ -35,19 +29,15 @@ export class GitLabProvider implements IssueProvider {
   }
 
   async createIssue(title: string, description: string, label: StateLabel, assignees?: string[]): Promise<Issue> {
-    const tempFile = join(tmpdir(), `devclaw-issue-${Date.now()}.md`);
-    await writeFile(tempFile, description, "utf-8");
-    try {
-      const { exec } = await import("node:child_process");
-      const execAsync = promisify(exec);
-      let cmd = `glab issue create --title "${title.replace(/"/g, '\\"')}" --description "$(cat ${tempFile})" --label "${label}"`;
-      if (assignees?.length) cmd += ` --assignee "${assignees.join(",")}"`;
-      const { stdout } = await execAsync(cmd, { cwd: this.repoPath, timeout: 30_000 });
-      // glab issue create returns the issue URL
-      const match = stdout.trim().match(/\/issues\/(\d+)/);
-      if (!match) throw new Error(`Failed to parse issue URL: ${stdout.trim()}`);
-      return this.getIssue(parseInt(match[1], 10));
-    } finally { try { await unlink(tempFile); } catch { /* ignore */ } }
+    // Pass description directly as argv — runCommand uses spawn (no shell),
+    // so no escaping issues with special characters.
+    const args = ["issue", "create", "--title", title, "--description", description, "--label", label];
+    if (assignees?.length) args.push("--assignee", assignees.join(","));
+    const stdout = await this.glab(args);
+    // glab issue create returns the issue URL
+    const match = stdout.match(/\/issues\/(\d+)/);
+    if (!match) throw new Error(`Failed to parse issue URL: ${stdout}`);
+    return this.getIssue(parseInt(match[1], 10));
   }
 
   async listIssuesByLabel(label: StateLabel): Promise<Issue[]> {
@@ -101,13 +91,8 @@ export class GitLabProvider implements IssueProvider {
   }
 
   async addComment(issueId: number, body: string): Promise<void> {
-    const tempFile = join(tmpdir(), `devclaw-comment-${Date.now()}.md`);
-    await writeFile(tempFile, body, "utf-8");
-    try {
-      const { exec } = await import("node:child_process");
-      const execAsync = promisify(exec);
-      await execAsync(`glab issue note ${issueId} --message "$(cat ${tempFile})"`, { cwd: this.repoPath, timeout: 30_000 });
-    } finally { try { await unlink(tempFile); } catch { /* ignore */ } }
+    // Pass message directly as argv — no shell escaping needed with spawn
+    await this.glab(["issue", "note", String(issueId), "--message", body]);
   }
 
   async healthCheck(): Promise<boolean> {

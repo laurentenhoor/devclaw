@@ -1,11 +1,6 @@
 /**
  * GitHubProvider — IssueProvider implementation using gh CLI.
  */
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import { writeFile, unlink } from "node:fs/promises";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
 import {
   type IssueProvider,
   type Issue,
@@ -13,8 +8,7 @@ import {
   STATE_LABELS,
   LABEL_COLORS,
 } from "./provider.js";
-
-const execFileAsync = promisify(execFile);
+import { runCommand } from "../run-command.js";
 
 type GhIssue = {
   number: number;
@@ -37,8 +31,8 @@ export class GitHubProvider implements IssueProvider {
   constructor(opts: { repoPath: string }) { this.repoPath = opts.repoPath; }
 
   private async gh(args: string[]): Promise<string> {
-    const { stdout } = await execFileAsync("gh", args, { cwd: this.repoPath, timeout: 30_000 });
-    return stdout.trim();
+    const result = await runCommand(["gh", ...args], { timeoutMs: 30_000, cwd: this.repoPath });
+    return result.stdout.trim();
   }
 
   async ensureLabel(name: string, color: string): Promise<void> {
@@ -51,16 +45,12 @@ export class GitHubProvider implements IssueProvider {
   }
 
   async createIssue(title: string, description: string, label: StateLabel, assignees?: string[]): Promise<Issue> {
-    const tempFile = join(tmpdir(), `devclaw-issue-${Date.now()}.md`);
-    await writeFile(tempFile, description, "utf-8");
-    try {
-      const args = ["issue", "create", "--title", title, "--body-file", tempFile, "--label", label];
-      if (assignees?.length) args.push("--assignee", assignees.join(","));
-      const url = await this.gh(args);
-      const match = url.match(/\/issues\/(\d+)$/);
-      if (!match) throw new Error(`Failed to parse issue URL: ${url}`);
-      return this.getIssue(parseInt(match[1], 10));
-    } finally { try { await unlink(tempFile); } catch { /* ignore */ } }
+    const args = ["issue", "create", "--title", title, "--body", description, "--label", label];
+    if (assignees?.length) args.push("--assignee", assignees.join(","));
+    const url = await this.gh(args);
+    const match = url.match(/\/issues\/(\d+)$/);
+    if (!match) throw new Error(`Failed to parse issue URL: ${url}`);
+    return this.getIssue(parseInt(match[1], 10));
   }
 
   async listIssuesByLabel(label: StateLabel): Promise<Issue[]> {
@@ -111,10 +101,7 @@ export class GitHubProvider implements IssueProvider {
   }
 
   async addComment(issueId: number, body: string): Promise<void> {
-    const tempFile = join(tmpdir(), `devclaw-comment-${Date.now()}.md`);
-    await writeFile(tempFile, body, "utf-8");
-    try { await this.gh(["issue", "comment", String(issueId), "--body-file", tempFile]); }
-    finally { try { await unlink(tempFile); } catch { /* ignore */ } }
+    await this.gh(["issue", "comment", String(issueId), "--body", body]);
   }
 
   async healthCheck(): Promise<boolean> {

@@ -124,7 +124,7 @@ export function createProjectRegisterTool() {
       const repoPath = resolveRepoPath(repo);
 
       // 3. Create provider and verify it works
-      const { provider, type: providerType } = createProvider({ repo });
+      const { provider, type: providerType } = await createProvider({ repo });
 
       const healthy = await provider.healthCheck();
       if (!healthy) {

@@ -3,12 +3,9 @@
  *
  * Replaces 7 if-blocks with a data-driven lookup table.
  */
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import type { StateLabel, IssueProvider } from "../providers/provider.js";
 import { deactivateWorker } from "../projects.js";
-
-const execFileAsync = promisify(execFile);
+import { runCommand } from "../run-command.js";
 
 export type CompletionRule = {
   from: StateLabel;
@@ -84,7 +81,7 @@ export async function executeCompletion(opts: {
   // Git pull (dev:done)
   if (rule.gitPull) {
     try {
-      await execFileAsync("git", ["pull"], { cwd: repoPath, timeout: 30_000 });
+      await runCommand(["git", "pull"], { timeoutMs: 30_000, cwd: repoPath });
     } catch { /* best-effort */ }
   }
 

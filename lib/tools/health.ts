@@ -39,7 +39,7 @@ export function createHealthTool() {
       for (const pid of projectIds) {
         const project = getProject(data, pid);
         if (!project) continue;
-        const { provider } = resolveProvider(project);
+        const { provider } = await resolveProvider(project);
 
         for (const role of ["dev", "qa"] as const) {
           const fixes = await checkWorkerHealth({

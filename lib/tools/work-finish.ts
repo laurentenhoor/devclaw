@@ -54,7 +54,7 @@ export function createWorkFinishTool(api: OpenClawPluginApi) {
       const issueId = worker.issueId ? Number(worker.issueId.split(",")[0]) : null;
       if (!issueId) throw new Error(`No issueId for active ${role.toUpperCase()} on ${project.name}`);
 
-      const { provider } = resolveProvider(project);
+      const { provider } = await resolveProvider(project);
       const repoPath = resolveRepoPath(project.repo);
       const issue = await provider.getIssue(issueId);
 

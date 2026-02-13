@@ -124,7 +124,7 @@ export async function projectTick(opts: {
   const project = (await readProjects(workspaceDir)).projects[groupId];
   if (!project) return { pickups: [], skipped: [{ reason: `Project not found: ${groupId}` }] };
 
-  const provider = opts.provider ?? createProvider({ repo: project.repo }).provider;
+  const provider = opts.provider ?? (await createProvider({ repo: project.repo })).provider;
   const roleExecution = project.roleExecution ?? "parallel";
   const roles: Array<"dev" | "qa"> = targetRole ? [targetRole] : ["dev", "qa"];
 

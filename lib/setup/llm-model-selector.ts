@@ -3,10 +3,7 @@
  *
  * Uses an LLM to understand model capabilities and assign optimal models to DevClaw roles.
  */
-import { execSync } from "node:child_process";
-import { writeFileSync, unlinkSync } from "node:fs";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
+import { runCommand } from "../run-command.js";
 
 export type ModelAssignment = {
   dev: {
@@ -76,27 +73,18 @@ Return ONLY a JSON object in this exact format (no markdown, no explanation):
   }
 }`;
 
-  // Write prompt to temp file for safe passing to shell
-  const tmpFile = join(tmpdir(), `devclaw-model-select-${Date.now()}.txt`);
-  writeFileSync(tmpFile, prompt, "utf-8");
-
   try {
-    // Call openclaw agent using current session context if available
-    const sessionFlag = sessionKey
-      ? `--session-id "${sessionKey}"`
-      : `--session-id devclaw-model-selection`;
+    const sessionId = sessionKey ?? "devclaw-model-selection";
 
-    const result = execSync(
-      `openclaw agent --local ${sessionFlag} --message "$(cat ${tmpFile})" --json`,
-      {
-        encoding: "utf-8",
-        timeout: 30000,
-        stdio: ["pipe", "pipe", "ignore"],
-      },
-    ).trim();
+    const result = await runCommand(
+      ["openclaw", "agent", "--local", "--session-id", sessionId, "--message", prompt, "--json"],
+      { timeoutMs: 30_000 },
+    );
+
+    const output = result.stdout.trim();
 
     // Parse the response from openclaw agent --json
-    const lines = result.split("\n");
+    const lines = output.split("\n");
     const jsonStartIndex = lines.findIndex((line) => line.trim().startsWith("{"));
 
     if (jsonStartIndex === -1) {
@@ -146,12 +134,5 @@ Return ONLY a JSON object in this exact format (no markdown, no explanation):
   } catch (err) {
     console.error("LLM model selection failed:", (err as Error).message);
     return null;
-  } finally {
-    // Clean up temp file
-    try {
-      unlinkSync(tmpFile);
-    } catch {
-      // Ignore cleanup errors
-    }
   }
 }

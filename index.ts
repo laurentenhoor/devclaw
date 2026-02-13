@@ -12,6 +12,7 @@ import { createOnboardTool } from "./lib/tools/onboard.js";
 import { createAutoConfigureModelsTool } from "./lib/tools/autoconfigure-models.js";
 import { registerCli } from "./lib/cli.js";
 import { registerHeartbeatService } from "./lib/services/heartbeat.js";
+import { initRunCommand } from "./lib/run-command.js";
 
 const plugin = {
   id: "devclaw",
@@ -86,6 +87,8 @@ const plugin = {
   },
 
   register(api: OpenClawPluginApi) {
+    initRunCommand(api);
+
     // Worker lifecycle
     api.registerTool(createWorkStartTool(api), { names: ["work_start"] });
     api.registerTool(createWorkFinishTool(api), { names: ["work_finish"] });

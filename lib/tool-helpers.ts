@@ -39,7 +39,7 @@ export async function resolveProject(
 /**
  * Create an issue provider for a project.
  */
-export function resolveProvider(project: Project): ProviderWithType {
+export async function resolveProvider(project: Project): Promise<ProviderWithType> {
   return createProvider({ repo: project.repo });
 }
 

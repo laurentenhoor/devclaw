@@ -70,7 +70,7 @@ Examples:
       const workspaceDir = requireWorkspaceDir(ctx);
 
       const { project } = await resolveProject(workspaceDir, groupId);
-      const { provider, type: providerType } = resolveProvider(project);
+      const { provider, type: providerType } = await resolveProvider(project);
 
       const issue = await provider.createIssue(title, description, label, assignees);
 

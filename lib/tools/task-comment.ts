@@ -68,7 +68,7 @@ Examples:
       }
 
       const { project } = await resolveProject(workspaceDir, groupId);
-      const { provider, type: providerType } = resolveProvider(project);
+      const { provider, type: providerType } = await resolveProvider(project);
 
       const issue = await provider.getIssue(issueId);
 

@@ -21,7 +21,7 @@ async function getAuthenticatedModels(
   api: OpenClawPluginApi,
 ): Promise<Array<{ model: string; provider: string; authenticated: boolean }>> {
   try {
-    const models = fetchAuthenticatedModels();
+    const models = await fetchAuthenticatedModels();
 
     // Map to the format expected by assignModels()
     return models.map((m) => {

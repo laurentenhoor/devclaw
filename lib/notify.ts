@@ -7,12 +7,9 @@
  * - workerStart: Worker spawned/resumed for a task (→ project group)
  * - workerComplete: Worker completed task (→ project group)
  */
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { log as auditLog } from "./audit.js";
 import type { TickAction } from "./services/tick.js";
-
-const execFileAsync = promisify(execFile);
+import { runCommand } from "./run-command.js";
 
 /** Per-event-type toggle. All default to true — set to false to suppress. */
 export type NotificationConfig = Partial<Record<NotifyEvent["type"], boolean>>;
@@ -95,9 +92,9 @@ async function sendMessage(
   workspaceDir: string,
 ): Promise<boolean> {
   try {
-    await execFileAsync(
-      "openclaw",
+    await runCommand(
       [
+        "openclaw",
         "message",
         "send",
         "--channel",
@@ -108,7 +105,7 @@ async function sendMessage(
         message,
         "--json",
       ],
-      { timeout: 30_000 },
+      { timeoutMs: 30_000 },
     );
     return true;
   } catch (err) {

@@ -1,9 +1,9 @@
 /**
- * model-fetcher.ts — Shared helper for fetching OpenClaw models without logging.
+ * model-fetcher.ts — Shared helper for fetching OpenClaw models.
  *
- * Uses execSync to bypass OpenClaw's command logging infrastructure.
+ * Uses the plugin SDK's runCommand to run openclaw CLI commands.
  */
-import { execSync } from "node:child_process";
+import { runCommand } from "../run-command.js";
 
 export type OpenClawModelRow = {
   key: string;
@@ -17,25 +17,19 @@ export type OpenClawModelRow = {
 };
 
 /**
- * Fetch all models from OpenClaw without logging.
+ * Fetch all models from OpenClaw.
  *
  * @param allModels - If true, fetches all models (--all flag). If false, only authenticated models.
  * @returns Array of model objects from OpenClaw's model registry
  */
-export function fetchModels(allModels = true): OpenClawModelRow[] {
+export async function fetchModels(allModels = true): Promise<OpenClawModelRow[]> {
   try {
-    const command = allModels
-      ? "openclaw models list --all --json"
-      : "openclaw models list --json";
+    const args = allModels
+      ? ["openclaw", "models", "list", "--all", "--json"]
+      : ["openclaw", "models", "list", "--json"];
 
-    // Use execSync directly to bypass OpenClaw's command logging
-    const output = execSync(command, {
-      encoding: "utf-8",
-      timeout: 10000,
-      cwd: process.cwd(),
-      // Suppress stderr to avoid any error messages
-      stdio: ["pipe", "pipe", "ignore"],
-    }).trim();
+    const result = await runCommand(args, { timeoutMs: 10_000 });
+    const output = result.stdout.trim();
 
     if (!output) {
       throw new Error("Empty output from openclaw models list");
@@ -75,7 +69,6 @@ export function fetchModels(allModels = true): OpenClawModelRow[] {
 /**
  * Fetch only authenticated models (available: true).
  */
-export function fetchAuthenticatedModels(): OpenClawModelRow[] {
-  // Use --all flag but suppress logging via stdio in fetchModels()
-  return fetchModels(true).filter((m) => m.available === true);
+export async function fetchAuthenticatedModels(): Promise<OpenClawModelRow[]> {
+  return (await fetchModels(true)).filter((m) => m.available === true);
 }

@@ -1,13 +1,10 @@
 /**
  * setup/agent.ts — Agent creation and workspace resolution.
  */
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
-
-const execFileAsync = promisify(execFile);
+import { runCommand } from "../run-command.js";
 
 /**
  * Create a new agent via `openclaw agents add`.
@@ -27,7 +24,7 @@ export async function createAgent(
   if (channelBinding) args.push("--bind", channelBinding);
 
   try {
-    await execFileAsync("openclaw", args, { timeout: 30_000 });
+    await runCommand(["openclaw", ...args], { timeoutMs: 30_000 });
   } catch (err) {
     throw new Error(`Failed to create agent "${name}": ${(err as Error).message}`);
   }

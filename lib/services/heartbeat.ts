@@ -84,7 +84,7 @@ export function registerHeartbeatService(api: OpenClawPluginApi) {
         return;
       }
 
-      const agents = discoverAgents(ctx.config);
+      const agents = discoverAgents(api.config);
       if (agents.length === 0) {
         ctx.logger.warn("work_heartbeat service: no DevClaw agents registered");
         return;
@@ -117,20 +117,39 @@ export function registerHeartbeatService(api: OpenClawPluginApi) {
 /**
  * Discover DevClaw agents by scanning which agent workspaces have projects.
  * Self-discovering: any agent whose workspace contains projects/projects.json is processed.
+ * Also checks the default workspace (agents.defaults.workspace) for projects.
  */
-function discoverAgents(config: ServiceContext["config"]): Agent[] {
-  const agentsList = config.agents?.list || [];
+function discoverAgents(config: {
+  agents?: {
+    list?: Array<{ id: string; workspace?: string }>;
+    defaults?: { workspace?: string };
+  };
+}): Agent[] {
+  const seen = new Set<string>();
+  const agents: Agent[] = [];
 
-  return agentsList
-    .filter((a): a is { id: string; workspace: string } => {
-      if (!a.workspace) return false;
-      try {
-        return fs.existsSync(path.join(a.workspace, "projects", "projects.json"));
-      } catch {
-        return false;
+  // Check explicit agent list
+  for (const a of config.agents?.list || []) {
+    if (!a.workspace) continue;
+    try {
+      if (fs.existsSync(path.join(a.workspace, "projects", "projects.json"))) {
+        agents.push({ agentId: a.id, workspace: a.workspace });
+        seen.add(a.workspace);
       }
-    })
-    .map((a) => ({ agentId: a.id, workspace: a.workspace }));
+    } catch { /* skip */ }
+  }
+
+  // Check default workspace (used when no explicit agents are registered)
+  const defaultWorkspace = config.agents?.defaults?.workspace;
+  if (defaultWorkspace && !seen.has(defaultWorkspace)) {
+    try {
+      if (fs.existsSync(path.join(defaultWorkspace, "projects", "projects.json"))) {
+        agents.push({ agentId: "main", workspace: defaultWorkspace });
+      }
+    } catch { /* skip */ }
+  }
+
+  return agents;
 }
 
 /**
@@ -286,7 +305,7 @@ async function performHealthPass(
   groupId: string,
   project: any,
 ): Promise<number> {
-  const { provider } = createProvider({ repo: project.repo });
+  const { provider } = await createProvider({ repo: project.repo });
   let fixedCount = 0;
 
   for (const role of ["dev", "qa"] as const) {

@@ -33,7 +33,7 @@ export function getRoleForLabel(label: QueueLabel): "dev" | "qa" {
 // ---------------------------------------------------------------------------
 
 export async function fetchProjectQueues(project: Project): Promise<Record<QueueLabel, Issue[]>> {
-  const { provider } = createProvider({ repo: project.repo });
+  const { provider } = await createProvider({ repo: project.repo });
   const labels: QueueLabel[] = ["To Improve", "To Test", "To Do"];
   const queues: Record<QueueLabel, Issue[]> = { "To Improve": [], "To Test": [], "To Do": [] };
 

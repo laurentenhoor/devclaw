@@ -42,7 +42,7 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
 
       if (!groupId) throw new Error("projectGroupId is required");
       const { project } = await resolveProject(workspaceDir, groupId);
-      const { provider } = resolveProvider(project);
+      const { provider } = await resolveProvider(project);
 
       // Find issue
       let issue: { iid: number; title: string; description: string; labels: string[]; web_url: string; state: string };
