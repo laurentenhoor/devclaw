@@ -470,5 +470,3 @@ Full parameters and usage in the [Tools Reference](docs/TOOLS.md).
 ## License
 
 MIT
-
-<!-- devclaw test -->
