@@ -11,7 +11,7 @@ export const STATE_LABELS = [
 export type StateLabel = (typeof STATE_LABELS)[number];
 
 export const LABEL_COLORS: Record<StateLabel, string> = {
-  Planning: "#6699cc", "To Do": "#428bca", Doing: "#f0ad4e", "To Test": "#5bc0de",
+  Planning: "#95a5a6", "To Do": "#428bca", Doing: "#f0ad4e", "To Test": "#5bc0de",
   Testing: "#9b59b6", Done: "#5cb85c", "To Improve": "#d9534f", Refining: "#f39c12",
 };
 
