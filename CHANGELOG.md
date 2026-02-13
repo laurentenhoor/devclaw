@@ -5,6 +5,31 @@ All notable changes to DevClaw will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-02-13
+
+### Security
+- **Eliminated all `child_process` imports** — Migrated 9 files from `node:child_process` (`execFile`, `execSync`, `spawn`) to the plugin SDK's `api.runtime.system.runCommandWithTimeout` via a shared `runCommand()` wrapper. The OpenClaw plugin security scanner no longer flags any warnings during installation.
+
+### Added
+- **`lib/run-command.ts`** — New thin wrapper module that stores the plugin SDK's `runCommandWithTimeout` once during `register()`, making it available to all modules without threading the API object through every function.
+- **Session fallback mechanism** — `ensureSession()` now validates stored session keys against the current agent ID and verifies sessions still exist before reuse. Stale, mismatched, or deleted sessions are automatically recreated instead of failing silently.
+- **Default workspace discovery** — The heartbeat service now scans `agents.defaults.workspace` in addition to `agents.list`, so projects in the default workspace are discovered automatically without explicit agent registration.
+- **Heartbeat tick notifications** — Heartbeat pickups now send workerStart notifications to project groups via the notify system.
+- **Agent instructions file** — Added `AGENTS.md` with project structure, conventions, and testing workflow.
+
+### Fixed
+- **Heartbeat agent ID** — Default workspace agents now use `agentId: "main"` instead of `"default"`, matching OpenClaw's actual routing. Previously caused `agent "main" does not match session key agent "default"` errors that left workers stuck as active on ghost sessions.
+- **Heartbeat config access** — `discoverAgents()` now reads from `api.config` instead of `ctx.config` (service context), which didn't include `agents.defaults`.
+- **Session key always persisted** — `recordWorkerState()` now always stores the session key, not just on spawn. This ensures send-to-spawn fallbacks update `projects.json` with the corrected key.
+- **GitLab/GitHub temp file elimination** — `createIssue()` and `addComment()` in both providers now pass descriptions/comments directly as argv instead of writing temp files and using shell interpolation (`$(cat ...)`). Safer and simpler.
+
+### Changed
+- `createProvider()` is now async (callers updated across 12 files)
+- `fetchModels()` / `fetchAuthenticatedModels()` are now async
+- `resolveProvider()` is now async
+
+---
+
 ## [1.0.0] - 2026-02-12
 
 ### 🎉 First Official Launch
@@ -103,6 +128,7 @@ openclaw chat "Hey, can you help me set up DevClaw?"
 
 ---
 
+[1.1.0]: https://github.com/laurentenhoor/devclaw/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/laurentenhoor/devclaw/compare/v0.1.1...v1.0.0
 [0.1.1]: https://github.com/laurentenhoor/devclaw/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/laurentenhoor/devclaw/releases/tag/v0.1.0
