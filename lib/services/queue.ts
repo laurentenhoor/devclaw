@@ -2,48 +2,141 @@
  * Queue service — issue queue fetching.
  *
  * Fetches issue queues per project from the issue provider.
- * Pure functions, no tool registration or state mutation.
+ * Uses workflow config for queue labels — no hardcoded state names.
  */
 import type { Issue } from "../providers/provider.js";
 import { createProvider } from "../providers/index.js";
 import type { Project } from "../projects.js";
+import {
+  DEFAULT_WORKFLOW,
+  type WorkflowConfig,
+  type Role,
+} from "../workflow.js";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
+/**
+ * @deprecated Use string labels from workflow config instead.
+ * Kept for backward compatibility.
+ */
 export type QueueLabel = "To Improve" | "To Test" | "To Do";
 
-export const QUEUE_PRIORITY: Record<QueueLabel, number> = {
+/**
+ * @deprecated Use getQueuePriority() instead.
+ * Kept for backward compatibility.
+ */
+export const QUEUE_PRIORITY: Record<string, number> = {
   "To Improve": 3,
   "To Test": 2,
   "To Do": 1,
 };
 
-export function getTaskPriority(label: QueueLabel, issue: Issue): number {
-  return QUEUE_PRIORITY[label] * 10000 - issue.iid;
+// ---------------------------------------------------------------------------
+// Workflow-driven helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Get queue labels with their priorities from workflow config.
+ * Returns labels sorted by priority (highest first).
+ */
+export function getQueueLabelsWithPriority(
+  workflow: WorkflowConfig = DEFAULT_WORKFLOW,
+): Array<{ label: string; priority: number; role?: Role }> {
+  const labels: Array<{ label: string; priority: number; role?: Role }> = [];
+
+  for (const state of Object.values(workflow.states)) {
+    if (state.type === "queue") {
+      labels.push({
+        label: state.label,
+        priority: state.priority ?? 0,
+        role: state.role,
+      });
+    }
+  }
+
+  return labels.sort((a, b) => b.priority - a.priority);
 }
 
-export function getRoleForLabel(label: QueueLabel): "dev" | "qa" {
-  return label === "To Test" ? "qa" : "dev";
+/**
+ * Get the priority for a queue label from workflow config.
+ */
+export function getQueuePriority(
+  label: string,
+  workflow: WorkflowConfig = DEFAULT_WORKFLOW,
+): number {
+  const state = Object.values(workflow.states).find(
+    (s) => s.label === label && s.type === "queue",
+  );
+  return state?.priority ?? 0;
+}
+
+/**
+ * Get task priority for sorting (higher = more urgent).
+ * Priority = queue_priority * 10000 - issue_id (older issues first within same queue).
+ */
+export function getTaskPriority(
+  label: string,
+  issue: Issue,
+  workflow: WorkflowConfig = DEFAULT_WORKFLOW,
+): number {
+  const priority = getQueuePriority(label, workflow);
+  return priority * 10000 - issue.iid;
+}
+
+/**
+ * Get the role assigned to a queue label.
+ */
+export function getRoleForLabel(
+  label: string,
+  workflow: WorkflowConfig = DEFAULT_WORKFLOW,
+): Role | null {
+  const state = Object.values(workflow.states).find(
+    (s) => s.label === label && s.type === "queue",
+  );
+  return state?.role ?? null;
 }
 
 // ---------------------------------------------------------------------------
 // Fetching
 // ---------------------------------------------------------------------------
 
-export async function fetchProjectQueues(project: Project): Promise<Record<QueueLabel, Issue[]>> {
+/**
+ * Fetch all queued issues for a project, grouped by queue label.
+ * Uses workflow config for queue labels.
+ */
+export async function fetchProjectQueues(
+  project: Project,
+  workflow: WorkflowConfig = DEFAULT_WORKFLOW,
+): Promise<Record<string, Issue[]>> {
   const { provider } = await createProvider({ repo: project.repo });
-  const labels: QueueLabel[] = ["To Improve", "To Test", "To Do"];
-  const queues: Record<QueueLabel, Issue[]> = { "To Improve": [], "To Test": [], "To Do": [] };
+  const queueLabels = getQueueLabelsWithPriority(workflow);
+  const queues: Record<string, Issue[]> = {};
 
-  for (const label of labels) {
+  // Initialize all queue labels with empty arrays
+  for (const { label } of queueLabels) {
+    queues[label] = [];
+  }
+
+  // Fetch issues for each queue
+  for (const { label } of queueLabels) {
     try {
       const issues = await provider.listIssuesByLabel(label);
-      queues[label] = issues.sort((a, b) => getTaskPriority(label, b) - getTaskPriority(label, a));
+      queues[label] = issues.sort(
+        (a, b) => getTaskPriority(label, b, workflow) - getTaskPriority(label, a, workflow),
+      );
     } catch {
       queues[label] = [];
     }
   }
+
   return queues;
+}
+
+/**
+ * Get total count of queued issues across all queues.
+ */
+export function getTotalQueuedCount(queues: Record<string, Issue[]>): number {
+  return Object.values(queues).reduce((sum, issues) => sum + issues.length, 0);
 }
