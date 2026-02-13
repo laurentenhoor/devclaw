@@ -1,8 +1,8 @@
 /**
  * work_finish — Complete a task (DEV done, QA pass/fail/refine/blocked).
  *
- * Delegates side-effects to pipeline service, then ticks the project queue
- * to fill free slots, sends notifications, and logs to audit.
+ * Delegates side-effects to pipeline service: label transition, state update,
+ * issue close/reopen, notifications, and audit logging.
  */
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
@@ -16,7 +16,7 @@ export function createWorkFinishTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
     name: "work_finish",
     label: "Work Finish",
-    description: `Complete a task: DEV done/blocked, QA pass/fail/refine/blocked. Handles label transition, state update, issue close/reopen, notifications, audit, and auto-ticks the queue to fill free slots.`,
+    description: `Complete a task: DEV done/blocked, QA pass/fail/refine/blocked. Handles label transition, state update, issue close/reopen, notifications, and audit logging.`,
     parameters: {
       type: "object",
       required: ["role", "result", "projectGroupId"],
