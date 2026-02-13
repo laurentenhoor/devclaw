@@ -79,9 +79,10 @@ export type SessionLookup = Map<string, GatewaySession>;
 
 /**
  * Query gateway status and build a lookup map of active sessions.
- * Caches result for the duration of a health check pass.
+ * Returns null if gateway is unavailable (timeout, error, etc).
+ * Callers should skip session liveness checks if null — unknown ≠ dead.
  */
-export async function fetchGatewaySessions(): Promise<SessionLookup> {
+export async function fetchGatewaySessions(): Promise<SessionLookup | null> {
   const lookup: SessionLookup = new Map();
 
   try {
@@ -98,20 +99,21 @@ export async function fetchGatewaySessions(): Promise<SessionLookup> {
         lookup.set(session.key, session);
       }
     }
+    return lookup;
   } catch {
-    // Gateway unavailable — return empty map (all sessions will be treated as missing)
+    // Gateway unavailable — return null (don't assume sessions are dead)
+    return null;
   }
-
-  return lookup;
 }
 
 /**
  * Check if a session key exists in the gateway and is considered "alive".
  * A session is alive if it exists. We don't consider percentUsed or abortedLastRun
  * as dead indicators — those are normal states for reusable sessions.
+ * Returns false if sessions lookup is null (gateway unavailable).
  */
-function isSessionAlive(sessionKey: string, sessions: SessionLookup): boolean {
-  return sessions.has(sessionKey);
+function isSessionAlive(sessionKey: string, sessions: SessionLookup | null): boolean {
+  return sessions ? sessions.has(sessionKey) : false;
 }
 
 // ---------------------------------------------------------------------------
@@ -144,7 +146,7 @@ export async function checkWorkerHealth(opts: {
   role: Role;
   autoFix: boolean;
   provider: IssueProvider;
-  sessions: SessionLookup;
+  sessions: SessionLookup | null;
   /** Workflow config (defaults to DEFAULT_WORKFLOW) */
   workflow?: WorkflowConfig;
 }): Promise<HealthFix[]> {
@@ -252,8 +254,9 @@ export async function checkWorkerHealth(opts: {
 
   // ---------------------------------------------------------------------------
   // Case 1: Active with correct label but session is dead/missing
+  // Skip if sessions lookup unavailable (gateway timeout) — unknown ≠ dead
   // ---------------------------------------------------------------------------
-  if (worker.active && sessionKey && !isSessionAlive(sessionKey, sessions)) {
+  if (worker.active && sessionKey && sessions && !isSessionAlive(sessionKey, sessions)) {
     const fix: HealthFix = {
       issue: {
         type: "session_dead",
@@ -307,8 +310,9 @@ export async function checkWorkerHealth(opts: {
 
   // ---------------------------------------------------------------------------
   // Case 3: Active with correct label and alive session — check for staleness
+  // Skip if sessions lookup unavailable (gateway timeout)
   // ---------------------------------------------------------------------------
-  if (worker.active && worker.startTime && sessionKey && isSessionAlive(sessionKey, sessions)) {
+  if (worker.active && worker.startTime && sessionKey && sessions && isSessionAlive(sessionKey, sessions)) {
     const hours = (Date.now() - new Date(worker.startTime).getTime()) / 3_600_000;
     if (hours > 2) {
       const fix: HealthFix = {
