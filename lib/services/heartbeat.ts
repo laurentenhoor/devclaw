@@ -224,7 +224,7 @@ export async function tick(opts: {
   agentId?: string;
   config: HeartbeatConfig;
   pluginConfig?: Record<string, unknown>;
-  sessions: SessionLookup;
+  sessions: SessionLookup | null;
   logger: { info(msg: string): void; warn(msg: string): void };
 }): Promise<TickResult> {
   const { workspaceDir, agentId, config, pluginConfig, sessions } = opts;
@@ -301,7 +301,7 @@ async function performHealthPass(
   workspaceDir: string,
   groupId: string,
   project: any,
-  sessions: SessionLookup,
+  sessions: SessionLookup | null,
 ): Promise<number> {
   const { provider } = await createProvider({ repo: project.repo });
   let fixedCount = 0;
