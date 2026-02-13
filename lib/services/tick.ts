@@ -117,7 +117,7 @@ export async function projectTick(opts: {
   /** Only attempt this role. Used by work_start to fill the other slot. */
   targetRole?: "dev" | "qa";
   /** Optional provider override (for testing). Uses createProvider if omitted. */
-  provider?: Pick<IssueProvider, "listIssuesByLabel" | "transitionLabel">;
+  provider?: Pick<IssueProvider, "listIssuesByLabel" | "transitionLabel" | "listComments">;
 }): Promise<TickResult> {
   const { workspaceDir, groupId, agentId, sessionKey, pluginConfig, dryRun, maxPickups, targetRole } = opts;
 
@@ -175,6 +175,7 @@ export async function projectTick(opts: {
           issueTitle: issue.title, issueDescription: issue.description ?? "", issueUrl: issue.web_url,
           role, level: selectedLevel, fromLabel: currentLabel, toLabel: targetLabel,
           transitionLabel: (id, from, to) => provider.transitionLabel(id, from as StateLabel, to as StateLabel),
+          provider: provider as IssueProvider,
           pluginConfig, sessionKey,
         });
         pickups.push({

@@ -97,6 +97,7 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
         issueTitle: issue.title, issueDescription: issue.description ?? "", issueUrl: issue.web_url,
         role, level: selectedLevel, fromLabel: currentLabel, toLabel: targetLabel,
         transitionLabel: (id, from, to) => provider.transitionLabel(id, from as StateLabel, to as StateLabel),
+        provider,
         pluginConfig, sessionKey: ctx.sessionKey,
       });
 

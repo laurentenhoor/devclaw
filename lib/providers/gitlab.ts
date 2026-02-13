@@ -52,6 +52,21 @@ export class GitLabProvider implements IssueProvider {
     return JSON.parse(raw) as Issue;
   }
 
+  async listComments(issueId: number): Promise<import("./provider.js").IssueComment[]> {
+    try {
+      const raw = await this.glab(["api", `projects/:id/issues/${issueId}/notes`, "--paginate"]);
+      const notes = JSON.parse(raw) as Array<{ author: { username: string }; body: string; created_at: string; system: boolean }>;
+      // Filter out system notes (e.g. "changed label", "closed issue")
+      return notes
+        .filter((note) => !note.system)
+        .map((note) => ({
+          author: note.author.username,
+          body: note.body,
+          created_at: note.created_at,
+        }));
+    } catch { return []; }
+  }
+
   async transitionLabel(issueId: number, from: StateLabel, to: StateLabel): Promise<void> {
     const issue = await this.getIssue(issueId);
     const stateLabels = issue.labels.filter((l) => STATE_LABELS.includes(l as StateLabel));

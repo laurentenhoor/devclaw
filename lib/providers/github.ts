@@ -65,6 +65,14 @@ export class GitHubProvider implements IssueProvider {
     return toIssue(JSON.parse(raw) as GhIssue);
   }
 
+  async listComments(issueId: number): Promise<import("./provider.js").IssueComment[]> {
+    try {
+      const raw = await this.gh(["api", `repos/:owner/:repo/issues/${issueId}/comments`, "--jq", ".[] | {author: .user.login, body: .body, created_at: .created_at}"]);
+      if (!raw) return [];
+      return raw.split("\n").filter(Boolean).map((line) => JSON.parse(line));
+    } catch { return []; }
+  }
+
   async transitionLabel(issueId: number, from: StateLabel, to: StateLabel): Promise<void> {
     const issue = await this.getIssue(issueId);
     const stateLabels = issue.labels.filter((l) => STATE_LABELS.includes(l as StateLabel));

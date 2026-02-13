@@ -34,6 +34,8 @@ export type DispatchOpts = {
   toLabel: string;
   /** Function to transition labels (injected to avoid provider dependency) */
   transitionLabel: (issueId: number, from: string, to: string) => Promise<void>;
+  /** Issue provider for fetching comments */
+  provider: import("./providers/provider.js").IssueProvider;
   /** Plugin config for model resolution */
   pluginConfig?: Record<string, unknown>;
   /** Orchestrator's session key (used as spawnedBy for subagent tracking) */
@@ -63,6 +65,7 @@ export async function buildTaskMessage(opts: {
   repo: string;
   baseBranch: string;
   groupId: string;
+  comments?: Array<{ author: string; body: string; created_at: string }>;
 }): Promise<string> {
   const {
     workspaceDir, projectName, role, issueId, issueTitle,
@@ -81,10 +84,24 @@ export async function buildTaskMessage(opts: {
     ``,
     issueTitle,
     issueDescription ? `\n${issueDescription}` : "",
+  ];
+
+  // Include comments if present
+  if (opts.comments && opts.comments.length > 0) {
+    parts.push(``, `## Comments`);
+    // Limit to last 20 comments to avoid bloating context
+    const recentComments = opts.comments.slice(-20);
+    for (const comment of recentComments) {
+      const date = new Date(comment.created_at).toLocaleString();
+      parts.push(``, `**${comment.author}** (${date}):`, comment.body);
+    }
+  }
+
+  parts.push(
     ``,
     `Repo: ${repo} | Branch: ${baseBranch} | ${issueUrl}`,
     `Project group ID: ${groupId}`,
-  ];
+  );
 
   if (roleInstructions) {
     parts.push(``, `---`, ``, roleInstructions.trim());
@@ -123,7 +140,7 @@ export async function dispatchTask(
   const {
     workspaceDir, agentId, groupId, project, issueId, issueTitle,
     issueDescription, issueUrl, role, level, fromLabel, toLabel,
-    transitionLabel, pluginConfig,
+    transitionLabel, provider, pluginConfig,
   } = opts;
 
   const model = resolveModel(role, level, pluginConfig);
@@ -131,10 +148,14 @@ export async function dispatchTask(
   const existingSessionKey = getSessionForLevel(worker, level);
   const sessionAction = existingSessionKey ? "send" : "spawn";
 
+  // Fetch comments to include in task context
+  const comments = await provider.listComments(issueId);
+
   const taskMessage = await buildTaskMessage({
     workspaceDir, projectName: project.name, role, issueId,
     issueTitle, issueDescription, issueUrl,
     repo: project.repo, baseBranch: project.baseBranch, groupId,
+    comments,
   });
 
   await transitionLabel(issueId, fromLabel, toLabel);
