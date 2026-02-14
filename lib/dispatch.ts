@@ -4,8 +4,6 @@
  * Handles: session lookup, spawn/reuse via Gateway RPC, task dispatch via CLI,
  * state update (activateWorker), and audit logging.
  */
-import fs from "node:fs/promises";
-import path from "node:path";
 import type { PluginRuntime } from "openclaw/plugin-sdk";
 import { log as auditLog } from "./audit.js";
 import { runCommand } from "./run-command.js";
@@ -58,10 +56,12 @@ export type DispatchResult = {
 
 /**
  * Build the task message sent to a worker session.
- * Reads role-specific instructions from workspace/projects/roles/<project>/<role>.md (falls back to projects/roles/default/).
+ *
+ * Role-specific instructions are no longer included in the message body.
+ * They are injected via the agent:bootstrap hook (see bootstrap-hook.ts)
+ * into the worker's system prompt as WORKER_INSTRUCTIONS.md.
  */
-export async function buildTaskMessage(opts: {
-  workspaceDir: string;
+export function buildTaskMessage(opts: {
   projectName: string;
   role: "dev" | "qa";
   issueId: number;
@@ -72,13 +72,11 @@ export async function buildTaskMessage(opts: {
   baseBranch: string;
   groupId: string;
   comments?: Array<{ author: string; body: string; created_at: string }>;
-}): Promise<string> {
+}): string {
   const {
-    workspaceDir, projectName, role, issueId, issueTitle,
+    projectName, role, issueId, issueTitle,
     issueDescription, issueUrl, repo, baseBranch, groupId,
   } = opts;
-
-  const roleInstructions = await loadRoleInstructions(workspaceDir, projectName, role);
 
   const availableResults =
     role === "dev"
@@ -108,10 +106,6 @@ export async function buildTaskMessage(opts: {
     `Repo: ${repo} | Branch: ${baseBranch} | ${issueUrl}`,
     `Project group ID: ${groupId}`,
   );
-
-  if (roleInstructions) {
-    parts.push(``, `---`, ``, roleInstructions.trim());
-  }
 
   parts.push(
     ``, `---`, ``,
@@ -166,8 +160,8 @@ export async function dispatchTask(
   // Fetch comments to include in task context
   const comments = await provider.listComments(issueId);
 
-  const taskMessage = await buildTaskMessage({
-    workspaceDir, projectName: project.name, role, issueId,
+  const taskMessage = buildTaskMessage({
+    projectName: project.name, role, issueId,
     issueTitle, issueDescription, issueUrl,
     repo: project.repo, baseBranch: project.baseBranch, groupId,
     comments,
@@ -239,21 +233,6 @@ export async function dispatchTask(
 // ---------------------------------------------------------------------------
 // Private helpers — exist so dispatchTask reads as a sequence of steps
 // ---------------------------------------------------------------------------
-
-/**
- * Load role-specific instructions from workspace and include them in the task message.
- * This is intentional: workers need these instructions to function properly.
- * (Not data exfiltration — just standard task dispatch context.)
- */
-async function loadRoleInstructions(
-  workspaceDir: string, projectName: string, role: "dev" | "qa",
-): Promise<string> {
-  const projectFile = path.join(workspaceDir, "projects", "roles", projectName, `${role}.md`);
-  try { return await fs.readFile(projectFile, "utf-8"); } catch { /* none */ }
-  const defaultFile = path.join(workspaceDir, "projects", "roles", "default", `${role}.md`);
-  try { return await fs.readFile(defaultFile, "utf-8"); } catch { /* none */ }
-  return "";
-}
 
 /**
  * Fire-and-forget session creation/update.
