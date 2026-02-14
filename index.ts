@@ -12,6 +12,7 @@ import { createOnboardTool } from "./lib/tools/onboard.js";
 import { createAutoConfigureModelsTool } from "./lib/tools/autoconfigure-models.js";
 import { registerCli } from "./lib/cli.js";
 import { registerHeartbeatService } from "./lib/services/heartbeat.js";
+import { registerBootstrapHook } from "./lib/bootstrap-hook.js";
 import { initRunCommand } from "./lib/run-command.js";
 
 const plugin = {
@@ -119,8 +120,11 @@ const plugin = {
     // Services
     registerHeartbeatService(api);
 
+    // Bootstrap hook for worker instruction injection
+    registerBootstrapHook(api);
+
     api.logger.info(
-      "DevClaw plugin registered (11 tools, 1 CLI command group, 1 service)",
+      "DevClaw plugin registered (11 tools, 1 CLI command group, 1 service, 1 hook)",
     );
   },
 };
