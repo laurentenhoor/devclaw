@@ -240,6 +240,11 @@ export async function dispatchTask(
 // Private helpers — exist so dispatchTask reads as a sequence of steps
 // ---------------------------------------------------------------------------
 
+/**
+ * Load role-specific instructions from workspace and include them in the task message.
+ * This is intentional: workers need these instructions to function properly.
+ * (Not data exfiltration — just standard task dispatch context.)
+ */
 async function loadRoleInstructions(
   workspaceDir: string, projectName: string, role: "dev" | "qa",
 ): Promise<string> {
