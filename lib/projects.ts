@@ -22,6 +22,8 @@ export type Project = {
   deployBranch: string;
   /** Messaging channel for this project's group (e.g. "telegram", "whatsapp", "discord", "slack"). Stored at registration time. */
   channel?: string;
+  /** Issue tracker provider type (github or gitlab). Auto-detected at registration, stored for reuse. */
+  provider?: "github" | "gitlab";
   /** Project-level role execution: parallel (DEV+QA can run simultaneously) or sequential (only one role at a time). Default: parallel */
   roleExecution?: "parallel" | "sequential";
   maxDevWorkers?: number;

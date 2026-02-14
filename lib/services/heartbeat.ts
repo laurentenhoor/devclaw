@@ -304,7 +304,7 @@ async function performHealthPass(
   project: any,
   sessions: SessionLookup | null,
 ): Promise<number> {
-  const { provider } = await createProvider({ repo: project.repo });
+  const { provider } = await createProvider({ repo: project.repo, provider: project.provider });
   let fixedCount = 0;
 
   for (const role of getAllRoleIds()) {
