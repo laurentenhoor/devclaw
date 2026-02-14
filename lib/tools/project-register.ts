@@ -161,6 +161,7 @@ export function createProjectRegisterTool() {
         baseBranch,
         deployBranch,
         channel,
+        provider: providerType,
         roleExecution,
         dev: emptyWorkerState([...getLevelsForRole("dev")]),
         qa: emptyWorkerState([...getLevelsForRole("qa")]),

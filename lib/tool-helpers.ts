@@ -36,9 +36,10 @@ export async function resolveProject(
 
 /**
  * Create an issue provider for a project.
+ * Uses stored provider type from project config if available, otherwise auto-detects.
  */
 export async function resolveProvider(project: Project): Promise<ProviderWithType> {
-  return createProvider({ repo: project.repo });
+  return createProvider({ repo: project.repo, provider: project.provider });
 }
 
 /**
