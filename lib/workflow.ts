@@ -17,6 +17,7 @@ import path from "node:path";
 // ---------------------------------------------------------------------------
 
 export type StateType = "queue" | "active" | "hold" | "terminal";
+/** @deprecated Use WorkerRole from lib/roles/ */
 export type Role = "dev" | "qa" | "architect";
 export type TransitionAction = "gitPull" | "detectPr" | "closeIssue" | "reopenIssue";
 

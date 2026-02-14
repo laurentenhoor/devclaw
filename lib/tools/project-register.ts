@@ -14,7 +14,7 @@ import { readProjects, writeProjects, emptyWorkerState } from "../projects.js";
 import { resolveRepoPath } from "../projects.js";
 import { createProvider } from "../providers/index.js";
 import { log as auditLog } from "../audit.js";
-import { DEV_LEVELS, QA_LEVELS, ARCHITECT_LEVELS } from "../tiers.js";
+import { getAllRoleIds, getLevelsForRole } from "../roles/index.js";
 import { DEFAULT_DEV_INSTRUCTIONS, DEFAULT_QA_INSTRUCTIONS, DEFAULT_ARCHITECT_INSTRUCTIONS } from "../templates.js";
 
 /**
@@ -162,9 +162,9 @@ export function createProjectRegisterTool() {
         deployBranch,
         channel,
         roleExecution,
-        dev: emptyWorkerState([...DEV_LEVELS]),
-        qa: emptyWorkerState([...QA_LEVELS]),
-        architect: emptyWorkerState([...ARCHITECT_LEVELS]),
+        dev: emptyWorkerState([...getLevelsForRole("dev")]),
+        qa: emptyWorkerState([...getLevelsForRole("qa")]),
+        architect: emptyWorkerState([...getLevelsForRole("architect")]),
       };
 
       await writeProjects(workspaceDir, data);

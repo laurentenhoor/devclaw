@@ -14,6 +14,7 @@ import { getWorker } from "../projects.js";
 import { dispatchTask } from "../dispatch.js";
 import { findNextIssue, detectRoleFromLabel, detectLevelFromLabels } from "../services/tick.js";
 import { isDevLevel } from "../tiers.js";
+import { getAllRoleIds } from "../roles/index.js";
 import { requireWorkspaceDir, resolveProject, resolveProvider, getPluginConfig } from "../tool-helpers.js";
 import { DEFAULT_WORKFLOW, getActiveLabel } from "../workflow.js";
 
@@ -28,7 +29,7 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
       properties: {
         projectGroupId: { type: "string", description: "Project group ID." },
         issueId: { type: "number", description: "Issue ID. If omitted, picks next by priority." },
-        role: { type: "string", enum: ["dev", "qa", "architect"], description: "Worker role. Auto-detected from label if omitted." },
+        role: { type: "string", enum: getAllRoleIds(), description: "Worker role. Auto-detected from label if omitted." },
         level: { type: "string", description: "Developer level (junior/medior/senior/reviewer). Auto-detected if omitted." },
       },
     },

@@ -11,6 +11,7 @@ import { getWorker, resolveRepoPath } from "../projects.js";
 import { executeCompletion, getRule, NEXT_STATE } from "../services/pipeline.js";
 import { log as auditLog } from "../audit.js";
 import { requireWorkspaceDir, resolveProject, resolveProvider, getPluginConfig } from "../tool-helpers.js";
+import { getAllRoleIds, isValidResult, getCompletionResults } from "../roles/index.js";
 
 export function createWorkFinishTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
@@ -21,7 +22,7 @@ export function createWorkFinishTool(api: OpenClawPluginApi) {
       type: "object",
       required: ["role", "result", "projectGroupId"],
       properties: {
-        role: { type: "string", enum: ["dev", "qa", "architect"], description: "Worker role" },
+        role: { type: "string", enum: getAllRoleIds(), description: "Worker role" },
         result: { type: "string", enum: ["done", "pass", "fail", "refine", "blocked"], description: "Completion result" },
         projectGroupId: { type: "string", description: "Project group ID" },
         summary: { type: "string", description: "Brief summary" },
@@ -37,13 +38,11 @@ export function createWorkFinishTool(api: OpenClawPluginApi) {
       const prUrl = params.prUrl as string | undefined;
       const workspaceDir = requireWorkspaceDir(ctx);
 
-      // Validate role:result
-      if (role === "dev" && result !== "done" && result !== "blocked")
-        throw new Error(`DEV can only complete with "done" or "blocked", got "${result}"`);
-      if (role === "architect" && result !== "done" && result !== "blocked")
-        throw new Error(`ARCHITECT can only complete with "done" or "blocked", got "${result}"`);
-      if (role === "qa" && result === "done")
-        throw new Error(`QA cannot use "done". Use "pass", "fail", "refine", or "blocked".`);
+      // Validate role:result using registry
+      if (!isValidResult(role, result)) {
+        const valid = getCompletionResults(role);
+        throw new Error(`${role.toUpperCase()} cannot complete with "${result}". Valid results: ${valid.join(", ")}`);
+      }
       if (!getRule(role, result))
         throw new Error(`Invalid completion: ${role}:${result}`);
 

@@ -1,108 +1,90 @@
 /**
- * Developer level definitions and model resolution.
+ * tiers.ts — Developer level definitions and model resolution.
+ *
+ * This module now delegates to the centralized role registry (lib/roles/).
+ * Kept for backward compatibility — new code should import from lib/roles/ directly.
  *
  * Level names are plain: "junior", "senior", "reviewer", etc.
- * Role context (dev/qa) is always provided by the caller or parent structure.
+ * Role context (dev/qa/architect) is always provided by the caller.
  */
+import {
+  type WorkerRole,
+  ROLE_REGISTRY,
+  getLevelsForRole,
+  getAllDefaultModels,
+  roleForLevel,
+  getDefaultModel,
+  getEmoji,
+  resolveModel as registryResolveModel,
+} from "./roles/index.js";
 
-export const DEV_LEVELS = ["junior", "medior", "senior"] as const;
-export const QA_LEVELS = ["reviewer", "tester"] as const;
-export const ARCHITECT_LEVELS = ["opus", "sonnet"] as const;
+// Re-export WorkerRole from the registry
+export type { WorkerRole };
 
-export type DevLevel = (typeof DEV_LEVELS)[number];
-export type QaLevel = (typeof QA_LEVELS)[number];
-export type ArchitectLevel = (typeof ARCHITECT_LEVELS)[number];
-export type Level = DevLevel | QaLevel | ArchitectLevel;
+// ---------------------------------------------------------------------------
+// Level constants — derived from registry
+// ---------------------------------------------------------------------------
 
-/** Default models, nested by role. */
-export const DEFAULT_MODELS = {
-  dev: {
-    junior: "anthropic/claude-haiku-4-5",
-    medior: "anthropic/claude-sonnet-4-5",
-    senior: "anthropic/claude-opus-4-5",
-  },
-  qa: {
-    reviewer: "anthropic/claude-sonnet-4-5",
-    tester: "anthropic/claude-haiku-4-5",
-  },
-  architect: {
-    opus: "anthropic/claude-opus-4-5",
-    sonnet: "anthropic/claude-sonnet-4-5",
-  },
-};
+/** @deprecated Use roles/selectors.getAllDefaultModels() */
+export const DEFAULT_MODELS = getAllDefaultModels();
 
-/** Emoji used in announcements, nested by role. */
-export const LEVEL_EMOJI = {
-  dev: {
-    junior: "⚡",
-    medior: "🔧",
-    senior: "🧠",
-  },
-  qa: {
-    reviewer: "🔍",
-    tester: "👀",
-  },
-  architect: {
-    opus: "🏗️",
-    sonnet: "📐",
-  },
-};
+/** @deprecated Use roles/selectors.getEmoji() */
+export const LEVEL_EMOJI: Record<string, Record<string, string>> = Object.fromEntries(
+  Object.entries(ROLE_REGISTRY).map(([id, config]) => [id, { ...config.emoji }]),
+);
+
+export const DEV_LEVELS = getLevelsForRole("dev") as readonly string[];
+export const QA_LEVELS = getLevelsForRole("qa") as readonly string[];
+export const ARCHITECT_LEVELS = getLevelsForRole("architect") as readonly string[];
+
+export type DevLevel = string;
+export type QaLevel = string;
+export type ArchitectLevel = string;
+export type Level = string;
+
+// ---------------------------------------------------------------------------
+// Level checks — delegate to registry
+// ---------------------------------------------------------------------------
 
 /** Check if a level belongs to the dev role. */
-export function isDevLevel(value: string): value is DevLevel {
-  return (DEV_LEVELS as readonly string[]).includes(value);
+export function isDevLevel(value: string): boolean {
+  return DEV_LEVELS.includes(value);
 }
 
 /** Check if a level belongs to the qa role. */
-export function isQaLevel(value: string): value is QaLevel {
-  return (QA_LEVELS as readonly string[]).includes(value);
+export function isQaLevel(value: string): boolean {
+  return QA_LEVELS.includes(value);
 }
 
 /** Check if a level belongs to the architect role. */
-export function isArchitectLevel(value: string): value is ArchitectLevel {
-  return (ARCHITECT_LEVELS as readonly string[]).includes(value);
+export function isArchitectLevel(value: string): boolean {
+  return ARCHITECT_LEVELS.includes(value);
 }
 
 /** Determine the role a level belongs to. */
 export function levelRole(level: string): WorkerRole | undefined {
-  if (isDevLevel(level)) return "dev";
-  if (isQaLevel(level)) return "qa";
-  if (isArchitectLevel(level)) return "architect";
-  return undefined;
+  return roleForLevel(level) as WorkerRole | undefined;
 }
 
-/** All valid worker roles. */
-export type WorkerRole = "dev" | "qa" | "architect";
+// ---------------------------------------------------------------------------
+// Model + emoji — delegate to registry
+// ---------------------------------------------------------------------------
 
-/** Get the default model for a role + level. */
+/** @deprecated Use roles/selectors.getDefaultModel() */
 export function defaultModel(role: WorkerRole, level: string): string | undefined {
-  return (DEFAULT_MODELS[role] as Record<string, string>)[level];
+  return getDefaultModel(role, level);
 }
 
-/** Get the emoji for a role + level. */
+/** @deprecated Use roles/selectors.getEmoji() */
 export function levelEmoji(role: WorkerRole, level: string): string | undefined {
-  return (LEVEL_EMOJI[role] as Record<string, string>)[level];
+  return getEmoji(role, level);
 }
 
-/**
- * Resolve a level to a full model ID.
- *
- * Resolution order:
- * 1. Plugin config `models.<role>.<level>`
- * 2. DEFAULT_MODELS[role][level]
- * 3. Passthrough (treat as raw model ID)
- */
+/** @deprecated Use roles/selectors.resolveModel() */
 export function resolveModel(
   role: WorkerRole,
   level: string,
   pluginConfig?: Record<string, unknown>,
 ): string {
-  const models = (pluginConfig as { models?: Record<string, unknown> })?.models;
-
-  if (models && typeof models === "object") {
-    const roleModels = models[role] as Record<string, string> | undefined;
-    if (roleModels?.[level]) return roleModels[level];
-  }
-
-  return defaultModel(role, level) ?? level;
+  return registryResolveModel(role, level, pluginConfig);
 }

@@ -11,7 +11,7 @@ import { createProvider } from "../providers/index.js";
 import { selectLevel } from "../model-selector.js";
 import { getWorker, getSessionForLevel, readProjects } from "../projects.js";
 import { dispatchTask } from "../dispatch.js";
-import { DEV_LEVELS, QA_LEVELS, ARCHITECT_LEVELS, isDevLevel, levelRole } from "../tiers.js";
+import { getAllRoleIds, getLevelsForRole, getAllLevels, roleForLevel } from "../roles/index.js";
 import {
   DEFAULT_WORKFLOW,
   getQueueLabels,
@@ -48,19 +48,18 @@ export const PRIORITY_ORDER: StateLabel[] = getAllQueueLabels(DEFAULT_WORKFLOW);
 export function detectLevelFromLabels(labels: string[]): string | null {
   const lower = labels.map((l) => l.toLowerCase());
 
-  // Match role.level labels (e.g., "dev.senior", "qa.reviewer")
+  // Match role.level labels (e.g., "dev.senior", "qa.reviewer", "architect.opus")
   for (const l of lower) {
     const dot = l.indexOf(".");
     if (dot === -1) continue;
     const role = l.slice(0, dot);
     const level = l.slice(dot + 1);
-    if (role === "dev" && (DEV_LEVELS as readonly string[]).includes(level)) return level;
-    if (role === "qa" && (QA_LEVELS as readonly string[]).includes(level)) return level;
-    if (role === "architect" && (ARCHITECT_LEVELS as readonly string[]).includes(level)) return level;
+    const roleLevels = getLevelsForRole(role);
+    if (roleLevels.includes(level)) return level;
   }
 
   // Fallback: plain level name
-  const all = [...DEV_LEVELS, ...QA_LEVELS, ...ARCHITECT_LEVELS] as readonly string[];
+  const all = getAllLevels();
   return all.find((l) => lower.includes(l)) ?? null;
 }
 
@@ -165,7 +164,7 @@ export async function projectTick(opts: {
 
   const provider = opts.provider ?? (await createProvider({ repo: project.repo })).provider;
   const roleExecution = project.roleExecution ?? "parallel";
-  const roles: Role[] = targetRole ? [targetRole] : ["dev", "qa", "architect"];
+  const roles: Role[] = targetRole ? [targetRole] : getAllRoleIds() as Role[];
 
   const pickups: TickAction[] = [];
   const skipped: TickResult["skipped"] = [];
@@ -187,8 +186,8 @@ export async function projectTick(opts: {
       continue;
     }
     // Check sequential role execution: any other role must be inactive
-    const otherRoles = (["dev", "qa", "architect"] as const).filter(r => r !== role);
-    if (roleExecution === "sequential" && otherRoles.some(r => getWorker(fresh, r).active)) {
+    const otherRoles = getAllRoleIds().filter(r => r !== role);
+    if (roleExecution === "sequential" && otherRoles.some(r => getWorker(fresh, r as any).active)) {
       skipped.push({ role, reason: "Sequential: other role active" });
       continue;
     }
@@ -247,7 +246,7 @@ export async function projectTick(opts: {
 function resolveLevelForIssue(issue: Issue, role: Role): string {
   const labelLevel = detectLevelFromLabels(issue.labels);
   if (labelLevel) {
-    const labelRole = levelRole(labelLevel);
+    const labelRole = roleForLevel(labelLevel);
     // If label level belongs to a different role, use heuristic for correct role
     if (labelRole && labelRole !== role) return selectLevel(issue.title, issue.description ?? "", role).level;
     return labelLevel;

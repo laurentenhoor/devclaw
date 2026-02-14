@@ -10,6 +10,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
+import { getSessionKeyRolePattern } from "./roles/index.js";
 
 /**
  * Parse a DevClaw subagent session key to extract project name and role.
@@ -23,11 +24,12 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
  */
 export function parseDevClawSessionKey(
   sessionKey: string,
-): { projectName: string; role: "dev" | "qa" | "architect" } | null {
-  // Match `:subagent:` prefix, then capture everything up to the last `-dev-`, `-qa-`, or `-architect-`
-  const match = sessionKey.match(/:subagent:(.+)-(dev|qa|architect)-[^-]+$/);
+): { projectName: string; role: string } | null {
+  // Match `:subagent:` prefix, then capture project name and role (derived from registry)
+  const rolePattern = getSessionKeyRolePattern();
+  const match = sessionKey.match(new RegExp(`:subagent:(.+)-(${rolePattern})-[^-]+$`));
   if (!match) return null;
-  return { projectName: match[1], role: match[2] as "dev" | "qa" | "architect" };
+  return { projectName: match[1], role: match[2] };
 }
 
 /**
@@ -40,7 +42,7 @@ export function parseDevClawSessionKey(
 export async function loadRoleInstructions(
   workspaceDir: string,
   projectName: string,
-  role: "dev" | "qa" | "architect",
+  role: string,
 ): Promise<string> {
   const projectFile = path.join(workspaceDir, "projects", "roles", projectName, `${role}.md`);
   try {

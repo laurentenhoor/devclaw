@@ -13,7 +13,7 @@ import {
   getSessionForLevel,
   getWorker,
 } from "./projects.js";
-import { resolveModel, levelEmoji } from "./tiers.js";
+import { resolveModel, getEmoji, getFallbackEmoji } from "./roles/index.js";
 import { notify, getNotificationConfig } from "./notify.js";
 
 export type DispatchOpts = {
@@ -302,7 +302,7 @@ function buildAnnouncement(
   level: string, role: string, sessionAction: "spawn" | "send",
   issueId: number, issueTitle: string, issueUrl: string,
 ): string {
-  const emoji = levelEmoji(role as "dev" | "qa" | "architect", level) ?? (role === "qa" ? "🔍" : role === "architect" ? "🏗️" : "🔧");
+  const emoji = getEmoji(role, level) ?? getFallbackEmoji(role);
   const actionVerb = sessionAction === "spawn" ? "Spawning" : "Sending";
   return `${emoji} ${actionVerb} ${role.toUpperCase()} (${level}) for #${issueId}: ${issueTitle}\n🔗 ${issueUrl}`;
 }
