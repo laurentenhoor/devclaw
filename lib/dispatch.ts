@@ -26,7 +26,7 @@ export type DispatchOpts = {
   issueDescription: string;
   issueUrl: string;
   role: "dev" | "qa" | "architect";
-  /** Developer level (junior, medior, senior, reviewer, opus, sonnet) or raw model ID */
+  /** Developer level (junior, mid, senior) or raw model ID */
   level: string;
   /** Label to transition FROM (e.g. "To Do", "To Test", "To Improve") */
   fromLabel: string;

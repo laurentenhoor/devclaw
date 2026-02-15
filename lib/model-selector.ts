@@ -1,7 +1,7 @@
 /**
  * Model selection for dev/qa tasks.
  * Keyword heuristic fallback — used when the orchestrator doesn't specify a level.
- * Returns plain level names (junior, medior, senior, reviewer, tester).
+ * Returns plain level names (junior, mid, senior).
  */
 
 export type LevelSelection = {
@@ -41,12 +41,10 @@ const COMPLEX_KEYWORDS = [
 /**
  * Select appropriate developer level based on task description.
  *
- * Developer levels:
- * - junior: very simple (typos, single-file fixes, CSS tweaks)
- * - medior: standard DEV (features, bug fixes, multi-file changes)
+ * All roles use consistent levels:
+ * - junior: simple tasks (typos, single-file fixes, CSS tweaks)
+ * - mid: standard work (features, bug fixes, multi-file changes)
  * - senior: deep/architectural (system-wide refactoring, novel design)
- * - reviewer: QA code inspection and validation
- * - tester: QA manual testing
  */
 export function selectLevel(
   issueTitle: string,
@@ -55,7 +53,7 @@ export function selectLevel(
 ): LevelSelection {
   if (role === "qa") {
     return {
-      level: "reviewer",
+      level: "mid",
       reason: "Default QA level for code inspection and validation",
     };
   }
@@ -64,10 +62,10 @@ export function selectLevel(
     const text = `${issueTitle} ${issueDescription}`.toLowerCase();
     const isComplex = COMPLEX_KEYWORDS.some((kw) => text.includes(kw));
     return {
-      level: isComplex ? "opus" : "sonnet",
+      level: isComplex ? "senior" : "junior",
       reason: isComplex
-        ? "Complex design task — using opus for depth"
-        : "Standard design task — using sonnet",
+        ? "Complex design task — using senior for depth"
+        : "Standard design task — using junior",
     };
   }
 
@@ -92,9 +90,9 @@ export function selectLevel(
     };
   }
 
-  // Default: medior for standard dev work
+  // Default: mid for standard dev work
   return {
-    level: "medior",
+    level: "mid",
     reason: "Standard dev task — multi-file changes, features, bug fixes",
   };
 }

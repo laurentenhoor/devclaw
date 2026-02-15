@@ -37,6 +37,21 @@ export function requireRole(role: string): RoleConfig {
 }
 
 // ---------------------------------------------------------------------------
+// Level aliases — maps old level names to new canonical names
+// ---------------------------------------------------------------------------
+
+const LEVEL_ALIASES: Record<string, Record<string, string>> = {
+  dev: { medior: "mid" },
+  qa: { reviewer: "mid", tester: "junior" },
+  architect: { opus: "senior", sonnet: "junior" },
+};
+
+/** Resolve a level name, applying aliases for backward compatibility. */
+export function canonicalLevel(role: string, level: string): string {
+  return LEVEL_ALIASES[role]?.[level] ?? level;
+}
+
+// ---------------------------------------------------------------------------
 // Levels
 // ---------------------------------------------------------------------------
 
@@ -90,7 +105,7 @@ export function getAllDefaultModels(): Record<string, Record<string, string>> {
  * Resolve a level to a full model ID.
  *
  * Resolution order:
- * 1. Plugin config `models.<role>.<level>`
+ * 1. Plugin config `models.<role>.<level>` (tries canonical name, then original)
  * 2. Registry default model
  * 3. Passthrough (treat level as raw model ID)
  */
@@ -99,12 +114,15 @@ export function resolveModel(
   level: string,
   pluginConfig?: Record<string, unknown>,
 ): string {
+  const canonical = canonicalLevel(role, level);
   const models = (pluginConfig as { models?: Record<string, unknown> })?.models;
   if (models && typeof models === "object") {
     const roleModels = models[role] as Record<string, string> | undefined;
+    // Try canonical name first, then original (for old configs)
+    if (roleModels?.[canonical]) return roleModels[canonical];
     if (roleModels?.[level]) return roleModels[level];
   }
-  return getDefaultModel(role, level) ?? level;
+  return getDefaultModel(role, canonical) ?? canonical;
 }
 
 // ---------------------------------------------------------------------------

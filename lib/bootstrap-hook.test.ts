@@ -11,12 +11,12 @@ import os from "node:os";
 
 describe("parseDevClawSessionKey", () => {
   it("should parse a standard dev session key", () => {
-    const result = parseDevClawSessionKey("agent:devclaw:subagent:my-project-dev-medior");
+    const result = parseDevClawSessionKey("agent:devclaw:subagent:my-project-dev-mid");
     assert.deepStrictEqual(result, { projectName: "my-project", role: "dev" });
   });
 
   it("should parse a qa session key", () => {
-    const result = parseDevClawSessionKey("agent:devclaw:subagent:webapp-qa-reviewer");
+    const result = parseDevClawSessionKey("agent:devclaw:subagent:webapp-qa-mid");
     assert.deepStrictEqual(result, { projectName: "webapp", role: "qa" });
   });
 
@@ -26,7 +26,7 @@ describe("parseDevClawSessionKey", () => {
   });
 
   it("should handle project names with multiple hyphens and qa role", () => {
-    const result = parseDevClawSessionKey("agent:devclaw:subagent:a-b-c-d-qa-tester");
+    const result = parseDevClawSessionKey("agent:devclaw:subagent:a-b-c-d-qa-junior");
     assert.deepStrictEqual(result, { projectName: "a-b-c-d", role: "qa" });
   });
 

@@ -79,11 +79,9 @@ export function buildOnboardToolContext(): string {
   // Build the model table dynamically from DEFAULT_MODELS
   const rows: string[] = [];
   const purposes: Record<string, string> = {
-    junior: "Typos, single-file fixes",
-    medior: "Features, bug fixes",
-    senior: "Architecture, refactoring",
-    reviewer: "Code review",
-    tester: "Testing",
+    junior: "Simple tasks, single-file fixes",
+    mid: "Features, bug fixes, code review",
+    senior: "Architecture, refactoring, complex tasks",
   };
   for (const [role, levels] of Object.entries(DEFAULT_MODELS)) {
     for (const [level, model] of Object.entries(levels)) {
@@ -97,7 +95,7 @@ export function buildOnboardToolContext(): string {
 ## What is DevClaw?
 DevClaw turns each Telegram group into an autonomous development team:
 - An **orchestrator** that manages backlogs and delegates work
-- **DEV workers** (junior/medior/senior levels) that write code in isolated sessions
+- **DEV workers** (junior/mid/senior levels) that write code in isolated sessions
 - **QA workers** that review code and run tests
 - Atomic tools for label transitions, session dispatch, state management, and audit logging
 

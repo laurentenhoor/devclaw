@@ -8,7 +8,8 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
 import { runSetup, type SetupOpts } from "../setup/index.js";
-import { DEV_LEVELS, QA_LEVELS, DEFAULT_MODELS } from "../tiers.js";
+import { DEFAULT_MODELS } from "../tiers.js";
+import { getLevelsForRole } from "../roles/index.js";
 
 export function createSetupTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
@@ -45,9 +46,9 @@ export function createSetupTool(api: OpenClawPluginApi) {
                   type: "string",
                   description: `Default: ${DEFAULT_MODELS.dev.junior}`,
                 },
-                medior: {
+                mid: {
                   type: "string",
-                  description: `Default: ${DEFAULT_MODELS.dev.medior}`,
+                  description: `Default: ${DEFAULT_MODELS.dev.mid}`,
                 },
                 senior: {
                   type: "string",
@@ -59,13 +60,17 @@ export function createSetupTool(api: OpenClawPluginApi) {
               type: "object",
               description: "QA level models",
               properties: {
-                reviewer: {
+                junior: {
                   type: "string",
-                  description: `Default: ${DEFAULT_MODELS.qa.reviewer}`,
+                  description: `Default: ${DEFAULT_MODELS.qa.junior}`,
                 },
-                tester: {
+                mid: {
                   type: "string",
-                  description: `Default: ${DEFAULT_MODELS.qa.tester}`,
+                  description: `Default: ${DEFAULT_MODELS.qa.mid}`,
+                },
+                senior: {
+                  type: "string",
+                  description: `Default: ${DEFAULT_MODELS.qa.senior}`,
                 },
               },
             },
@@ -109,8 +114,9 @@ export function createSetupTool(api: OpenClawPluginApi) {
       }
       lines.push(
         "Models:",
-        ...DEV_LEVELS.map((t) => `  dev.${t}: ${result.models.dev[t]}`),
-        ...QA_LEVELS.map((t) => `  qa.${t}: ${result.models.qa[t]}`),
+        ...getLevelsForRole("dev").map((t) => `  dev.${t}: ${result.models.dev[t]}`),
+        ...getLevelsForRole("qa").map((t) => `  qa.${t}: ${result.models.qa[t]}`),
+        ...getLevelsForRole("architect").map((t) => `  architect.${t}: ${result.models.architect[t]}`),
         "",
       );
 

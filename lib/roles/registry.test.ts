@@ -18,6 +18,7 @@ import {
   getDefaultModel,
   getAllDefaultModels,
   resolveModel,
+  canonicalLevel,
   getEmoji,
   getFallbackEmoji,
   getCompletionResults,
@@ -54,9 +55,9 @@ describe("role registry", () => {
 
 describe("levels", () => {
   it("should return levels for each role", () => {
-    assert.deepStrictEqual([...getLevelsForRole("dev")], ["junior", "medior", "senior"]);
-    assert.deepStrictEqual([...getLevelsForRole("qa")], ["reviewer", "tester"]);
-    assert.deepStrictEqual([...getLevelsForRole("architect")], ["opus", "sonnet"]);
+    assert.deepStrictEqual([...getLevelsForRole("dev")], ["junior", "mid", "senior"]);
+    assert.deepStrictEqual([...getLevelsForRole("qa")], ["junior", "mid", "senior"]);
+    assert.deepStrictEqual([...getLevelsForRole("architect")], ["junior", "senior"]);
   });
 
   it("should return empty for unknown role", () => {
@@ -66,35 +67,62 @@ describe("levels", () => {
   it("should return all levels", () => {
     const all = getAllLevels();
     assert.ok(all.includes("junior"));
-    assert.ok(all.includes("reviewer"));
-    assert.ok(all.includes("opus"));
+    assert.ok(all.includes("mid"));
+    assert.ok(all.includes("senior"));
   });
 
   it("should check level membership", () => {
     assert.strictEqual(isLevelForRole("junior", "dev"), true);
-    assert.strictEqual(isLevelForRole("junior", "qa"), false);
-    assert.strictEqual(isLevelForRole("opus", "architect"), true);
+    assert.strictEqual(isLevelForRole("junior", "qa"), true);
+    assert.strictEqual(isLevelForRole("junior", "architect"), true);
+    assert.strictEqual(isLevelForRole("mid", "dev"), true);
+    assert.strictEqual(isLevelForRole("mid", "architect"), false);
   });
 
   it("should find role for level", () => {
+    // "junior" appears in dev first (registry order)
     assert.strictEqual(roleForLevel("junior"), "dev");
-    assert.strictEqual(roleForLevel("reviewer"), "qa");
-    assert.strictEqual(roleForLevel("opus"), "architect");
+    assert.strictEqual(roleForLevel("mid"), "dev");
+    assert.strictEqual(roleForLevel("senior"), "dev");
     assert.strictEqual(roleForLevel("nonexistent"), undefined);
   });
 
   it("should return default level", () => {
-    assert.strictEqual(getDefaultLevel("dev"), "medior");
-    assert.strictEqual(getDefaultLevel("qa"), "reviewer");
-    assert.strictEqual(getDefaultLevel("architect"), "sonnet");
+    assert.strictEqual(getDefaultLevel("dev"), "mid");
+    assert.strictEqual(getDefaultLevel("qa"), "mid");
+    assert.strictEqual(getDefaultLevel("architect"), "junior");
+  });
+});
+
+describe("level aliases", () => {
+  it("should map old dev level names", () => {
+    assert.strictEqual(canonicalLevel("dev", "medior"), "mid");
+    assert.strictEqual(canonicalLevel("dev", "junior"), "junior");
+    assert.strictEqual(canonicalLevel("dev", "senior"), "senior");
+  });
+
+  it("should map old qa level names", () => {
+    assert.strictEqual(canonicalLevel("qa", "reviewer"), "mid");
+    assert.strictEqual(canonicalLevel("qa", "tester"), "junior");
+  });
+
+  it("should map old architect level names", () => {
+    assert.strictEqual(canonicalLevel("architect", "opus"), "senior");
+    assert.strictEqual(canonicalLevel("architect", "sonnet"), "junior");
+  });
+
+  it("should pass through unknown levels", () => {
+    assert.strictEqual(canonicalLevel("dev", "custom"), "custom");
+    assert.strictEqual(canonicalLevel("unknown", "whatever"), "whatever");
   });
 });
 
 describe("models", () => {
   it("should return default models", () => {
     assert.strictEqual(getDefaultModel("dev", "junior"), "anthropic/claude-haiku-4-5");
-    assert.strictEqual(getDefaultModel("qa", "reviewer"), "anthropic/claude-sonnet-4-5");
-    assert.strictEqual(getDefaultModel("architect", "opus"), "anthropic/claude-opus-4-5");
+    assert.strictEqual(getDefaultModel("dev", "mid"), "anthropic/claude-sonnet-4-5");
+    assert.strictEqual(getDefaultModel("qa", "mid"), "anthropic/claude-sonnet-4-5");
+    assert.strictEqual(getDefaultModel("architect", "senior"), "anthropic/claude-opus-4-5");
   });
 
   it("should return all default models", () => {
@@ -117,12 +145,25 @@ describe("models", () => {
   it("should pass through unknown level as model ID", () => {
     assert.strictEqual(resolveModel("dev", "anthropic/claude-opus-4-5"), "anthropic/claude-opus-4-5");
   });
+
+  it("should resolve old config keys via aliases", () => {
+    // Old config uses "medior" key — should still resolve
+    const config = { models: { dev: { medior: "custom/old-config-model" } } };
+    assert.strictEqual(resolveModel("dev", "medior", config), "custom/old-config-model");
+    // Also works when requesting the canonical name
+    assert.strictEqual(resolveModel("dev", "mid", {}), "anthropic/claude-sonnet-4-5");
+  });
+
+  it("should resolve old qa config keys", () => {
+    const config = { models: { qa: { reviewer: "custom/qa-model" } } };
+    assert.strictEqual(resolveModel("qa", "reviewer", config), "custom/qa-model");
+  });
 });
 
 describe("emoji", () => {
   it("should return level emoji", () => {
     assert.strictEqual(getEmoji("dev", "junior"), "⚡");
-    assert.strictEqual(getEmoji("architect", "opus"), "🏗️");
+    assert.strictEqual(getEmoji("architect", "senior"), "🏗️");
   });
 
   it("should return fallback emoji", () => {

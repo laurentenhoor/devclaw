@@ -37,13 +37,44 @@ export type ProjectsData = {
   projects: Record<string, Project>;
 };
 
-function parseWorkerState(worker: Record<string, unknown>): WorkerState {
+/**
+ * Level migration aliases: old name → new canonical name, keyed by role.
+ */
+const LEVEL_MIGRATION: Record<string, Record<string, string>> = {
+  dev: { medior: "mid" },
+  qa: { reviewer: "mid", tester: "junior" },
+  architect: { opus: "senior", sonnet: "junior" },
+};
+
+function migrateLevel(level: string | null, role: string): string | null {
+  if (!level) return null;
+  return LEVEL_MIGRATION[role]?.[level] ?? level;
+}
+
+function migrateSessions(
+  sessions: Record<string, string | null>,
+  role: string,
+): Record<string, string | null> {
+  const aliases = LEVEL_MIGRATION[role];
+  if (!aliases) return sessions;
+
+  const migrated: Record<string, string | null> = {};
+  for (const [key, value] of Object.entries(sessions)) {
+    const newKey = aliases[key] ?? key;
+    migrated[newKey] = value;
+  }
+  return migrated;
+}
+
+function parseWorkerState(worker: Record<string, unknown>, role: string): WorkerState {
+  const level = (worker.level ?? worker.tier ?? null) as string | null;
+  const sessions = (worker.sessions as Record<string, string | null>) ?? {};
   return {
     active: worker.active as boolean,
     issueId: worker.issueId as string | null,
     startTime: worker.startTime as string | null,
-    level: (worker.level ?? worker.tier ?? null) as string | null,
-    sessions: (worker.sessions as Record<string, string | null>) ?? {},
+    level: migrateLevel(level, role),
+    sessions: migrateSessions(sessions, role),
   };
 }
 
@@ -84,13 +115,13 @@ export async function readProjects(workspaceDir: string): Promise<ProjectsData> 
 
   for (const project of Object.values(data.projects)) {
     project.dev = project.dev
-      ? parseWorkerState(project.dev as unknown as Record<string, unknown>)
+      ? parseWorkerState(project.dev as unknown as Record<string, unknown>, "dev")
       : emptyWorkerState([]);
     project.qa = project.qa
-      ? parseWorkerState(project.qa as unknown as Record<string, unknown>)
+      ? parseWorkerState(project.qa as unknown as Record<string, unknown>, "qa")
       : emptyWorkerState([]);
     project.architect = project.architect
-      ? parseWorkerState(project.architect as unknown as Record<string, unknown>)
+      ? parseWorkerState(project.architect as unknown as Record<string, unknown>, "architect")
       : emptyWorkerState([]);
     if (!project.channel) {
       project.channel = "telegram";

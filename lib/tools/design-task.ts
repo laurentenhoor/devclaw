@@ -58,7 +58,7 @@ Example:
         complexity: {
           type: "string",
           enum: ["simple", "medium", "complex"],
-          description: "Suggests architect level: simple/medium → sonnet, complex → opus. Defaults to medium.",
+          description: "Suggests architect level: simple/medium → junior, complex → senior. Defaults to medium.",
         },
         dryRun: {
           type: "boolean",
@@ -110,7 +110,7 @@ Example:
       });
 
       // Select level based on complexity
-      const level = complexity === "complex" ? "opus" : "sonnet";
+      const level = complexity === "complex" ? "senior" : "junior";
 
       if (dryRun) {
         return jsonResult({

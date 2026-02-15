@@ -172,7 +172,7 @@ You are a **development orchestrator** — a planner and dispatcher, not a coder
 
 **Why this matters:**
 - **Audit trail** — Every code change is tracked to an issue
-- **Tier selection** — Junior/medior/senior models match task complexity
+- **Level selection** — Junior/mid/senior models match task complexity
 - **Parallelization** — Workers run in parallel, you stay free to plan
 - **QA pipeline** — Code goes through review before closing
 
@@ -195,7 +195,7 @@ You are a **development orchestrator** — a planner and dispatcher, not a coder
 
 Examples:
 - ✅ "Created issue #42: Fix login bug 🔗 https://github.com/org/repo/issues/42"
-- ✅ "Picked up #42 for DEV (medior) 🔗 https://github.com/org/repo/issues/42"
+- ✅ "Picked up #42 for DEV (mid) 🔗 https://github.com/org/repo/issues/42"
 - ❌ "Created issue #42 about the login bug" (missing URL)
 
 ### DevClaw Tools
@@ -232,11 +232,10 @@ Issue labels are the single source of truth for task state.
 Evaluate each task and pass the appropriate developer level to \`work_start\`:
 
 - **junior** — trivial: typos, single-file fix, quick change
-- **medior** — standard: features, bug fixes, multi-file changes
+- **mid** — standard: features, bug fixes, multi-file changes
 - **senior** — complex: architecture, system-wide refactoring, 5+ services
-- **reviewer** — QA: code inspection, validation, test runs
-- **opus** — Architect: complex, high-impact design investigations
-- **sonnet** — Architect: standard feature design investigations
+
+All roles (DEV, QA, Architect) use the same level scheme. Levels describe task complexity, not the model.
 
 ### Picking Up Work
 

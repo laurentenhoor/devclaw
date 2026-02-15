@@ -6,7 +6,7 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { HEARTBEAT_DEFAULTS } from "../services/heartbeat.js";
 
-type ModelConfig = { dev: Record<string, string>; qa: Record<string, string> };
+type ModelConfig = { dev: Record<string, string>; qa: Record<string, string>; architect: Record<string, string> };
 
 /**
  * Write DevClaw model level config to openclaw.json plugins section.

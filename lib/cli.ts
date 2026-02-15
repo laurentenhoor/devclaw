@@ -6,7 +6,8 @@
 import type { Command } from "commander";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { runSetup } from "./setup/index.js";
-import { DEV_LEVELS, QA_LEVELS, DEFAULT_MODELS } from "./tiers.js";
+import { DEFAULT_MODELS } from "./tiers.js";
+import { getLevelsForRole } from "./roles/index.js";
 
 /**
  * Register the `devclaw` CLI command group on a Commander program.
@@ -23,18 +24,20 @@ export function registerCli(program: Command, api: OpenClawPluginApi): void {
     .option("--agent <id>", "Use an existing agent by ID")
     .option("--workspace <path>", "Direct workspace path")
     .option("--junior <model>", `Junior dev model (default: ${DEFAULT_MODELS.dev.junior})`)
-    .option("--medior <model>", `Medior dev model (default: ${DEFAULT_MODELS.dev.medior})`)
+    .option("--mid <model>", `Mid dev model (default: ${DEFAULT_MODELS.dev.mid})`)
     .option("--senior <model>", `Senior dev model (default: ${DEFAULT_MODELS.dev.senior})`)
-    .option("--reviewer <model>", `Reviewer model (default: ${DEFAULT_MODELS.qa.reviewer})`)
-    .option("--tester <model>", `Tester model (default: ${DEFAULT_MODELS.qa.tester})`)
+    .option("--qa-junior <model>", `QA junior model (default: ${DEFAULT_MODELS.qa.junior})`)
+    .option("--qa-mid <model>", `QA mid model (default: ${DEFAULT_MODELS.qa.mid})`)
+    .option("--qa-senior <model>", `QA senior model (default: ${DEFAULT_MODELS.qa.senior})`)
     .action(async (opts) => {
       const dev: Record<string, string> = {};
       const qa: Record<string, string> = {};
       if (opts.junior) dev.junior = opts.junior;
-      if (opts.medior) dev.medior = opts.medior;
+      if (opts.mid) dev.mid = opts.mid;
       if (opts.senior) dev.senior = opts.senior;
-      if (opts.reviewer) qa.reviewer = opts.reviewer;
-      if (opts.tester) qa.tester = opts.tester;
+      if (opts.qaJunior) qa.junior = opts.qaJunior;
+      if (opts.qaMid) qa.mid = opts.qaMid;
+      if (opts.qaSenior) qa.senior = opts.qaSenior;
 
       const hasOverrides = Object.keys(dev).length > 0 || Object.keys(qa).length > 0;
       const models = hasOverrides
@@ -54,8 +57,9 @@ export function registerCli(program: Command, api: OpenClawPluginApi): void {
       }
 
       console.log("Models configured:");
-      for (const t of DEV_LEVELS) console.log(`  dev.${t}: ${result.models.dev[t]}`);
-      for (const t of QA_LEVELS) console.log(`  qa.${t}: ${result.models.qa[t]}`);
+      for (const t of getLevelsForRole("dev")) console.log(`  dev.${t}: ${result.models.dev[t]}`);
+      for (const t of getLevelsForRole("qa")) console.log(`  qa.${t}: ${result.models.qa[t]}`);
+      for (const t of getLevelsForRole("architect")) console.log(`  architect.${t}: ${result.models.architect[t]}`);
 
       console.log("Files written:");
       for (const file of result.filesWritten) {

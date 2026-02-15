@@ -11,7 +11,7 @@ import { createAgent, resolveWorkspacePath } from "./agent.js";
 import { writePluginConfig } from "./config.js";
 import { scaffoldWorkspace } from "./workspace.js";
 
-export type ModelConfig = { dev: Record<string, string>; qa: Record<string, string> };
+export type ModelConfig = { dev: Record<string, string>; qa: Record<string, string>; architect: Record<string, string> };
 
 export type SetupOpts = {
   /** OpenClaw plugin API for config access. */
@@ -27,7 +27,7 @@ export type SetupOpts = {
   /** Override workspace path (auto-detected from agent if not given). */
   workspacePath?: string;
   /** Model overrides per role.level. Missing levels use defaults. */
-  models?: { dev?: Partial<Record<string, string>>; qa?: Partial<Record<string, string>> };
+  models?: { dev?: Partial<Record<string, string>>; qa?: Partial<Record<string, string>>; architect?: Partial<Record<string, string>> };
   /** Plugin-level project execution mode: parallel or sequential. Default: parallel. */
   projectExecution?: "parallel" | "sequential";
 };
@@ -115,6 +115,7 @@ async function tryMigrateBinding(
 function buildModelConfig(overrides?: SetupOpts["models"]): ModelConfig {
   const dev: Record<string, string> = { ...DEFAULT_MODELS.dev };
   const qa: Record<string, string> = { ...DEFAULT_MODELS.qa };
+  const architect: Record<string, string> = { ...DEFAULT_MODELS.architect };
 
   if (overrides?.dev) {
     for (const [level, model] of Object.entries(overrides.dev)) {
@@ -126,6 +127,11 @@ function buildModelConfig(overrides?: SetupOpts["models"]): ModelConfig {
       if (model) qa[level] = model;
     }
   }
+  if (overrides?.architect) {
+    for (const [level, model] of Object.entries(overrides.architect)) {
+      if (model) architect[level] = model;
+    }
+  }
 
-  return { dev, qa };
+  return { dev, qa, architect };
 }

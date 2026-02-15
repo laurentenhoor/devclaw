@@ -26,31 +26,32 @@ const plugin = {
     properties: {
       models: {
         type: "object",
-        description: "Model mapping per role and tier",
+        description: "Model mapping per role and level",
         properties: {
           dev: {
             type: "object",
-            description: "Developer tier models",
+            description: "Developer level models",
             properties: {
               junior: { type: "string" },
-              medior: { type: "string" },
+              mid: { type: "string" },
               senior: { type: "string" },
             },
           },
           qa: {
             type: "object",
-            description: "QA tier models",
+            description: "QA level models",
             properties: {
-              reviewer: { type: "string" },
-              tester: { type: "string" },
+              junior: { type: "string" },
+              mid: { type: "string" },
+              senior: { type: "string" },
             },
           },
           architect: {
             type: "object",
-            description: "Architect tier models",
+            description: "Architect level models",
             properties: {
-              opus: { type: "string" },
-              sonnet: { type: "string" },
+              junior: { type: "string" },
+              senior: { type: "string" },
             },
           },
         },

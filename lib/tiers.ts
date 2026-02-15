@@ -4,7 +4,7 @@
  * This module now delegates to the centralized role registry (lib/roles/).
  * Kept for backward compatibility — new code should import from lib/roles/ directly.
  *
- * Level names are plain: "junior", "senior", "reviewer", etc.
+ * Level names are plain: "junior", "mid", "senior".
  * Role context (dev/qa/architect) is always provided by the caller.
  */
 import {

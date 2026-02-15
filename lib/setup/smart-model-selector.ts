@@ -7,16 +7,17 @@
 export type ModelAssignment = {
   dev: {
     junior: string;
-    medior: string;
+    mid: string;
     senior: string;
   };
   qa: {
-    reviewer: string;
-    tester: string;
+    junior: string;
+    mid: string;
+    senior: string;
   };
   architect: {
-    opus: string;
-    sonnet: string;
+    junior: string;
+    senior: string;
   };
 };
 
@@ -43,9 +44,9 @@ export async function assignModels(
   if (authenticated.length === 1) {
     const model = authenticated[0].model;
     return {
-      dev: { junior: model, medior: model, senior: model },
-      qa: { reviewer: model, tester: model },
-      architect: { opus: model, sonnet: model },
+      dev: { junior: model, mid: model, senior: model },
+      qa: { junior: model, mid: model, senior: model },
+      architect: { junior: model, senior: model },
     };
   }
 
@@ -68,12 +69,13 @@ export function formatAssignment(assignment: ModelAssignment): string {
     "| Role | Level    | Model                    |",
     "|------|----------|--------------------------|",
     `| DEV  | senior   | ${assignment.dev.senior.padEnd(24)} |`,
-    `| DEV  | medior   | ${assignment.dev.medior.padEnd(24)} |`,
+    `| DEV  | mid      | ${assignment.dev.mid.padEnd(24)} |`,
     `| DEV  | junior   | ${assignment.dev.junior.padEnd(24)} |`,
-    `| QA   | reviewer | ${assignment.qa.reviewer.padEnd(24)} |`,
-    `| QA   | tester   | ${assignment.qa.tester.padEnd(24)} |`,
-    `| ARCH | opus     | ${assignment.architect.opus.padEnd(24)} |`,
-    `| ARCH | sonnet   | ${assignment.architect.sonnet.padEnd(24)} |`,
+    `| QA   | senior   | ${assignment.qa.senior.padEnd(24)} |`,
+    `| QA   | mid      | ${assignment.qa.mid.padEnd(24)} |`,
+    `| QA   | junior   | ${assignment.qa.junior.padEnd(24)} |`,
+    `| ARCH | senior   | ${assignment.architect.senior.padEnd(24)} |`,
+    `| ARCH | junior   | ${assignment.architect.junior.padEnd(24)} |`,
   ];
   return lines.join("\n");
 }

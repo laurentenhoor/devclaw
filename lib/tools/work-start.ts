@@ -30,7 +30,7 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
         projectGroupId: { type: "string", description: "Project group ID." },
         issueId: { type: "number", description: "Issue ID. If omitted, picks next by priority." },
         role: { type: "string", enum: getAllRoleIds(), description: "Worker role. Auto-detected from label if omitted." },
-        level: { type: "string", description: "Developer level (junior/medior/senior/reviewer). Auto-detected if omitted." },
+        level: { type: "string", description: "Worker level (junior/mid/senior). Auto-detected if omitted." },
       },
     },
 

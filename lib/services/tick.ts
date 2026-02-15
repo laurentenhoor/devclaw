@@ -48,7 +48,7 @@ export const PRIORITY_ORDER: StateLabel[] = getAllQueueLabels(DEFAULT_WORKFLOW);
 export function detectLevelFromLabels(labels: string[]): string | null {
   const lower = labels.map((l) => l.toLowerCase());
 
-  // Match role.level labels (e.g., "dev.senior", "qa.reviewer", "architect.opus")
+  // Match role.level labels (e.g., "dev.senior", "qa.mid", "architect.junior")
   for (const l of lower) {
     const dot = l.indexOf(".");
     if (dot === -1) continue;
