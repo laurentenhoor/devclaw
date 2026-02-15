@@ -31,9 +31,9 @@ describe("architect tiers", () => {
     assert.strictEqual(getDefaultModel("architect", "junior"), "anthropic/claude-sonnet-4-5");
   });
 
-  it("should resolve architect model from config", () => {
-    const config = { models: { architect: { senior: "custom/model" } } };
-    assert.strictEqual(resolveModel("architect", "senior", config), "custom/model");
+  it("should resolve architect model from resolved role config", () => {
+    const resolvedRole = { models: { senior: "custom/model" }, levels: ["junior", "senior"], defaultLevel: "junior", emoji: {}, completionResults: [] as string[], enabled: true };
+    assert.strictEqual(resolveModel("architect", "senior", resolvedRole), "custom/model");
   });
 
   it("should have architect emoji", () => {

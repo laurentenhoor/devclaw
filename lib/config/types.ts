@@ -1,13 +1,13 @@
 /**
  * config/types.ts — Types for the unified DevClaw configuration.
  *
- * A single config.yaml combines roles, models, and workflow.
+ * A single workflow.yaml combines roles, models, and workflow.
  * Three-layer resolution: built-in → workspace → per-project.
  */
 import type { WorkflowConfig } from "../workflow.js";
 
 /**
- * Role override in config.yaml. All fields optional — only override what you need.
+ * Role override in workflow.yaml. All fields optional — only override what you need.
  * Set to `false` to disable a role entirely for a project.
  */
 export type RoleOverride = {
@@ -19,7 +19,7 @@ export type RoleOverride = {
 };
 
 /**
- * The full config.yaml shape.
+ * The full workflow.yaml shape.
  * All fields optional — missing fields inherit from the layer below.
  */
 export type DevClawConfig = {

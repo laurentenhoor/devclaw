@@ -1,15 +1,19 @@
 /**
  * setup/index.ts — DevClaw setup orchestrator.
  *
- * Coordinates: agent creation → model config → workspace scaffolding.
+ * Coordinates: agent creation → plugin config → workspace scaffolding → model config.
  * Used by both the `setup` tool and the `openclaw devclaw setup` CLI command.
  */
+import fs from "node:fs/promises";
+import path from "node:path";
+import YAML from "yaml";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { getAllDefaultModels } from "../roles/index.js";
 import { migrateChannelBinding } from "../binding-manager.js";
 import { createAgent, resolveWorkspacePath } from "./agent.js";
 import { writePluginConfig } from "./config.js";
 import { scaffoldWorkspace } from "./workspace.js";
+import { DATA_DIR } from "./migrate-layout.js";
 
 export type ModelConfig = Record<string, Record<string, string>>;
 
@@ -49,8 +53,9 @@ export type SetupResult = {
  * Run the full DevClaw setup.
  *
  * 1. Create agent (optional) or resolve existing workspace
- * 2. Merge model config and write to openclaw.json
- * 3. Write workspace files (AGENTS.md, HEARTBEAT.md, roles, memory)
+ * 2. Write plugin config to openclaw.json (heartbeat, tool restrictions — no models)
+ * 3. Write workspace files (AGENTS.md, HEARTBEAT.md, workflow.yaml, prompts)
+ * 4. Write model config to workflow.yaml (single source of truth)
  */
 export async function runSetup(opts: SetupOpts): Promise<SetupResult> {
   const warnings: string[] = [];
@@ -58,10 +63,12 @@ export async function runSetup(opts: SetupOpts): Promise<SetupResult> {
   const { agentId, workspacePath, agentCreated, bindingMigrated } =
     await resolveOrCreateAgent(opts, warnings);
 
-  const models = buildModelConfig(opts.models);
-  await writePluginConfig(opts.api, models, agentId, opts.projectExecution);
+  await writePluginConfig(opts.api, agentId, opts.projectExecution);
 
   const filesWritten = await scaffoldWorkspace(workspacePath);
+
+  const models = buildModelConfig(opts.models);
+  await writeModelsToWorkflow(workspacePath, models);
 
   return { agentId, agentCreated, workspacePath, models, filesWritten, warnings, bindingMigrated };
 }
@@ -130,4 +137,33 @@ function buildModelConfig(overrides?: SetupOpts["models"]): ModelConfig {
   }
 
   return result;
+}
+
+/**
+ * Write model configuration to workflow.yaml (single source of truth).
+ * Reads the existing workflow.yaml, merges model overrides into the roles section, and writes back.
+ */
+async function writeModelsToWorkflow(workspacePath: string, models: ModelConfig): Promise<void> {
+  const workflowPath = path.join(workspacePath, DATA_DIR, "workflow.yaml");
+
+  let doc: Record<string, unknown> = {};
+  try {
+    const content = await fs.readFile(workflowPath, "utf-8");
+    doc = (YAML.parse(content) as Record<string, unknown>) ?? {};
+  } catch { /* file doesn't exist yet — start fresh */ }
+
+  // Merge models into roles section
+  if (!doc.roles) doc.roles = {};
+  const roles = doc.roles as Record<string, unknown>;
+
+  for (const [role, levels] of Object.entries(models)) {
+    if (!roles[role] || roles[role] === false) {
+      roles[role] = { models: levels };
+    } else {
+      const roleObj = roles[role] as Record<string, unknown>;
+      roleObj.models = levels;
+    }
+  }
+
+  await fs.writeFile(workflowPath, YAML.stringify(doc, { lineWidth: 120 }), "utf-8");
 }

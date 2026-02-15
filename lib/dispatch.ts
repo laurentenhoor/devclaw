@@ -151,7 +151,7 @@ export async function dispatchTask(
 
   const resolvedConfig = await loadConfig(workspaceDir, project.name);
   const resolvedRole = resolvedConfig.roles[role];
-  const model = resolveModel(role, level, pluginConfig, resolvedRole);
+  const model = resolveModel(role, level, resolvedRole);
   const worker = getWorker(project, role);
   const existingSessionKey = getSessionForLevel(worker, level);
   const sessionAction = existingSessionKey ? "send" : "spawn";

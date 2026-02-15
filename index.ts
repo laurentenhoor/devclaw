@@ -15,28 +15,6 @@ import { registerCli } from "./lib/cli.js";
 import { registerHeartbeatService } from "./lib/services/heartbeat.js";
 import { registerBootstrapHook } from "./lib/bootstrap-hook.js";
 import { initRunCommand } from "./lib/run-command.js";
-import { ROLE_REGISTRY } from "./lib/roles/index.js";
-
-/** Build the models config schema dynamically from the role registry. */
-function buildModelsSchema(): Record<string, unknown> {
-  const properties: Record<string, unknown> = {};
-  for (const [roleId, config] of Object.entries(ROLE_REGISTRY)) {
-    const levelProps: Record<string, unknown> = {};
-    for (const level of config.levels) {
-      levelProps[level] = { type: "string" };
-    }
-    properties[roleId] = {
-      type: "object",
-      description: `${config.displayName} level models`,
-      properties: levelProps,
-    };
-  }
-  return {
-    type: "object",
-    description: "Model mapping per role and level",
-    properties,
-  };
-}
 
 const plugin = {
   id: "devclaw",
@@ -46,7 +24,6 @@ const plugin = {
   configSchema: {
     type: "object",
     properties: {
-      models: buildModelsSchema(),
       projectExecution: {
         type: "string",
         enum: ["parallel", "sequential"],

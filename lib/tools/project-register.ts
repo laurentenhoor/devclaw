@@ -16,18 +16,19 @@ import { createProvider } from "../providers/index.js";
 import { log as auditLog } from "../audit.js";
 import { getAllRoleIds, getLevelsForRole } from "../roles/index.js";
 import { DEFAULT_ROLE_INSTRUCTIONS } from "../templates.js";
+import { DATA_DIR } from "../setup/migrate-layout.js";
 
 /**
  * Scaffold project-specific prompt files for all registered roles.
  * Returns true if files were created, false if they already existed.
  */
 async function scaffoldPromptFiles(workspaceDir: string, projectName: string): Promise<boolean> {
-  const projectDir = path.join(workspaceDir, "projects", "roles", projectName);
-  await fs.mkdir(projectDir, { recursive: true });
+  const promptsDir = path.join(workspaceDir, DATA_DIR, "projects", projectName, "prompts");
+  await fs.mkdir(promptsDir, { recursive: true });
 
   let created = false;
   for (const role of getAllRoleIds()) {
-    const filePath = path.join(projectDir, `${role}.md`);
+    const filePath = path.join(promptsDir, `${role}.md`);
     try {
       await fs.access(filePath);
     } catch {

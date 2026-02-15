@@ -5,6 +5,7 @@
  */
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
+import { DATA_DIR } from "./setup/migrate-layout.js";
 
 const MAX_LOG_LINES = 50;
 
@@ -13,7 +14,7 @@ export async function log(
   event: string,
   data: Record<string, unknown>,
 ): Promise<void> {
-  const filePath = join(workspaceDir, "log", "audit.log");
+  const filePath = join(workspaceDir, DATA_DIR, "log", "audit.log");
   const entry = JSON.stringify({
     ts: new Date().toISOString(),
     event,

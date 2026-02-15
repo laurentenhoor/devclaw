@@ -95,8 +95,8 @@ describe("readProjects migration", () => {
 
   it("should read new format (workers map) correctly", async () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "devclaw-proj-"));
-    const projDir = path.join(tmpDir, "projects");
-    await fs.mkdir(projDir, { recursive: true });
+    const dataDir = path.join(tmpDir, "devclaw");
+    await fs.mkdir(dataDir, { recursive: true });
 
     const newFormat = {
       projects: {
@@ -114,7 +114,7 @@ describe("readProjects migration", () => {
         },
       },
     };
-    await fs.writeFile(path.join(projDir, "projects.json"), JSON.stringify(newFormat), "utf-8");
+    await fs.writeFile(path.join(dataDir, "projects.json"), JSON.stringify(newFormat), "utf-8");
 
     const data = await readProjects(tmpDir);
     const project = data.projects["group-1"];
@@ -129,8 +129,8 @@ describe("readProjects migration", () => {
 
   it("should migrate old worker keys in new format", async () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "devclaw-proj-"));
-    const projDir = path.join(tmpDir, "projects");
-    await fs.mkdir(projDir, { recursive: true });
+    const dataDir = path.join(tmpDir, "devclaw");
+    await fs.mkdir(dataDir, { recursive: true });
 
     // Workers map but with old role keys
     const mixedFormat = {
@@ -149,7 +149,7 @@ describe("readProjects migration", () => {
         },
       },
     };
-    await fs.writeFile(path.join(projDir, "projects.json"), JSON.stringify(mixedFormat), "utf-8");
+    await fs.writeFile(path.join(dataDir, "projects.json"), JSON.stringify(mixedFormat), "utf-8");
 
     const data = await readProjects(tmpDir);
     const project = data.projects["group-1"];
@@ -165,11 +165,7 @@ describe("readProjects migration", () => {
 });
 
 describe("getWorker", () => {
-  it("should return worker from workers map", async () => {
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "devclaw-proj-"));
-    const projDir = path.join(tmpDir, "projects");
-    await fs.mkdir(projDir, { recursive: true });
-
+  it("should return worker from workers map", () => {
     const data: ProjectsData = {
       projects: {
         "g1": {
@@ -189,11 +185,9 @@ describe("getWorker", () => {
     const worker = getWorker(data.projects["g1"], "developer");
     assert.strictEqual(worker.active, true);
     assert.strictEqual(worker.issueId, "5");
-
-    await fs.rm(tmpDir, { recursive: true });
   });
 
-  it("should return empty worker for unknown role", async () => {
+  it("should return empty worker for unknown role", () => {
     const data: ProjectsData = {
       projects: {
         "g1": {
@@ -217,8 +211,8 @@ describe("getWorker", () => {
 describe("writeProjects round-trip", () => {
   it("should preserve workers map through write/read cycle", async () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "devclaw-proj-"));
-    const projDir = path.join(tmpDir, "projects");
-    await fs.mkdir(projDir, { recursive: true });
+    const dataDir = path.join(tmpDir, "devclaw");
+    await fs.mkdir(dataDir, { recursive: true });
 
     const data: ProjectsData = {
       projects: {

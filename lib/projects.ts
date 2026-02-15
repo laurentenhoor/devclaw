@@ -6,6 +6,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { homedir } from "node:os";
 import { migrateProject } from "./migrations.js";
+import { ensureWorkspaceMigrated, DATA_DIR } from "./setup/migrate-layout.js";
 
 export type WorkerState = {
   active: boolean;
@@ -66,10 +67,11 @@ export function getSessionForLevel(
 }
 
 function projectsPath(workspaceDir: string): string {
-  return path.join(workspaceDir, "projects", "projects.json");
+  return path.join(workspaceDir, DATA_DIR, "projects.json");
 }
 
 export async function readProjects(workspaceDir: string): Promise<ProjectsData> {
+  await ensureWorkspaceMigrated(workspaceDir);
   const raw = await fs.readFile(projectsPath(workspaceDir), "utf-8");
   const data = JSON.parse(raw) as ProjectsData;
 

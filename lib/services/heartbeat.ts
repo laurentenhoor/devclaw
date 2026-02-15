@@ -15,6 +15,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { readProjects } from "../projects.js";
 import { log as auditLog } from "../audit.js";
+import { DATA_DIR } from "../setup/migrate-layout.js";
 import { checkWorkerHealth, scanOrphanedLabels, fetchGatewaySessions, type SessionLookup } from "./health.js";
 import { projectTick } from "./tick.js";
 import { createProvider } from "../providers/index.js";
@@ -115,7 +116,7 @@ export function registerHeartbeatService(api: OpenClawPluginApi) {
 
 /**
  * Discover DevClaw agents by scanning which agent workspaces have projects.
- * Self-discovering: any agent whose workspace contains projects/projects.json is processed.
+ * Self-discovering: any agent whose workspace contains projects.json is processed.
  * Also checks the default workspace (agents.defaults.workspace) for projects.
  */
 function discoverAgents(config: {
@@ -131,7 +132,7 @@ function discoverAgents(config: {
   for (const a of config.agents?.list || []) {
     if (!a.workspace) continue;
     try {
-      if (fs.existsSync(path.join(a.workspace, "projects", "projects.json"))) {
+      if (hasProjects(a.workspace)) {
         agents.push({ agentId: a.id, workspace: a.workspace });
         seen.add(a.workspace);
       }
@@ -142,13 +143,22 @@ function discoverAgents(config: {
   const defaultWorkspace = config.agents?.defaults?.workspace;
   if (defaultWorkspace && !seen.has(defaultWorkspace)) {
     try {
-      if (fs.existsSync(path.join(defaultWorkspace, "projects", "projects.json"))) {
+      if (hasProjects(defaultWorkspace)) {
         agents.push({ agentId: "main", workspace: defaultWorkspace });
       }
     } catch { /* skip */ }
   }
 
   return agents;
+}
+
+/** Check if a workspace has a projects.json (new or old locations). */
+function hasProjects(workspace: string): boolean {
+  return (
+    fs.existsSync(path.join(workspace, DATA_DIR, "projects.json")) ||
+    fs.existsSync(path.join(workspace, "projects.json")) ||
+    fs.existsSync(path.join(workspace, "projects", "projects.json"))
+  );
 }
 
 /**

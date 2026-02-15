@@ -266,7 +266,7 @@ Workers call \`work_finish\` themselves — the label transition, state update, 
 
 ### Prompt Instructions
 
-Workers receive role-specific instructions appended to their task message. These are loaded from \`projects/roles/<project-name>/<role>.md\` in the workspace, falling back to \`projects/roles/default/<role>.md\` if no project-specific file exists. \`project_register\` scaffolds these files automatically — edit them to customize worker behavior per project.
+Workers receive role-specific instructions appended to their task message. These are loaded from \`devclaw/projects/<project-name>/prompts/<role>.md\` in the workspace, falling back to \`devclaw/prompts/<role>.md\` if no project-specific file exists. \`project_register\` scaffolds these files automatically — edit them to customize worker behavior per project.
 
 ### Heartbeats
 
@@ -284,4 +284,110 @@ Workers receive role-specific instructions appended to their task message. These
 export const HEARTBEAT_MD_TEMPLATE = `# HEARTBEAT.md
 
 Do nothing. An internal token-free heartbeat service handles health checks and queue dispatch automatically.
+`;
+
+export const WORKFLOW_YAML_TEMPLATE = `# DevClaw workflow configuration
+# Modify values to customize. Copy to devclaw/projects/<project>/workflow.yaml for project-specific overrides.
+
+roles:
+  developer:
+    models:
+      junior: anthropic/claude-haiku-4-5
+      medior: anthropic/claude-sonnet-4-5
+      senior: anthropic/claude-opus-4-6
+  tester:
+    models:
+      junior: anthropic/claude-haiku-4-5
+      medior: anthropic/claude-sonnet-4-5
+      senior: anthropic/claude-opus-4-6
+  architect:
+    models:
+      junior: anthropic/claude-sonnet-4-5
+      senior: anthropic/claude-opus-4-6
+  # Disable a role entirely:
+  # architect: false
+
+workflow:
+  initial: planning
+  states:
+    planning:
+      type: hold
+      label: Planning
+      color: "#95a5a6"
+      on:
+        APPROVE: todo
+    todo:
+      type: queue
+      role: developer
+      label: To Do
+      color: "#428bca"
+      priority: 1
+      on:
+        PICKUP: doing
+    doing:
+      type: active
+      role: developer
+      label: Doing
+      color: "#f0ad4e"
+      on:
+        COMPLETE:
+          target: toTest
+          actions: [gitPull, detectPr]
+        BLOCKED: refining
+    toTest:
+      type: queue
+      role: tester
+      label: To Test
+      color: "#5bc0de"
+      priority: 2
+      on:
+        PICKUP: testing
+    testing:
+      type: active
+      role: tester
+      label: Testing
+      color: "#9b59b6"
+      on:
+        PASS:
+          target: done
+          actions: [closeIssue]
+        FAIL:
+          target: toImprove
+          actions: [reopenIssue]
+        REFINE: refining
+        BLOCKED: refining
+    toImprove:
+      type: queue
+      role: developer
+      label: To Improve
+      color: "#d9534f"
+      priority: 3
+      on:
+        PICKUP: doing
+    refining:
+      type: hold
+      label: Refining
+      color: "#f39c12"
+      on:
+        APPROVE: todo
+    done:
+      type: terminal
+      label: Done
+      color: "#5cb85c"
+    toDesign:
+      type: queue
+      role: architect
+      label: To Design
+      color: "#0075ca"
+      priority: 1
+      on:
+        PICKUP: designing
+    designing:
+      type: active
+      role: architect
+      label: Designing
+      color: "#d4c5f9"
+      on:
+        COMPLETE: planning
+        BLOCKED: refining
 `;

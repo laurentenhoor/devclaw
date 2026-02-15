@@ -11,6 +11,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { getSessionKeyRolePattern } from "./roles/index.js";
+import { DATA_DIR } from "./setup/migrate-layout.js";
 
 /**
  * Parse a DevClaw subagent session key to extract project name and role.
@@ -44,18 +45,24 @@ export async function loadRoleInstructions(
   projectName: string,
   role: string,
 ): Promise<string> {
-  const projectFile = path.join(workspaceDir, "projects", "roles", projectName, `${role}.md`);
-  try {
-    return await fs.readFile(projectFile, "utf-8");
-  } catch {
-    /* not found — try default */
-  }
-  const defaultFile = path.join(workspaceDir, "projects", "roles", "default", `${role}.md`);
-  try {
-    return await fs.readFile(defaultFile, "utf-8");
-  } catch {
-    /* not found */
-  }
+  const dataDir = path.join(workspaceDir, DATA_DIR);
+
+  // Project-specific: devclaw/projects/<project>/prompts/<role>.md
+  const projectFile = path.join(dataDir, "projects", projectName, "prompts", `${role}.md`);
+  try { return await fs.readFile(projectFile, "utf-8"); } catch { /* not found */ }
+
+  // Fallback old path: projects/roles/<project>/<role>.md
+  const oldProjectFile = path.join(workspaceDir, "projects", "roles", projectName, `${role}.md`);
+  try { return await fs.readFile(oldProjectFile, "utf-8"); } catch { /* not found */ }
+
+  // Default: devclaw/prompts/<role>.md
+  const defaultFile = path.join(dataDir, "prompts", `${role}.md`);
+  try { return await fs.readFile(defaultFile, "utf-8"); } catch { /* not found */ }
+
+  // Fallback old default: projects/roles/default/<role>.md
+  const oldDefaultFile = path.join(workspaceDir, "projects", "roles", "default", `${role}.md`);
+  try { return await fs.readFile(oldDefaultFile, "utf-8"); } catch { /* not found */ }
+
   return "";
 }
 

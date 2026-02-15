@@ -1,36 +1,38 @@
 /**
  * setup/config.ts — Plugin config writer (openclaw.json).
  *
- * Handles: model level config, tool restrictions, subagent cleanup.
+ * Handles: tool restrictions, subagent cleanup, heartbeat defaults.
+ * Models are stored in workflow.yaml (not openclaw.json).
  */
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { HEARTBEAT_DEFAULTS } from "../services/heartbeat.js";
 
-type ModelConfig = Record<string, Record<string, string>>;
-
 /**
- * Write DevClaw model level config to openclaw.json plugins section.
+ * Write DevClaw plugin config to openclaw.json plugins section.
  *
- * Also configures:
+ * Configures:
  * - Tool restrictions (deny sessions_spawn, sessions_send) for DevClaw agents
  * - Subagent cleanup interval (30 days) to keep development sessions alive
+ * - Heartbeat defaults
  *
  * Read-modify-write to preserve existing config.
+ * Note: models are NOT stored here — they live in workflow.yaml.
  */
 export async function writePluginConfig(
   api: OpenClawPluginApi,
-  models: ModelConfig,
   agentId?: string,
   projectExecution?: "parallel" | "sequential",
 ): Promise<void> {
   const config = api.runtime.config.loadConfig() as Record<string, unknown>;
 
   ensurePluginStructure(config);
-  (config as any).plugins.entries.devclaw.config.models = models;
 
   if (projectExecution) {
     (config as any).plugins.entries.devclaw.config.projectExecution = projectExecution;
   }
+
+  // Clean up legacy models from openclaw.json (moved to workflow.yaml)
+  delete (config as any).plugins.entries.devclaw.config.models;
 
   ensureHeartbeatDefaults(config);
   configureSubagentCleanup(config);

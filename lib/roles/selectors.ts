@@ -98,32 +98,21 @@ export function getAllDefaultModels(): Record<string, Record<string, string>> {
  * Resolve a level to a full model ID.
  *
  * Resolution order:
- * 1. Plugin config `models.<role>.<level>` in openclaw.json (highest precedence)
- * 2. Resolved config from config.yaml (if provided)
- * 3. Registry default model
- * 4. Passthrough (treat level as raw model ID)
+ * 1. Resolved config from workflow.yaml (three-layer merge)
+ * 2. Registry default model
+ * 3. Passthrough (treat level as raw model ID)
  */
 export function resolveModel(
   role: string,
   level: string,
-  pluginConfig?: Record<string, unknown>,
   resolvedRole?: ResolvedRoleConfig,
 ): string {
   const canonical = _canonicalLevel(role, level);
 
-  // 1. Plugin config override (openclaw.json) — check canonical role + old aliases
-  const models = (pluginConfig as { models?: Record<string, unknown> })?.models;
-  if (models && typeof models === "object") {
-    // Check canonical role name, then fall back to old aliases (e.g., "dev" for "developer")
-    const roleModels = (models[role] ?? models[Object.entries(_ROLE_ALIASES).find(([, v]) => v === role)?.[0] ?? ""]) as Record<string, string> | undefined;
-    if (roleModels?.[canonical]) return roleModels[canonical];
-    if (roleModels?.[level]) return roleModels[level];
-  }
-
-  // 2. Resolved config (config.yaml)
+  // 1. Resolved config (workflow.yaml — includes workspace + project overrides)
   if (resolvedRole?.models[canonical]) return resolvedRole.models[canonical];
 
-  // 3. Built-in registry default
+  // 2. Built-in registry default
   return getDefaultModel(role, canonical) ?? canonical;
 }
 

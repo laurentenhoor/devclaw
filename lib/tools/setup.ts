@@ -14,7 +14,7 @@ export function createSetupTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
     name: "setup",
     label: "Setup",
-    description: `Execute DevClaw setup. Creates AGENTS.md, HEARTBEAT.md, projects/projects.json, and model level config. Optionally creates a new agent with channel binding. Called after onboard collects configuration.`,
+    description: `Execute DevClaw setup. Creates AGENTS.md, HEARTBEAT.md, devclaw/projects.json, devclaw/prompts/, and model level config. Optionally creates a new agent with channel binding. Called after onboard collects configuration.`,
     parameters: {
       type: "object",
       properties: {

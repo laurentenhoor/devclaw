@@ -57,9 +57,9 @@ describe("parseDevClawSessionKey", () => {
 });
 
 describe("loadRoleInstructions", () => {
-  it("should load project-specific instructions", async () => {
+  it("should load project-specific instructions from devclaw/projects/<project>/prompts/", async () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "devclaw-test-"));
-    const projectDir = path.join(tmpDir, "projects", "roles", "test-project");
+    const projectDir = path.join(tmpDir, "devclaw", "projects", "test-project", "prompts");
     await fs.mkdir(projectDir, { recursive: true });
     await fs.writeFile(path.join(projectDir, "developer.md"), "# Developer Instructions\nDo the thing.");
 
@@ -69,11 +69,11 @@ describe("loadRoleInstructions", () => {
     await fs.rm(tmpDir, { recursive: true });
   });
 
-  it("should fall back to default instructions", async () => {
+  it("should fall back to default instructions from devclaw/prompts/", async () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "devclaw-test-"));
-    const defaultDir = path.join(tmpDir, "projects", "roles", "default");
-    await fs.mkdir(defaultDir, { recursive: true });
-    await fs.writeFile(path.join(defaultDir, "tester.md"), "# Tester Default\nReview carefully.");
+    const promptsDir = path.join(tmpDir, "devclaw", "prompts");
+    await fs.mkdir(promptsDir, { recursive: true });
+    await fs.writeFile(path.join(promptsDir, "tester.md"), "# Tester Default\nReview carefully.");
 
     const result = await loadRoleInstructions(tmpDir, "nonexistent-project", "tester");
     assert.strictEqual(result, "# Tester Default\nReview carefully.");
@@ -92,15 +92,27 @@ describe("loadRoleInstructions", () => {
 
   it("should prefer project-specific over default", async () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "devclaw-test-"));
-    const projectDir = path.join(tmpDir, "projects", "roles", "my-project");
-    const defaultDir = path.join(tmpDir, "projects", "roles", "default");
-    await fs.mkdir(projectDir, { recursive: true });
-    await fs.mkdir(defaultDir, { recursive: true });
-    await fs.writeFile(path.join(projectDir, "developer.md"), "Project-specific instructions");
-    await fs.writeFile(path.join(defaultDir, "developer.md"), "Default instructions");
+    const projectPromptsDir = path.join(tmpDir, "devclaw", "projects", "my-project", "prompts");
+    const defaultPromptsDir = path.join(tmpDir, "devclaw", "prompts");
+    await fs.mkdir(projectPromptsDir, { recursive: true });
+    await fs.mkdir(defaultPromptsDir, { recursive: true });
+    await fs.writeFile(path.join(projectPromptsDir, "developer.md"), "Project-specific instructions");
+    await fs.writeFile(path.join(defaultPromptsDir, "developer.md"), "Default instructions");
 
     const result = await loadRoleInstructions(tmpDir, "my-project", "developer");
     assert.strictEqual(result, "Project-specific instructions");
+
+    await fs.rm(tmpDir, { recursive: true });
+  });
+
+  it("should fall back to old path for unmigrated workspaces", async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "devclaw-test-"));
+    const oldDir = path.join(tmpDir, "projects", "roles", "old-project");
+    await fs.mkdir(oldDir, { recursive: true });
+    await fs.writeFile(path.join(oldDir, "developer.md"), "Old layout instructions");
+
+    const result = await loadRoleInstructions(tmpDir, "old-project", "developer");
+    assert.strictEqual(result, "Old layout instructions");
 
     await fs.rm(tmpDir, { recursive: true });
   });

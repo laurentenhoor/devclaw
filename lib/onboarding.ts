@@ -14,8 +14,8 @@ import { getAllDefaultModels } from "./roles/index.js";
 export function isPluginConfigured(
   pluginConfig?: Record<string, unknown>,
 ): boolean {
-  const models = (pluginConfig as { models?: Record<string, string> })?.models;
-  return !!models && Object.keys(models).length > 0;
+  // Models moved to workflow.yaml — check for any devclaw plugin config (heartbeat, notifications, etc.)
+  return !!pluginConfig && Object.keys(pluginConfig).length > 0;
 }
 
 export async function hasWorkspaceFiles(
@@ -37,29 +37,25 @@ export async function hasWorkspaceFiles(
 // Context templates
 // ---------------------------------------------------------------------------
 
-function buildModelTable(pluginConfig?: Record<string, unknown>): string {
-  const cfg = (pluginConfig as { models?: Record<string, Record<string, string>> })?.models;
+function buildModelTable(): string {
   const lines: string[] = [];
   for (const [role, levels] of Object.entries(getAllDefaultModels())) {
-    for (const [level, defaultModel] of Object.entries(levels)) {
-      const model = cfg?.[role]?.[level] || defaultModel;
-      lines.push(
-        `  - **${role} ${level}**: ${model} (default: ${defaultModel})`,
-      );
+    for (const [level, model] of Object.entries(levels)) {
+      lines.push(`  - **${role} ${level}**: ${model}`);
     }
   }
   return lines.join("\n");
 }
 
-export function buildReconfigContext(
-  pluginConfig?: Record<string, unknown>,
-): string {
-  const modelTable = buildModelTable(pluginConfig);
+export function buildReconfigContext(): string {
+  const modelTable = buildModelTable();
   return `# DevClaw Reconfiguration
 
-The user wants to reconfigure DevClaw. Current model configuration:
+The user wants to reconfigure DevClaw. Default model configuration:
 
 ${modelTable}
+
+Models are configured in \`devclaw/workflow.yaml\`. Edit that file directly or call \`setup\` with a \`models\` object to update.
 
 ## What can be changed
 1. **Model levels** — call \`setup\` with a \`models\` object containing only the levels to change

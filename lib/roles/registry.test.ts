@@ -140,9 +140,9 @@ describe("models", () => {
     assert.strictEqual(models.developer.junior, "anthropic/claude-haiku-4-5");
   });
 
-  it("should resolve from config override", () => {
-    const config = { models: { developer: { junior: "custom/model" } } };
-    assert.strictEqual(resolveModel("developer", "junior", config), "custom/model");
+  it("should resolve from resolved role config override", () => {
+    const resolvedRole = { models: { junior: "custom/model" }, levels: ["junior", "medior", "senior"], defaultLevel: "medior", emoji: {}, completionResults: [] as string[], enabled: true };
+    assert.strictEqual(resolveModel("developer", "junior", resolvedRole), "custom/model");
   });
 
   it("should fall back to default", () => {
@@ -153,23 +153,19 @@ describe("models", () => {
     assert.strictEqual(resolveModel("developer", "anthropic/claude-opus-4-6"), "anthropic/claude-opus-4-6");
   });
 
-  it("should resolve old config keys via aliases", () => {
-    // Old config uses "mid" key — should still resolve via alias
-    const config = { models: { developer: { mid: "custom/old-config-model" } } };
-    assert.strictEqual(resolveModel("developer", "mid", config), "custom/old-config-model");
-    // Also works when requesting the canonical name
-    assert.strictEqual(resolveModel("developer", "medior", {}), "anthropic/claude-sonnet-4-5");
+  it("should resolve via level aliases", () => {
+    // "mid" alias maps to "medior" — should resolve to default medior model
+    assert.strictEqual(resolveModel("developer", "mid"), "anthropic/claude-sonnet-4-5");
+    // With explicit override in resolved config
+    const resolvedRole = { models: { medior: "custom/old-config-model" }, levels: ["junior", "medior", "senior"], defaultLevel: "medior", emoji: {}, completionResults: [] as string[], enabled: true };
+    assert.strictEqual(resolveModel("developer", "mid", resolvedRole), "custom/old-config-model");
   });
 
-  it("should resolve old role name config keys", () => {
-    // Old config uses "dev" role key — should still resolve via role alias
-    const config = { models: { dev: { junior: "custom/model" } } };
-    assert.strictEqual(resolveModel("developer", "junior", config), "custom/model");
-  });
-
-  it("should resolve old qa config keys", () => {
-    const config = { models: { qa: { reviewer: "custom/qa-model" } } };
-    assert.strictEqual(resolveModel("tester", "reviewer", config), "custom/qa-model");
+  it("should resolve with resolved role overriding defaults selectively", () => {
+    const resolvedRole = { models: { junior: "custom/model" }, levels: ["junior", "medior", "senior"], defaultLevel: "medior", emoji: {}, completionResults: [] as string[], enabled: true };
+    assert.strictEqual(resolveModel("developer", "junior", resolvedRole), "custom/model");
+    // Levels not overridden fall through to registry defaults
+    assert.strictEqual(resolveModel("developer", "medior", resolvedRole), "anthropic/claude-sonnet-4-5");
   });
 });
 

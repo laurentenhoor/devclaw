@@ -1,7 +1,7 @@
 /**
  * config/ — Unified DevClaw configuration.
  *
- * Single config.yaml per workspace/project combining roles, models, and workflow.
+ * Single workflow.yaml per workspace/project combining roles, models, and workflow.
  */
 export type {
   DevClawConfig,

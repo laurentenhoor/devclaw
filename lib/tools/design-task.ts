@@ -14,6 +14,7 @@ import { dispatchTask } from "../dispatch.js";
 import { log as auditLog } from "../audit.js";
 import { requireWorkspaceDir, resolveProject, resolveProvider, getPluginConfig } from "../tool-helpers.js";
 import { loadWorkflow, getActiveLabel, getQueueLabels } from "../workflow.js";
+import { loadConfig } from "../config/index.js";
 import { selectLevel } from "../model-selector.js";
 import { resolveModel } from "../roles/index.js";
 
@@ -123,7 +124,9 @@ Example:
       const level = complexity === "complex"
         ? selectLevel(title, "system-wide " + description, role).level
         : selectLevel(title, description, role).level;
-      const model = resolveModel(role, level, pluginConfig);
+      const resolvedConfig = await loadConfig(workspaceDir, project.name);
+      const resolvedRole = resolvedConfig.roles[role];
+      const model = resolveModel(role, level, resolvedRole);
 
       if (dryRun) {
         return jsonResult({
