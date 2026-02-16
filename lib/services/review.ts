@@ -14,6 +14,7 @@ import {
   type WorkflowConfig,
   type StateConfig,
 } from "../workflow.js";
+import { detectStepRouting } from "./queue-scan.js";
 import { runCommand } from "../run-command.js";
 import { log as auditLog } from "../audit.js";
 
@@ -41,6 +42,11 @@ export async function reviewPass(opts: {
 
     const issues = await provider.listIssuesByLabel(state.label);
     for (const issue of issues) {
+      // Skip agent-routed issues — the agent reviewer pipeline handles merge for those.
+      // reviewPass only handles externally-approved MRs (human review path).
+      const routing = detectStepRouting(issue.labels, "review");
+      if (routing === "agent") continue;
+
       const status = await provider.getPrStatus(issue.iid);
 
       const conditionMet =

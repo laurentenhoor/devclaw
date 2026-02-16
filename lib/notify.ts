@@ -36,6 +36,7 @@ export type NotifyEvent =
       result: "done" | "pass" | "fail" | "refine" | "blocked";
       summary?: string;
       nextState?: string;
+      prUrl?: string;
     }
   | {
       type: "reviewNeeded";
@@ -82,7 +83,8 @@ function buildMessage(event: NotifyEvent): string {
       if (event.nextState) {
         msg += ` → ${event.nextState}`;
       }
-      msg += `\n🔗 ${event.issueUrl}`;
+      if (event.prUrl) msg += `\n🔗 PR: ${event.prUrl}`;
+      msg += `\n📋 Issue: ${event.issueUrl}`;
       return msg;
     }
 

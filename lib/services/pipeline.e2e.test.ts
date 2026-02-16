@@ -481,6 +481,45 @@ describe("E2E pipeline", () => {
       const gitCmds = h.commands.commands.filter((c) => c.argv[0] === "git");
       assert.strictEqual(gitCmds.length, 0, "Should NOT have run git pull after merge failure");
     });
+
+    it("should skip issues with review:agent label (agent pipeline handles those)", async () => {
+      h.provider.seedIssue({ iid: 62, title: "Agent-reviewed", labels: ["To Review", "review:agent"] });
+      h.provider.setPrStatus(62, { state: "approved", url: "https://example.com/pr/12" });
+
+      const transitions = await reviewPass({
+        workspaceDir: h.workspaceDir,
+        groupId: h.groupId,
+        workflow: DEFAULT_WORKFLOW,
+        provider: h.provider,
+        repoPath: "/tmp/test-repo",
+      });
+
+      assert.strictEqual(transitions, 0, "Should not auto-merge agent-routed issues");
+
+      const issue = await h.provider.getIssue(62);
+      assert.ok(issue.labels.includes("To Review"), "Should remain in To Review");
+
+      const mergeCalls = h.provider.callsTo("mergePr");
+      assert.strictEqual(mergeCalls.length, 0, "Should not have called mergePr");
+    });
+
+    it("should still auto-merge issues with review:human label when PR is approved", async () => {
+      h.provider.seedIssue({ iid: 63, title: "Human-reviewed", labels: ["To Review", "review:human"] });
+      h.provider.setPrStatus(63, { state: "approved", url: "https://example.com/pr/13" });
+
+      const transitions = await reviewPass({
+        workspaceDir: h.workspaceDir,
+        groupId: h.groupId,
+        workflow: DEFAULT_WORKFLOW,
+        provider: h.provider,
+        repoPath: "/tmp/test-repo",
+      });
+
+      assert.strictEqual(transitions, 1);
+
+      const issue = await h.provider.getIssue(63);
+      assert.ok(issue.labels.includes("To Test"), `Labels: ${issue.labels}`);
+    });
   });
 
   // =========================================================================

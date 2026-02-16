@@ -168,8 +168,17 @@ export class GitLabProvider implements IssueProvider {
   private async isMrApproved(mrIid: number): Promise<boolean> {
     try {
       const raw = await this.glab(["api", `projects/:id/merge_requests/${mrIid}/approvals`]);
-      const data = JSON.parse(raw) as { approved?: boolean; approvals_left?: number };
-      return data.approved === true || (data.approvals_left ?? 1) === 0;
+      const data = JSON.parse(raw) as {
+        approved?: boolean;
+        approvals_left?: number;
+        approved_by?: Array<unknown>;
+      };
+      // Require at least one explicit approval.  When a project has zero
+      // approval rules, GitLab returns approvals_left:0 even though nobody
+      // has actually reviewed — so approvals_left alone is not trustworthy.
+      if (data.approved === true) return true;
+      const hasExplicitApproval = Array.isArray(data.approved_by) && data.approved_by.length > 0;
+      return hasExplicitApproval && (data.approvals_left ?? 1) === 0;
     } catch { return false; }
   }
 

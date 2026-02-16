@@ -88,7 +88,11 @@ export async function executeCompletion(opts: {
         }
         break;
       case Action.DETECT_PR:
-        if (!prUrl) { try { prUrl = await provider.getMergedMRUrl(issueId) ?? undefined; } catch (err) {
+        if (!prUrl) { try {
+          // Try open PR first (developer just finished — MR is still open), fall back to merged
+          const prStatus = await provider.getPrStatus(issueId);
+          prUrl = prStatus.url ?? await provider.getMergedMRUrl(issueId) ?? undefined;
+        } catch (err) {
           auditLog(workspaceDir, "pipeline_warning", { step: "detectPr", issue: issueId, role, error: (err as Error).message ?? String(err) }).catch(() => {});
         } }
         break;
@@ -119,6 +123,7 @@ export async function executeCompletion(opts: {
       result: result as "done" | "pass" | "fail" | "refine" | "blocked",
       summary,
       nextState,
+      prUrl,
     },
     {
       workspaceDir,
