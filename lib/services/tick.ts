@@ -11,103 +11,15 @@ import { createProvider } from "../providers/index.js";
 import { selectLevel } from "../model-selector.js";
 import { getWorker, getSessionForLevel, readProjects } from "../projects.js";
 import { dispatchTask } from "../dispatch.js";
-import { getAllRoleIds, getLevelsForRole, getAllLevels, roleForLevel } from "../roles/index.js";
+import { roleForLevel } from "../roles/index.js";
+import { loadConfig } from "../config/index.js";
 import {
-  DEFAULT_WORKFLOW,
-  getQueueLabels,
-  getAllQueueLabels,
+  ExecutionMode,
   getActiveLabel,
-  detectRoleFromLabel as workflowDetectRole,
   type WorkflowConfig,
   type Role,
 } from "../workflow.js";
-
-// ---------------------------------------------------------------------------
-// Backward compatibility exports (deprecated)
-// ---------------------------------------------------------------------------
-
-/**
- * @deprecated Use getQueueLabels(workflow, "dev") instead.
- */
-export const DEV_LABELS: StateLabel[] = getQueueLabels(DEFAULT_WORKFLOW, "dev");
-
-/**
- * @deprecated Use getQueueLabels(workflow, "qa") instead.
- */
-export const QA_LABELS: StateLabel[] = getQueueLabels(DEFAULT_WORKFLOW, "qa");
-
-/**
- * @deprecated Use getAllQueueLabels(workflow) instead.
- */
-export const PRIORITY_ORDER: StateLabel[] = getAllQueueLabels(DEFAULT_WORKFLOW);
-
-// ---------------------------------------------------------------------------
-// Shared helpers (used by tick, work-start, auto-pickup)
-// ---------------------------------------------------------------------------
-
-export function detectLevelFromLabels(labels: string[]): string | null {
-  const lower = labels.map((l) => l.toLowerCase());
-
-  // Match role.level labels (e.g., "dev.senior", "qa.reviewer", "architect.opus")
-  for (const l of lower) {
-    const dot = l.indexOf(".");
-    if (dot === -1) continue;
-    const role = l.slice(0, dot);
-    const level = l.slice(dot + 1);
-    const roleLevels = getLevelsForRole(role);
-    if (roleLevels.includes(level)) return level;
-  }
-
-  // Fallback: plain level name
-  const all = getAllLevels();
-  return all.find((l) => lower.includes(l)) ?? null;
-}
-
-/**
- * Detect role from a label using workflow config.
- */
-export function detectRoleFromLabel(
-  label: StateLabel,
-  workflow: WorkflowConfig = DEFAULT_WORKFLOW,
-): Role | null {
-  return workflowDetectRole(workflow, label);
-}
-
-export async function findNextIssueForRole(
-  provider: Pick<IssueProvider, "listIssuesByLabel">,
-  role: Role,
-  workflow: WorkflowConfig = DEFAULT_WORKFLOW,
-): Promise<{ issue: Issue; label: StateLabel } | null> {
-  const labels = getQueueLabels(workflow, role);
-  for (const label of labels) {
-    try {
-      const issues = await provider.listIssuesByLabel(label);
-      if (issues.length > 0) return { issue: issues[issues.length - 1], label };
-    } catch { /* continue */ }
-  }
-  return null;
-}
-
-/**
- * Find next issue for any role (optional filter). Used by work_start for auto-detection.
- */
-export async function findNextIssue(
-  provider: Pick<IssueProvider, "listIssuesByLabel">,
-  role?: Role,
-  workflow: WorkflowConfig = DEFAULT_WORKFLOW,
-): Promise<{ issue: Issue; label: StateLabel } | null> {
-  const labels = role
-    ? getQueueLabels(workflow, role)
-    : getAllQueueLabels(workflow);
-
-  for (const label of labels) {
-    try {
-      const issues = await provider.listIssuesByLabel(label);
-      if (issues.length > 0) return { issue: issues[issues.length - 1], label };
-    } catch { /* continue */ }
-  }
-  return null;
-}
+import { detectLevelFromLabels, findNextIssueForRole } from "./queue-scan.js";
 
 // ---------------------------------------------------------------------------
 // projectTick
@@ -156,15 +68,20 @@ export async function projectTick(opts: {
   const {
     workspaceDir, groupId, agentId, sessionKey, pluginConfig, dryRun,
     maxPickups, targetRole, runtime,
-    workflow = DEFAULT_WORKFLOW,
   } = opts;
 
   const project = (await readProjects(workspaceDir)).projects[groupId];
   if (!project) return { pickups: [], skipped: [{ reason: `Project not found: ${groupId}` }] };
 
+  const resolvedConfig = await loadConfig(workspaceDir, project.name);
+  const workflow = opts.workflow ?? resolvedConfig.workflow;
+
   const provider = opts.provider ?? (await createProvider({ repo: project.repo, provider: project.provider })).provider;
-  const roleExecution = project.roleExecution ?? "parallel";
-  const roles: Role[] = targetRole ? [targetRole] : getAllRoleIds() as Role[];
+  const roleExecution = project.roleExecution ?? ExecutionMode.PARALLEL;
+  const enabledRoles = Object.entries(resolvedConfig.roles)
+    .filter(([, r]) => r.enabled)
+    .map(([id]) => id);
+  const roles: Role[] = targetRole ? [targetRole] : enabledRoles;
 
   const pickups: TickAction[] = [];
   const skipped: TickResult["skipped"] = [];
@@ -186,8 +103,8 @@ export async function projectTick(opts: {
       continue;
     }
     // Check sequential role execution: any other role must be inactive
-    const otherRoles = getAllRoleIds().filter(r => r !== role);
-    if (roleExecution === "sequential" && otherRoles.some(r => getWorker(fresh, r as any).active)) {
+    const otherRoles = enabledRoles.filter((r: string) => r !== role);
+    if (roleExecution === ExecutionMode.SEQUENTIAL && otherRoles.some((r: string) => getWorker(fresh, r).active)) {
       skipped.push({ role, reason: "Sequential: other role active" });
       continue;
     }

@@ -11,14 +11,15 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { getSessionKeyRolePattern } from "./roles/index.js";
+import { DATA_DIR } from "./setup/migrate-layout.js";
 
 /**
  * Parse a DevClaw subagent session key to extract project name and role.
  *
  * Session key format: `agent:{agentId}:subagent:{projectName}-{role}-{level}`
  * Examples:
- *   - `agent:devclaw:subagent:my-project-dev-medior` → { projectName: "my-project", role: "dev" }
- *   - `agent:devclaw:subagent:webapp-qa-reviewer`    → { projectName: "webapp", role: "qa" }
+ *   - `agent:devclaw:subagent:my-project-developer-medior` → { projectName: "my-project", role: "developer" }
+ *   - `agent:devclaw:subagent:webapp-tester-medior`        → { projectName: "webapp", role: "tester" }
  *
  * Note: projectName may contain hyphens, so we match role from the end.
  */
@@ -33,31 +34,60 @@ export function parseDevClawSessionKey(
 }
 
 /**
+ * Result of loading role instructions — includes the source for traceability.
+ */
+export type RoleInstructionsResult = {
+  content: string;
+  /** Which file the instructions were loaded from, or null if none found. */
+  source: string | null;
+};
+
+/**
  * Load role-specific instructions from workspace.
  * Tries project-specific file first, then falls back to default.
+ * Returns both the content and the source path for logging/traceability.
  *
- * This is the same logic previously in dispatch.ts loadRoleInstructions(),
- * now called from the bootstrap hook instead of during dispatch.
+ * Resolution order:
+ *   1. devclaw/projects/<project>/prompts/<role>.md  (project-specific)
+ *   2. projects/roles/<project>/<role>.md             (old project-specific)
+ *   3. devclaw/prompts/<role>.md                      (workspace default)
+ *   4. projects/roles/default/<role>.md               (old default)
  */
 export async function loadRoleInstructions(
   workspaceDir: string,
   projectName: string,
   role: string,
-): Promise<string> {
-  // Try paths in priority order: new layout first, then legacy fallback
+): Promise<string>;
+export async function loadRoleInstructions(
+  workspaceDir: string,
+  projectName: string,
+  role: string,
+  opts: { withSource: true },
+): Promise<RoleInstructionsResult>;
+export async function loadRoleInstructions(
+  workspaceDir: string,
+  projectName: string,
+  role: string,
+  opts?: { withSource: true },
+): Promise<string | RoleInstructionsResult> {
+  const dataDir = path.join(workspaceDir, DATA_DIR);
+
   const candidates = [
-    path.join(workspaceDir, "devclaw", "projects", projectName, "prompts", `${role}.md`),
-    path.join(workspaceDir, "devclaw", "prompts", `${role}.md`),
+    path.join(dataDir, "projects", projectName, "prompts", `${role}.md`),
     path.join(workspaceDir, "projects", "roles", projectName, `${role}.md`),
+    path.join(dataDir, "prompts", `${role}.md`),
     path.join(workspaceDir, "projects", "roles", "default", `${role}.md`),
   ];
+
   for (const filePath of candidates) {
     try {
-      return await fs.readFile(filePath, "utf-8");
-    } catch {
-      /* not found — try next */
-    }
+      const content = await fs.readFile(filePath, "utf-8");
+      if (opts?.withSource) return { content, source: filePath };
+      return content;
+    } catch { /* not found, try next */ }
   }
+
+  if (opts?.withSource) return { content: "", source: null };
   return "";
 }
 
@@ -97,25 +127,26 @@ export function registerBootstrapHook(api: OpenClawPluginApi): void {
     const bootstrapFiles = context.bootstrapFiles;
     if (!Array.isArray(bootstrapFiles)) return;
 
-    const instructions = await loadRoleInstructions(
+    const { content, source } = await loadRoleInstructions(
       workspaceDir,
       parsed.projectName,
       parsed.role,
+      { withSource: true },
     );
 
-    if (!instructions) return;
+    if (!content) return;
 
     // Inject as a virtual bootstrap file. OpenClaw includes these in the
     // agent's system prompt automatically (via buildBootstrapContextFiles).
     bootstrapFiles.push({
       name: "WORKER_INSTRUCTIONS.md" as any,
       path: `<devclaw:${parsed.projectName}:${parsed.role}>`,
-      content: instructions.trim(),
+      content: content.trim(),
       missing: false,
     });
 
     api.logger.info(
-      `Bootstrap hook: injected ${parsed.role} instructions for project "${parsed.projectName}"`,
+      `Bootstrap hook: injected ${parsed.role} instructions for project "${parsed.projectName}" from ${source}`,
     );
   });
 }

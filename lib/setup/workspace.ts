@@ -1,66 +1,109 @@
 /**
  * setup/workspace.ts — Workspace file scaffolding.
  *
- * Writes AGENTS.md, HEARTBEAT.md, default role instructions, and projects.json.
+ * Writes AGENTS.md, HEARTBEAT.md, default role prompts, and projects.json.
  */
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
   AGENTS_MD_TEMPLATE,
   HEARTBEAT_MD_TEMPLATE,
-  DEFAULT_DEV_INSTRUCTIONS,
-  DEFAULT_QA_INSTRUCTIONS,
-  DEFAULT_ARCHITECT_INSTRUCTIONS,
+  IDENTITY_MD_TEMPLATE,
+  SOUL_MD_TEMPLATE,
+  WORKFLOW_YAML_TEMPLATE,
+  DEFAULT_ROLE_INSTRUCTIONS,
 } from "../templates.js";
+import { getAllRoleIds } from "../roles/index.js";
+import { migrateWorkspaceLayout, DATA_DIR } from "./migrate-layout.js";
+
+/**
+ * Ensure default data files exist in the workspace.
+ * Only creates files that are missing — never overwrites existing ones.
+ * Called automatically after migration (via ensureWorkspaceMigrated).
+ */
+export async function ensureDefaultFiles(workspacePath: string): Promise<void> {
+  const dataDir = path.join(workspacePath, DATA_DIR);
+
+  // devclaw/workflow.yaml
+  const workflowPath = path.join(dataDir, "workflow.yaml");
+  if (!await fileExists(workflowPath)) {
+    await fs.mkdir(dataDir, { recursive: true });
+    await fs.writeFile(workflowPath, WORKFLOW_YAML_TEMPLATE, "utf-8");
+  }
+
+  // devclaw/projects.json
+  const projectsJsonPath = path.join(dataDir, "projects.json");
+  if (!await fileExists(projectsJsonPath)) {
+    await fs.mkdir(dataDir, { recursive: true });
+    await fs.writeFile(projectsJsonPath, JSON.stringify({ projects: {} }, null, 2) + "\n", "utf-8");
+  }
+
+  // devclaw/projects/ directory
+  await fs.mkdir(path.join(dataDir, "projects"), { recursive: true });
+
+  // devclaw/prompts/ — default role instructions
+  const promptsDir = path.join(dataDir, "prompts");
+  await fs.mkdir(promptsDir, { recursive: true });
+  for (const role of getAllRoleIds()) {
+    const rolePath = path.join(promptsDir, `${role}.md`);
+    if (!await fileExists(rolePath)) {
+      const content = DEFAULT_ROLE_INSTRUCTIONS[role] ?? `# ${role.toUpperCase()} Worker Instructions\n\nAdd role-specific instructions here.\n`;
+      await fs.writeFile(rolePath, content, "utf-8");
+    }
+  }
+
+  // devclaw/log/ directory (audit.log created on first write)
+  await fs.mkdir(path.join(dataDir, "log"), { recursive: true });
+}
 
 /**
  * Write all workspace files for a DevClaw agent.
  * Returns the list of files that were written (skips files that already exist).
+ *
+ * @param defaultWorkspacePath — If provided, USER.md is copied from here (only if not already present).
  */
-export async function scaffoldWorkspace(workspacePath: string): Promise<string[]> {
-  const filesWritten: string[] = [];
+export async function scaffoldWorkspace(workspacePath: string, defaultWorkspacePath?: string): Promise<string[]> {
+  // Migrate old layout if detected
+  await migrateWorkspaceLayout(workspacePath);
 
-  // AGENTS.md (backup existing)
+  const written: string[] = [];
+
+  // AGENTS.md (backup existing — stays at workspace root)
   await backupAndWrite(path.join(workspacePath, "AGENTS.md"), AGENTS_MD_TEMPLATE);
-  filesWritten.push("AGENTS.md");
+  written.push("AGENTS.md");
 
-  // HEARTBEAT.md
+  // HEARTBEAT.md (stays at workspace root)
   await backupAndWrite(path.join(workspacePath, "HEARTBEAT.md"), HEARTBEAT_MD_TEMPLATE);
-  filesWritten.push("HEARTBEAT.md");
+  written.push("HEARTBEAT.md");
 
-  // projects/projects.json
-  const projectsDir = path.join(workspacePath, "projects");
-  await fs.mkdir(projectsDir, { recursive: true });
-  const projectsJsonPath = path.join(projectsDir, "projects.json");
-  if (!await fileExists(projectsJsonPath)) {
-    await fs.writeFile(projectsJsonPath, JSON.stringify({ projects: {} }, null, 2) + "\n", "utf-8");
-    filesWritten.push("projects/projects.json");
+  // IDENTITY.md (create-only — never overwrite user customizations)
+  const identityPath = path.join(workspacePath, "IDENTITY.md");
+  if (!await fileExists(identityPath)) {
+    await fs.writeFile(identityPath, IDENTITY_MD_TEMPLATE, "utf-8");
+    written.push("IDENTITY.md");
   }
 
-  // projects/roles/default/ (fallback role instructions)
-  const defaultRolesDir = path.join(projectsDir, "roles", "default");
-  await fs.mkdir(defaultRolesDir, { recursive: true });
-  const devRolePath = path.join(defaultRolesDir, "dev.md");
-  if (!await fileExists(devRolePath)) {
-    await fs.writeFile(devRolePath, DEFAULT_DEV_INSTRUCTIONS, "utf-8");
-    filesWritten.push("projects/roles/default/dev.md");
-  }
-  const qaRolePath = path.join(defaultRolesDir, "qa.md");
-  if (!await fileExists(qaRolePath)) {
-    await fs.writeFile(qaRolePath, DEFAULT_QA_INSTRUCTIONS, "utf-8");
-    filesWritten.push("projects/roles/default/qa.md");
-  }
-  const architectRolePath = path.join(defaultRolesDir, "architect.md");
-  if (!await fileExists(architectRolePath)) {
-    await fs.writeFile(architectRolePath, DEFAULT_ARCHITECT_INSTRUCTIONS, "utf-8");
-    filesWritten.push("projects/roles/default/architect.md");
+  // SOUL.md (create-only — never overwrite user customizations)
+  const soulPath = path.join(workspacePath, "SOUL.md");
+  if (!await fileExists(soulPath)) {
+    await fs.writeFile(soulPath, SOUL_MD_TEMPLATE, "utf-8");
+    written.push("SOUL.md");
   }
 
-  // log/ directory (audit.log created on first write)
-  const logDir = path.join(workspacePath, "log");
-  await fs.mkdir(logDir, { recursive: true });
+  // USER.md — copy from default workspace if available (create-only)
+  const userPath = path.join(workspacePath, "USER.md");
+  if (!await fileExists(userPath) && defaultWorkspacePath) {
+    const sourceUser = path.join(defaultWorkspacePath, "USER.md");
+    if (await fileExists(sourceUser)) {
+      await fs.copyFile(sourceUser, userPath);
+      written.push("USER.md");
+    }
+  }
 
-  return filesWritten;
+  // Ensure all data-dir defaults (workflow.yaml, prompts, etc.)
+  await ensureDefaultFiles(workspacePath);
+
+  return written;
 }
 
 // ---------------------------------------------------------------------------

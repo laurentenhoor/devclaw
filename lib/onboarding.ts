@@ -5,7 +5,7 @@
  */
 import fs from "node:fs/promises";
 import path from "node:path";
-import { DEFAULT_MODELS } from "./tiers.js";
+import { getAllDefaultModels } from "./roles/index.js";
 
 // ---------------------------------------------------------------------------
 // Detection
@@ -14,8 +14,8 @@ import { DEFAULT_MODELS } from "./tiers.js";
 export function isPluginConfigured(
   pluginConfig?: Record<string, unknown>,
 ): boolean {
-  const models = (pluginConfig as { models?: Record<string, string> })?.models;
-  return !!models && Object.keys(models).length > 0;
+  // Models moved to workflow.yaml — check for any devclaw plugin config (heartbeat, notifications, etc.)
+  return !!pluginConfig && Object.keys(pluginConfig).length > 0;
 }
 
 export async function hasWorkspaceFiles(
@@ -37,33 +37,25 @@ export async function hasWorkspaceFiles(
 // Context templates
 // ---------------------------------------------------------------------------
 
-function buildModelTable(pluginConfig?: Record<string, unknown>): string {
-  const cfg = (
-    pluginConfig as {
-      models?: { dev?: Record<string, string>; qa?: Record<string, string> };
-    }
-  )?.models;
+function buildModelTable(): string {
   const lines: string[] = [];
-  for (const [role, levels] of Object.entries(DEFAULT_MODELS)) {
-    for (const [level, defaultModel] of Object.entries(levels)) {
-      const model = cfg?.[role as "dev" | "qa"]?.[level] || defaultModel;
-      lines.push(
-        `  - **${role} ${level}**: ${model} (default: ${defaultModel})`,
-      );
+  for (const [role, levels] of Object.entries(getAllDefaultModels())) {
+    for (const [level, model] of Object.entries(levels)) {
+      lines.push(`  - **${role} ${level}**: ${model}`);
     }
   }
   return lines.join("\n");
 }
 
-export function buildReconfigContext(
-  pluginConfig?: Record<string, unknown>,
-): string {
-  const modelTable = buildModelTable(pluginConfig);
+export function buildReconfigContext(): string {
+  const modelTable = buildModelTable();
   return `# DevClaw Reconfiguration
 
-The user wants to reconfigure DevClaw. Current model configuration:
+The user wants to reconfigure DevClaw. Default model configuration:
 
 ${modelTable}
+
+Models are configured in \`devclaw/workflow.yaml\`. Edit that file directly or call \`setup\` with a \`models\` object to update.
 
 ## What can be changed
 1. **Model levels** — call \`setup\` with a \`models\` object containing only the levels to change
@@ -76,16 +68,14 @@ Ask what they want to change, then call the appropriate tool.
 }
 
 export function buildOnboardToolContext(): string {
-  // Build the model table dynamically from DEFAULT_MODELS
+  // Build the model table dynamically from getAllDefaultModels()
   const rows: string[] = [];
   const purposes: Record<string, string> = {
-    junior: "Typos, single-file fixes",
-    medior: "Features, bug fixes",
-    senior: "Architecture, refactoring",
-    reviewer: "Code review",
-    tester: "Testing",
+    junior: "Simple tasks, single-file fixes",
+    medior: "Features, bug fixes, code review",
+    senior: "Architecture, refactoring, complex tasks",
   };
-  for (const [role, levels] of Object.entries(DEFAULT_MODELS)) {
+  for (const [role, levels] of Object.entries(getAllDefaultModels())) {
     for (const [level, model] of Object.entries(levels)) {
       rows.push(`| ${role} | ${level} | ${model} | ${purposes[level] ?? ""} |`);
     }
@@ -97,8 +87,8 @@ export function buildOnboardToolContext(): string {
 ## What is DevClaw?
 DevClaw turns each Telegram group into an autonomous development team:
 - An **orchestrator** that manages backlogs and delegates work
-- **DEV workers** (junior/medior/senior levels) that write code in isolated sessions
-- **QA workers** that review code and run tests
+- **Developer workers** (junior/medior/senior levels) that write code in isolated sessions
+- **Tester workers** that review code and run tests
 - Atomic tools for label transitions, session dispatch, state management, and audit logging
 
 ## Setup Steps
@@ -143,7 +133,7 @@ Ask: "Do you want to configure DevClaw for the current agent, or create a new de
 
 **Step 3: Run Setup**
 Call \`setup\` with the collected answers:
-- Current agent: \`setup({})\` or \`setup({ models: { dev: { ... }, qa: { ... } } })\`
+- Current agent: \`setup({})\` or \`setup({ models: { developer: { ... }, tester: { ... } } })\`
 - New agent: \`setup({ newAgentName: "<name>", channelBinding: "telegram"|"whatsapp"|null, migrateFrom: "<agentId>"|null, models: { ... } })\`
   - \`migrateFrom\`: Include if user wants to migrate an existing channel-wide binding
 

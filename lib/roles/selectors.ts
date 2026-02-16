@@ -6,6 +6,8 @@
  */
 import { ROLE_REGISTRY } from "./registry.js";
 import type { RoleConfig } from "./types.js";
+import type { ResolvedRoleConfig } from "../config/types.js";
+import { ROLE_ALIASES as _ROLE_ALIASES, canonicalLevel as _canonicalLevel } from "../migrations.js";
 
 // ---------------------------------------------------------------------------
 // Role IDs
@@ -35,6 +37,12 @@ export function requireRole(role: string): RoleConfig {
   if (!config) throw new Error(`Unknown role: "${role}". Valid roles: ${getAllRoleIds().join(", ")}`);
   return config;
 }
+
+// ---------------------------------------------------------------------------
+// Migration aliases — re-exported from lib/migrations.ts for backward compat
+// ---------------------------------------------------------------------------
+
+export { ROLE_ALIASES, canonicalRole, LEVEL_ALIASES, canonicalLevel } from "../migrations.js";
 
 // ---------------------------------------------------------------------------
 // Levels
@@ -90,21 +98,22 @@ export function getAllDefaultModels(): Record<string, Record<string, string>> {
  * Resolve a level to a full model ID.
  *
  * Resolution order:
- * 1. Plugin config `models.<role>.<level>`
+ * 1. Resolved config from workflow.yaml (three-layer merge)
  * 2. Registry default model
  * 3. Passthrough (treat level as raw model ID)
  */
 export function resolveModel(
   role: string,
   level: string,
-  pluginConfig?: Record<string, unknown>,
+  resolvedRole?: ResolvedRoleConfig,
 ): string {
-  const models = (pluginConfig as { models?: Record<string, unknown> })?.models;
-  if (models && typeof models === "object") {
-    const roleModels = models[role] as Record<string, string> | undefined;
-    if (roleModels?.[level]) return roleModels[level];
-  }
-  return getDefaultModel(role, level) ?? level;
+  const canonical = _canonicalLevel(role, level);
+
+  // 1. Resolved config (workflow.yaml — includes workspace + project overrides)
+  if (resolvedRole?.models[canonical]) return resolvedRole.models[canonical];
+
+  // 2. Built-in registry default
+  return getDefaultModel(role, canonical) ?? canonical;
 }
 
 // ---------------------------------------------------------------------------

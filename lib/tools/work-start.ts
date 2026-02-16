@@ -12,11 +12,10 @@ import type { StateLabel } from "../providers/provider.js";
 import { selectLevel } from "../model-selector.js";
 import { getWorker } from "../projects.js";
 import { dispatchTask } from "../dispatch.js";
-import { findNextIssue, detectRoleFromLabel, detectLevelFromLabels } from "../services/tick.js";
-import { isDevLevel } from "../tiers.js";
-import { getAllRoleIds } from "../roles/index.js";
+import { findNextIssue, detectRoleFromLabel, detectLevelFromLabels } from "../services/queue-scan.js";
+import { getAllRoleIds, isLevelForRole } from "../roles/index.js";
 import { requireWorkspaceDir, resolveProject, resolveProvider, getPluginConfig } from "../tool-helpers.js";
-import { DEFAULT_WORKFLOW, getActiveLabel } from "../workflow.js";
+import { loadWorkflow, getActiveLabel, ExecutionMode } from "../workflow.js";
 
 export function createWorkStartTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
@@ -30,13 +29,13 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
         projectGroupId: { type: "string", description: "Project group ID." },
         issueId: { type: "number", description: "Issue ID. If omitted, picks next by priority." },
         role: { type: "string", enum: getAllRoleIds(), description: "Worker role. Auto-detected from label if omitted." },
-        level: { type: "string", description: "Developer level (junior/medior/senior/reviewer). Auto-detected if omitted." },
+        level: { type: "string", description: "Worker level (junior/mid/senior). Auto-detected if omitted." },
       },
     },
 
     async execute(_id: string, params: Record<string, unknown>) {
       const issueIdParam = params.issueId as number | undefined;
-      const roleParam = params.role as "dev" | "qa" | "architect" | undefined;
+      const roleParam = params.role as string | undefined;
       const groupId = params.projectGroupId as string;
       const levelParam = (params.level ?? params.tier) as string | undefined;
       const workspaceDir = requireWorkspaceDir(ctx);
@@ -45,8 +44,7 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
       const { project } = await resolveProject(workspaceDir, groupId);
       const { provider } = await resolveProvider(project);
 
-      // TODO: Load per-project workflow when supported
-      const workflow = DEFAULT_WORKFLOW;
+      const workflow = await loadWorkflow(workspaceDir, project.name);
 
       // Find issue
       let issue: { iid: number; title: string; description: string; labels: string[]; web_url: string; state: string };
@@ -72,9 +70,12 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
       // Check worker availability
       const worker = getWorker(project, role);
       if (worker.active) throw new Error(`${role.toUpperCase()} already active on ${project.name} (issue: ${worker.issueId})`);
-      if ((project.roleExecution ?? "parallel") === "sequential") {
-        const other = role === "dev" ? "qa" : "dev";
-        if (getWorker(project, other).active) throw new Error(`Sequential roleExecution: ${other.toUpperCase()} is active`);
+      if ((project.roleExecution ?? ExecutionMode.PARALLEL) === ExecutionMode.SEQUENTIAL) {
+        for (const [otherRole, otherWorker] of Object.entries(project.workers)) {
+          if (otherRole !== role && otherWorker.active) {
+            throw new Error(`Sequential roleExecution: ${otherRole.toUpperCase()} is active`);
+          }
+        }
       }
 
       // Get target label from workflow
@@ -87,9 +88,13 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
       } else {
         const labelLevel = detectLevelFromLabels(issue.labels);
         if (labelLevel) {
-          if (role === "qa" && isDevLevel(labelLevel)) { const s = selectLevel(issue.title, issue.description ?? "", role); selectedLevel = s.level; levelReason = `QA overrides dev level "${labelLevel}"`; levelSource = "role-override"; }
-          else if (role === "dev" && !isDevLevel(labelLevel)) { const s = selectLevel(issue.title, issue.description ?? "", role); selectedLevel = s.level; levelReason = s.reason; levelSource = "heuristic"; }
-          else { selectedLevel = labelLevel; levelReason = `Label: "${labelLevel}"`; levelSource = "label"; }
+          if (!isLevelForRole(labelLevel, role)) {
+            // Label level belongs to a different role — use heuristic for this role
+            const s = selectLevel(issue.title, issue.description ?? "", role);
+            selectedLevel = s.level; levelReason = `${role} overrides other role's level "${labelLevel}"`; levelSource = "role-override";
+          } else {
+            selectedLevel = labelLevel; levelReason = `Label: "${labelLevel}"`; levelSource = "label";
+          }
         } else {
           const s = selectLevel(issue.title, issue.description ?? "", role);
           selectedLevel = s.level; levelReason = s.reason; levelSource = "heuristic";

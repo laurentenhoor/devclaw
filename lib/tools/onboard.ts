@@ -26,7 +26,7 @@ export function createOnboardTool(api: OpenClawPluginApi) {
       const mode = params.mode ? (params.mode as "first-run" | "reconfigure")
         : configured && hasWorkspace ? "reconfigure" : "first-run";
 
-      const instructions = mode === "first-run" ? buildOnboardToolContext() : buildReconfigContext(api.pluginConfig as Record<string, unknown>);
+      const instructions = mode === "first-run" ? buildOnboardToolContext() : buildReconfigContext();
 
       return jsonResult({
         success: true, mode, configured, instructions,

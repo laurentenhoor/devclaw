@@ -15,10 +15,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { readProjects } from "../projects.js";
 import { log as auditLog } from "../audit.js";
+import { DATA_DIR } from "../setup/migrate-layout.js";
 import { checkWorkerHealth, scanOrphanedLabels, fetchGatewaySessions, type SessionLookup } from "./health.js";
 import { projectTick } from "./tick.js";
+import { reviewPass } from "./review.js";
 import { createProvider } from "../providers/index.js";
-import { getAllRoleIds } from "../roles/index.js";
+import { loadConfig } from "../config/index.js";
+import { ExecutionMode } from "../workflow.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -39,6 +42,7 @@ type TickResult = {
   totalPickups: number;
   totalHealthFixes: number;
   totalSkipped: number;
+  totalReviewTransitions: number;
 };
 
 type ServiceContext = {
@@ -116,7 +120,7 @@ export function registerHeartbeatService(api: OpenClawPluginApi) {
 
 /**
  * Discover DevClaw agents by scanning which agent workspaces have projects.
- * Self-discovering: any agent whose workspace contains projects/projects.json is processed.
+ * Self-discovering: any agent whose workspace contains projects.json is processed.
  * Also checks the default workspace (agents.defaults.workspace) for projects.
  */
 function discoverAgents(config: {
@@ -132,7 +136,7 @@ function discoverAgents(config: {
   for (const a of config.agents?.list || []) {
     if (!a.workspace) continue;
     try {
-      if (fs.existsSync(path.join(a.workspace, "projects", "projects.json"))) {
+      if (hasProjects(a.workspace)) {
         agents.push({ agentId: a.id, workspace: a.workspace });
         seen.add(a.workspace);
       }
@@ -143,13 +147,22 @@ function discoverAgents(config: {
   const defaultWorkspace = config.agents?.defaults?.workspace;
   if (defaultWorkspace && !seen.has(defaultWorkspace)) {
     try {
-      if (fs.existsSync(path.join(defaultWorkspace, "projects", "projects.json"))) {
+      if (hasProjects(defaultWorkspace)) {
         agents.push({ agentId: "main", workspace: defaultWorkspace });
       }
     } catch { /* skip */ }
   }
 
   return agents;
+}
+
+/** Check if a workspace has a projects.json (new or old locations). */
+function hasProjects(workspace: string): boolean {
+  return (
+    fs.existsSync(path.join(workspace, DATA_DIR, "projects.json")) ||
+    fs.existsSync(path.join(workspace, "projects.json")) ||
+    fs.existsSync(path.join(workspace, "projects", "projects.json"))
+  );
 }
 
 /**
@@ -182,6 +195,7 @@ async function processAllAgents(
     totalPickups: 0,
     totalHealthFixes: 0,
     totalSkipped: 0,
+    totalReviewTransitions: 0,
   };
 
   // Fetch gateway sessions once for all agents/projects
@@ -200,6 +214,7 @@ async function processAllAgents(
     result.totalPickups += agentResult.totalPickups;
     result.totalHealthFixes += agentResult.totalHealthFixes;
     result.totalSkipped += agentResult.totalSkipped;
+    result.totalReviewTransitions += agentResult.totalReviewTransitions;
   }
 
   return result;
@@ -209,9 +224,9 @@ async function processAllAgents(
  * Log tick results if anything happened.
  */
 function logTickResult(result: TickResult, logger: ServiceContext["logger"]): void {
-  if (result.totalPickups > 0 || result.totalHealthFixes > 0) {
+  if (result.totalPickups > 0 || result.totalHealthFixes > 0 || result.totalReviewTransitions > 0) {
     logger.info(
-      `work_heartbeat tick: ${result.totalPickups} pickups, ${result.totalHealthFixes} health fixes, ${result.totalSkipped} skipped`,
+      `work_heartbeat tick: ${result.totalPickups} pickups, ${result.totalHealthFixes} health fixes, ${result.totalReviewTransitions} review transitions, ${result.totalSkipped} skipped`,
     );
   }
 }
@@ -234,60 +249,83 @@ export async function tick(opts: {
   const projectIds = Object.keys(data.projects);
 
   if (projectIds.length === 0) {
-    return { totalPickups: 0, totalHealthFixes: 0, totalSkipped: 0 };
+    return { totalPickups: 0, totalHealthFixes: 0, totalSkipped: 0, totalReviewTransitions: 0 };
   }
 
   const result: TickResult = {
     totalPickups: 0,
     totalHealthFixes: 0,
     totalSkipped: 0,
+    totalReviewTransitions: 0,
   };
 
-  const projectExecution = (pluginConfig?.projectExecution as string) ?? "parallel";
+  const projectExecution = (pluginConfig?.projectExecution as string) ?? ExecutionMode.PARALLEL;
   let activeProjects = 0;
 
   for (const groupId of projectIds) {
-    const project = data.projects[groupId];
-    if (!project) continue;
+    try {
+      const project = data.projects[groupId];
+      if (!project) continue;
 
-    // Health pass: auto-fix zombies and stale workers
-    result.totalHealthFixes += await performHealthPass(
-      workspaceDir,
-      groupId,
-      project,
-      sessions,
-    );
+      const { provider } = await createProvider({ repo: project.repo, provider: project.provider });
+      const resolvedConfig = await loadConfig(workspaceDir, project.name);
 
-    // Budget check: stop if we've hit the limit
-    const remaining = config.maxPickupsPerTick - result.totalPickups;
-    if (remaining <= 0) break;
+      // Health pass: auto-fix zombies and stale workers
+      result.totalHealthFixes += await performHealthPass(
+        workspaceDir,
+        groupId,
+        project,
+        sessions,
+        provider,
+        resolvedConfig.timeouts.staleWorkerHours,
+      );
 
-    // Sequential project guard: don't start new projects if one is active
-    const isProjectActive = await checkProjectActive(workspaceDir, groupId);
-    if (projectExecution === "sequential" && !isProjectActive && activeProjects >= 1) {
+      // Review pass: transition issues whose PR check condition is met
+      result.totalReviewTransitions += await reviewPass({
+        workspaceDir,
+        groupId,
+        workflow: resolvedConfig.workflow,
+        provider,
+        repoPath: project.repo,
+        gitPullTimeoutMs: resolvedConfig.timeouts.gitPullMs,
+      });
+
+      // Budget check: stop if we've hit the limit
+      const remaining = config.maxPickupsPerTick - result.totalPickups;
+      if (remaining <= 0) break;
+
+      // Sequential project guard: don't start new projects if one is active
+      const isProjectActive = await checkProjectActive(workspaceDir, groupId);
+      if (projectExecution === ExecutionMode.SEQUENTIAL && !isProjectActive && activeProjects >= 1) {
+        result.totalSkipped++;
+        continue;
+      }
+
+      // Tick pass: fill free worker slots
+      const tickResult = await projectTick({
+        workspaceDir,
+        groupId,
+        agentId,
+        pluginConfig,
+        maxPickups: remaining,
+      });
+
+      result.totalPickups += tickResult.pickups.length;
+      result.totalSkipped += tickResult.skipped.length;
+
+      // Notifications now handled by dispatchTask
+      if (isProjectActive || tickResult.pickups.length > 0) activeProjects++;
+    } catch (err) {
+      // Per-project isolation: one failing project doesn't crash the entire tick
+      opts.logger.warn(`Heartbeat tick failed for project ${groupId}: ${(err as Error).message}`);
       result.totalSkipped++;
-      continue;
     }
-
-    // Tick pass: fill free worker slots
-    const tickResult = await projectTick({
-      workspaceDir,
-      groupId,
-      agentId,
-      pluginConfig,
-      maxPickups: remaining,
-    });
-
-    result.totalPickups += tickResult.pickups.length;
-    result.totalSkipped += tickResult.skipped.length;
-
-    // Notifications now handled by dispatchTask
-    if (isProjectActive || tickResult.pickups.length > 0) activeProjects++;
   }
 
   await auditLog(workspaceDir, "heartbeat_tick", {
     projectsScanned: projectIds.length,
     healthFixes: result.totalHealthFixes,
+    reviewTransitions: result.totalReviewTransitions,
     pickups: result.totalPickups,
     skipped: result.totalSkipped,
   });
@@ -303,20 +341,22 @@ async function performHealthPass(
   groupId: string,
   project: any,
   sessions: SessionLookup | null,
+  provider: import("../providers/provider.js").IssueProvider,
+  staleWorkerHours?: number,
 ): Promise<number> {
-  const { provider } = await createProvider({ repo: project.repo, provider: project.provider });
   let fixedCount = 0;
 
-  for (const role of getAllRoleIds()) {
+  for (const role of Object.keys(project.workers)) {
     // Check worker health (session liveness, label consistency, etc)
     const healthFixes = await checkWorkerHealth({
       workspaceDir,
       groupId,
       project,
-      role: role as any,
+      role,
       sessions,
       autoFix: true,
       provider,
+      staleWorkerHours,
     });
     fixedCount += healthFixes.filter((f) => f.fixed).length;
 
@@ -325,7 +365,7 @@ async function performHealthPass(
       workspaceDir,
       groupId,
       project,
-      role: role as any,
+      role,
       autoFix: true,
       provider,
     });
@@ -336,10 +376,10 @@ async function performHealthPass(
 }
 
 /**
- * Check if a project has active work (dev or qa).
+ * Check if a project has any active worker.
  */
 async function checkProjectActive(workspaceDir: string, groupId: string): Promise<boolean> {
   const fresh = (await readProjects(workspaceDir)).projects[groupId];
   if (!fresh) return false;
-  return fresh.dev.active || fresh.qa.active;
+  return Object.values(fresh.workers).some(w => w.active);
 }

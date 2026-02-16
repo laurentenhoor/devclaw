@@ -52,13 +52,16 @@ openclaw devclaw setup
 The setup wizard walks you through:
 
 1. **Agent** — Create a new orchestrator agent or configure an existing one
-2. **Developer team** — Choose which LLM model powers each developer level:
-   - **DEV junior** (fast, cheap tasks) — default: `anthropic/claude-haiku-4-5`
-   - **DEV medior** (standard tasks) — default: `anthropic/claude-sonnet-4-5`
-   - **DEV senior** (complex tasks) — default: `anthropic/claude-opus-4-5`
-   - **QA reviewer** (code review) — default: `anthropic/claude-sonnet-4-5`
-   - **QA tester** (manual testing) — default: `anthropic/claude-haiku-4-5`
-3. **Workspace** — Writes AGENTS.md, HEARTBEAT.md, role templates, and initializes state
+2. **Developer team** — Choose which LLM model powers each level:
+   - **Developer junior** (fast, cheap tasks) — default: `anthropic/claude-haiku-4-5`
+   - **Developer medior** (standard tasks) — default: `anthropic/claude-sonnet-4-5`
+   - **Developer senior** (complex tasks) — default: `anthropic/claude-opus-4-6`
+   - **Tester junior** (quick checks) — default: `anthropic/claude-haiku-4-5`
+   - **Tester medior** (standard review) — default: `anthropic/claude-sonnet-4-5`
+   - **Tester senior** (thorough review) — default: `anthropic/claude-opus-4-6`
+   - **Architect junior** (standard design) — default: `anthropic/claude-sonnet-4-5`
+   - **Architect senior** (complex architecture) — default: `anthropic/claude-opus-4-6`
+3. **Workspace** — Writes AGENTS.md, HEARTBEAT.md, workflow.yaml, role templates, and initializes state
 
 Non-interactive mode:
 ```bash
@@ -68,7 +71,7 @@ openclaw devclaw setup --new-agent "My Dev Orchestrator"
 # Configure existing agent with custom models
 openclaw devclaw setup --agent my-orchestrator \
   --junior "anthropic/claude-haiku-4-5" \
-  --senior "anthropic/claude-opus-4-5"
+  --senior "anthropic/claude-opus-4-6"
 ```
 
 ### Option C: Tool call (agent-driven)
@@ -86,12 +89,12 @@ setup({
   "newAgentName": "My Dev Orchestrator",
   "channelBinding": "telegram",
   "models": {
-    "dev": {
+    "developer": {
       "junior": "anthropic/claude-haiku-4-5",
-      "senior": "anthropic/claude-opus-4-5"
+      "senior": "anthropic/claude-opus-4-6"
     },
-    "qa": {
-      "reviewer": "anthropic/claude-sonnet-4-5"
+    "tester": {
+      "medior": "anthropic/claude-sonnet-4-5"
     }
   }
 })
@@ -151,8 +154,8 @@ Go to the Telegram/WhatsApp group for the project and tell the orchestrator agen
 
 The agent calls `project_register`, which atomically:
 - Validates the repo and auto-detects GitHub/GitLab from remote
-- Creates all 8 state labels (idempotent)
-- Scaffolds role instruction files (`projects/roles/<project>/dev.md` and `qa.md`)
+- Creates all 11 state labels (idempotent)
+- Scaffolds role instruction files (`devclaw/projects/<project>/prompts/developer.md`, `tester.md`, `architect.md`)
 - Adds the project entry to `projects.json`
 - Logs the registration event
 
@@ -168,20 +171,30 @@ The agent calls `project_register`, which atomically:
       "baseBranch": "development",
       "deployBranch": "development",
       "channel": "telegram",
+      "provider": "github",
       "roleExecution": "parallel",
-      "dev": {
-        "active": false,
-        "issueId": null,
-        "startTime": null,
-        "level": null,
-        "sessions": { "junior": null, "medior": null, "senior": null }
-      },
-      "qa": {
-        "active": false,
-        "issueId": null,
-        "startTime": null,
-        "level": null,
-        "sessions": { "reviewer": null, "tester": null }
+      "workers": {
+        "developer": {
+          "active": false,
+          "issueId": null,
+          "startTime": null,
+          "level": null,
+          "sessions": { "junior": null, "medior": null, "senior": null }
+        },
+        "tester": {
+          "active": false,
+          "issueId": null,
+          "startTime": null,
+          "level": null,
+          "sessions": { "junior": null, "medior": null, "senior": null }
+        },
+        "architect": {
+          "active": false,
+          "issueId": null,
+          "startTime": null,
+          "level": null,
+          "sessions": { "junior": null, "senior": null }
+        }
       }
     }
   }
@@ -194,7 +207,7 @@ The agent calls `project_register`, which atomically:
 
 Issues can be created in multiple ways:
 - **Via the agent** — Ask the orchestrator in the Telegram group: "Create an issue for adding a login page" (uses `task_create`)
-- **Via workers** — DEV/QA workers can call `task_create` to file follow-up bugs they discover
+- **Via workers** — DEVELOPER/TESTER workers can call `task_create` to file follow-up bugs they discover
 - **Via CLI** — `cd ~/git/my-project && gh issue create --title "My first task" --label "To Do"` (or `glab issue create`)
 - **Via web UI** — Create an issue and add the "To Do" label
 
@@ -208,9 +221,9 @@ Ask the agent in the Telegram group:
 
 The agent should call `status` and report the "To Do" issue. Then:
 
-> "Pick up issue #1 for DEV"
+> "Pick up issue #1 for developer"
 
-The agent calls `work_start`, which assigns a developer level, transitions the label to "Doing", creates or reuses a worker session, and dispatches the task — all in one call. The agent posts the announcement.
+The agent calls `work_start`, which assigns a level, transitions the label to "Doing", creates or reuses a worker session, and dispatches the task — all in one call. The agent posts the announcement.
 
 ## Adding more projects
 
@@ -220,17 +233,20 @@ Each project is fully isolated — separate queue, separate workers, separate st
 
 ## Developer levels
 
-DevClaw assigns tasks to developer levels instead of raw model names. This makes the system intuitive — you're assigning a "junior dev" to fix a typo, not configuring model parameters.
+DevClaw assigns tasks to developer levels instead of raw model names. This makes the system intuitive — you're assigning a "junior" to fix a typo, not configuring model parameters. All roles use the same level scheme.
 
-| Role | Level | Default model | When to assign |
+| Role | Level | Default Model | When to assign |
 |------|-------|---------------|----------------|
-| DEV | **junior** | `anthropic/claude-haiku-4-5` | Typos, single-file fixes, CSS changes |
-| DEV | **medior** | `anthropic/claude-sonnet-4-5` | Features, bug fixes, multi-file changes |
-| DEV | **senior** | `anthropic/claude-opus-4-5` | Architecture, migrations, system-wide refactoring |
-| QA | **reviewer** | `anthropic/claude-sonnet-4-5` | Code review, test validation |
-| QA | **tester** | `anthropic/claude-haiku-4-5` | Manual testing, smoke tests |
+| Developer | **junior** | `anthropic/claude-haiku-4-5` | Typos, single-file fixes, CSS changes |
+| Developer | **medior** | `anthropic/claude-sonnet-4-5` | Features, bug fixes, multi-file changes |
+| Developer | **senior** | `anthropic/claude-opus-4-6` | Architecture, migrations, system-wide refactoring |
+| Tester | **junior** | `anthropic/claude-haiku-4-5` | Quick smoke tests, basic checks |
+| Tester | **medior** | `anthropic/claude-sonnet-4-5` | Standard code review, test validation |
+| Tester | **senior** | `anthropic/claude-opus-4-6` | Thorough security review, complex edge cases |
+| Architect | **junior** | `anthropic/claude-sonnet-4-5` | Standard design investigation |
+| Architect | **senior** | `anthropic/claude-opus-4-6` | Complex architecture decisions |
 
-Change which model powers each level in `openclaw.json` — see [Configuration](CONFIGURATION.md#model-tiers).
+Change which model powers each level in `workflow.yaml` — see [Configuration](CONFIGURATION.md#role-configuration).
 
 ## What the plugin handles vs. what you handle
 
@@ -239,17 +255,19 @@ Change which model powers each level in `openclaw.json` — see [Configuration](
 | Plugin installation | You (once) | `openclaw plugins install @laurentenhoor/devclaw` |
 | Agent + workspace setup | Plugin (`setup`) | Creates agent, configures models, writes workspace files |
 | Channel binding migration | Plugin (`setup` with `migrateFrom`) | Automatically moves channel-wide bindings between agents |
-| Label setup | Plugin (`project_register`) | 8 labels, created idempotently via IssueProvider |
-| Prompt file scaffolding | Plugin (`project_register`) | Creates `projects/roles/<project>/dev.md` and `qa.md` |
+| Label setup | Plugin (`project_register`) | 11 labels, created idempotently via IssueProvider |
+| Prompt file scaffolding | Plugin (`project_register`) | Creates `devclaw/projects/<project>/prompts/<role>.md` for each role |
 | Project registration | Plugin (`project_register`) | Entry in `projects.json` with empty worker state |
 | Telegram group setup | You (once per project) | Add bot to group |
 | Issue creation | Plugin (`task_create`) | Orchestrator or workers create issues from chat |
 | Label transitions | Plugin | Atomic transitions via issue tracker CLI |
 | Developer assignment | Plugin | LLM-selected level by orchestrator, keyword heuristic fallback |
-| State management | Plugin | Atomic read/write to `projects.json` |
+| State management | Plugin | Atomic read/write to `projects.json` with file locking |
 | Session management | Plugin | Creates, reuses, and dispatches to sessions via CLI. Agent never touches session tools. |
 | Task completion | Plugin (`work_finish`) | Workers self-report. Scheduler dispatches next role. |
-| Prompt instructions | Plugin (`work_start`) | Loaded from `projects/roles/<project>/<role>.md`, appended to task message |
+| Role instructions | Plugin (bootstrap hook) | Injected into worker sessions via `agent:bootstrap` hook at session startup |
+| Review polling | Plugin (heartbeat) | Auto-merges and advances "In Review" issues when PR is approved |
+| Config validation | Plugin | Zod schemas validate `workflow.yaml` at load time |
 | Audit logging | Plugin | Automatic NDJSON append per tool call |
 | Zombie detection | Plugin | `health` checks active vs alive |
 | Queue scanning | Plugin | `status` queries issue tracker per project |

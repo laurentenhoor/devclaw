@@ -8,16 +8,17 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
 import { getWorker, resolveRepoPath } from "../projects.js";
-import { executeCompletion, getRule, NEXT_STATE } from "../services/pipeline.js";
+import { executeCompletion, getRule } from "../services/pipeline.js";
 import { log as auditLog } from "../audit.js";
 import { requireWorkspaceDir, resolveProject, resolveProvider, getPluginConfig } from "../tool-helpers.js";
 import { getAllRoleIds, isValidResult, getCompletionResults } from "../roles/index.js";
+import { loadWorkflow } from "../workflow.js";
 
 export function createWorkFinishTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
     name: "work_finish",
     label: "Work Finish",
-    description: `Complete a task: DEV done/blocked, QA pass/fail/refine/blocked. Handles label transition, state update, issue close/reopen, notifications, and audit logging.`,
+    description: `Complete a task: Developer done/blocked, Tester pass/fail/refine/blocked. Handles label transition, state update, issue close/reopen, notifications, and audit logging.`,
     parameters: {
       type: "object",
       required: ["role", "result", "projectGroupId"],
@@ -31,7 +32,7 @@ export function createWorkFinishTool(api: OpenClawPluginApi) {
     },
 
     async execute(_id: string, params: Record<string, unknown>) {
-      const role = params.role as "dev" | "qa" | "architect";
+      const role = params.role as string;
       const result = params.result as string;
       const groupId = params.projectGroupId as string;
       const summary = params.summary as string | undefined;
@@ -59,6 +60,7 @@ export function createWorkFinishTool(api: OpenClawPluginApi) {
       const issue = await provider.getIssue(issueId);
 
       const pluginConfig = getPluginConfig(api);
+      const workflow = await loadWorkflow(workspaceDir, project.name);
 
       // Execute completion (pipeline service handles notification with runtime)
       const completion = await executeCompletion({
@@ -67,6 +69,7 @@ export function createWorkFinishTool(api: OpenClawPluginApi) {
         channel: project.channel,
         pluginConfig,
         runtime: api.runtime,
+        workflow,
       });
 
       const output: Record<string, unknown> = {

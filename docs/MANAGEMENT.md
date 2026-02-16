@@ -19,7 +19,8 @@ DevClaw's level selection does exactly this. When a task comes in, the plugin ro
 | Simple (typos, renames, copy)    | Junior   | The intern — just execute   |
 | Standard (features, bug fixes)   | Medior   | Mid-level — think and build |
 | Complex (architecture, security) | Senior   | The architect — design and reason |
-| Review                           | Reviewer | Independent code reviewer   |
+
+All three roles — DEVELOPER, TESTER, and ARCHITECT — use the same junior/medior/senior scheme (architect uses junior/senior). The orchestrator picks the level per task, and the plugin resolves it to the appropriate model via the role registry and workflow config.
 
 This isn't just cost optimization. It mirrors what effective managers do instinctively: match the delegation level to the task, not to a fixed assumption about the delegate.
 
@@ -27,14 +28,15 @@ This isn't just cost optimization. It mirrors what effective managers do instinc
 
 Classical management theory — later formalized by Bernard Bass in his work on Transformational Leadership — introduced a concept called Management by Exception (MBE). The principle: a manager should only be pulled back into a workstream when something deviates from the expected path.
 
-DevClaw's task lifecycle is built on this. The orchestrator delegates a task via `work_start`, then steps away. It only re-engages in three scenarios:
+DevClaw's task lifecycle is built on this. The orchestrator delegates a task via `work_start`, then steps away. It only re-engages in specific scenarios:
 
-1. **DEV completes work** → The label moves to `To Test`. The scheduler dispatches QA on the next tick. No orchestrator involvement needed.
-2. **QA passes** → The issue closes. Pipeline complete.
-3. **QA fails** → The label moves to `To Improve`. The scheduler dispatches DEV on the next tick. The orchestrator may need to adjust the model level.
-4. **QA refines** → The task enters a holding state that _requires human decision_. This is the explicit escalation boundary.
+1. **DEVELOPER completes work** → The label moves to `To Test`. The scheduler dispatches TESTER on the next tick. No orchestrator involvement needed.
+2. **DEVELOPER requests review** → The label moves to `In Review`. The heartbeat polls PR status. When merged, the scheduler dispatches TESTER. No orchestrator involvement needed.
+3. **TESTER passes** → The issue closes. Pipeline complete.
+4. **TESTER fails** → The label moves to `To Improve`. The scheduler dispatches DEVELOPER on the next tick. The orchestrator may need to adjust the level.
+5. **Any role is blocked** → The task enters `Refining` — a holding state that _requires human decision_. This is the explicit escalation boundary.
 
-The "refine" state is the most interesting from a delegation perspective. It's a conscious architectural decision that says: some judgments should not be automated. When the QA agent determines that a task needs rethinking rather than just fixing, it escalates to the only actor who has the full business context — the human.
+The "Refining" state is the most interesting from a delegation perspective. It's a conscious architectural decision that says: some judgments should not be automated. When a TESTER determines that a task needs rethinking rather than just fixing, or when a DEVELOPER hits an obstacle that requires business context, it escalates to the only actor who has the full picture — the human.
 
 This is textbook MBE. The person behind the keyboard isn't monitoring every task. They're only pulled in when the system encounters something beyond its delegation authority.
 
@@ -42,13 +44,16 @@ This is textbook MBE. The person behind the keyboard isn't monitoring every task
 
 Henry Mintzberg's work on organizational structure identified five coordination mechanisms. The one most relevant to DevClaw is **standardization of work processes** — when coordination happens not through direct supervision but through predetermined procedures that everyone follows.
 
-DevClaw enforces a single, fixed lifecycle for every task across every project:
+DevClaw enforces a configurable but consistent lifecycle for every task. The default workflow:
 
 ```
 Planning → To Do → Doing → To Test → Testing → Done
-                                    ↘ To Improve → Doing (fix cycle)
+                         ↘ In Review → (PR approved → auto-merge) → To Test
+                                    ↘ To Improve → Doing (merge conflict / fix cycle)
                                     ↘ Refining → (human decision)
 ```
+
+The ARCHITECT role adds a parallel track: `To Design → Designing → Planning`.
 
 Every label transition, state update, and audit log entry happens atomically inside the plugin. The orchestrator agent cannot skip a step, forget a label, or corrupt session state — because those operations are deterministic code, not instructions an LLM follows imperfectly.
 
@@ -60,9 +65,11 @@ One of the most common delegation failures is self-review. You don't ask the per
 
 DevClaw enforces structural separation between development and review by design:
 
-- DEV and QA are separate sub-agent sessions with separate state.
-- QA uses the reviewer level, which can be a different model entirely, introducing genuine independence.
-- The review happens after a clean label transition — QA picks up from `To Test`, not from watching DEV work in real time.
+- DEVELOPER and TESTER are separate sub-agent sessions with separate state.
+- TESTER can use a different model entirely (e.g. senior for security reviews, junior for smoke tests), introducing genuine independence.
+- The review happens after a clean label transition — TESTER picks up from `To Test`, not from watching DEVELOPER work in real time.
+
+For higher-stakes changes, the DEVELOPER can submit a PR for human review (`result: "review"`). The issue enters `In Review` and the heartbeat polls the PR until it's merged — only then does TESTER receive the work. This adds a human checkpoint without breaking the automated flow.
 
 This mirrors a principle from organizational design: effective controls require independence between execution and verification. It's the same reason companies separate their audit function from their operations.
 
@@ -72,7 +79,7 @@ Ronald Coase won a Nobel Prize for explaining why firms exist: transaction costs
 
 DevClaw applies the same logic to AI sessions. Spawning a new sub-agent session costs approximately 50,000 tokens of context loading — the agent needs to read the full codebase before it can do useful work. That's the onboarding cost.
 
-The plugin tracks session keys across task completions. When a DEV finishes task A and task B is ready on the same project, DevClaw detects the existing session and reuses it instead of spawning a new one. No re-onboarding. No context reload.
+The plugin tracks session keys across task completions. When a DEVELOPER finishes task A and task B is ready on the same project, DevClaw detects the existing session and reuses it instead of spawning a new one. No re-onboarding. No context reload. Each role maintains separate sessions per level, so a "medior developer" session accumulates project context independently from the "senior developer" session.
 
 In management terms: keep your team stable. Reassigning the same person to the next task on their project is almost always cheaper than bringing in someone new — even if the new person is theoretically better qualified.
 
@@ -85,15 +92,15 @@ The obvious saving is execution time: AI writes code faster than a human. But th
 Without DevClaw, every task requires a human to make a series of small decisions:
 
 - Which model should handle this?
-- Is the DEV session still alive, or do I need a new one?
+- Is the DEVELOPER session still alive, or do I need a new one?
 - What label should this issue have now?
 - Did I update the state file?
 - Did I log this transition?
-- Is the QA session free, or is it still working on something?
+- Is the TESTER session free, or is it still working on something?
 
 None of these decisions are hard. But they accumulate. Each one consumes a small amount of the same cognitive resource you need for the decisions that actually matter — product direction, architecture choices, business priorities.
 
-DevClaw eliminates entire categories of decisions by making them deterministic. The plugin picks the model. The plugin manages sessions. The plugin transitions labels. The plugin writes audit logs. The person behind the keyboard is left with only the decisions that require human judgment: what to build, what to prioritize, and what to do when QA says "this needs rethinking."
+DevClaw eliminates entire categories of decisions by making them deterministic. The plugin picks the model. The plugin manages sessions. The plugin transitions labels. The plugin writes audit logs. The person behind the keyboard is left with only the decisions that require human judgment: what to build, what to prioritize, and what to do when a worker says "this needs rethinking."
 
 This is the deepest lesson from delegation theory: **good delegation isn't about getting someone else to do your work. It's about protecting your attention for the work only you can do.**
 
@@ -101,11 +108,11 @@ This is the deepest lesson from delegation theory: **good delegation isn't about
 
 Management research points to a few directions that could extend DevClaw's delegation model:
 
-**Progressive delegation.** Blanchard's model suggests increasing task complexity for delegates as they prove competent. DevClaw could track QA pass rates per model level and automatically promote — if junior consistently passes QA on borderline tasks, start routing more work to it. This is how good managers develop their people, and it reduces cost over time.
+**Progressive delegation.** Blanchard's model suggests increasing task complexity for delegates as they prove competent. DevClaw could track TESTER pass rates per model level and automatically promote — if junior consistently passes TESTER on borderline tasks, start routing more work to it. This is how good managers develop their people, and it reduces cost over time.
 
-**Delegation authority expansion.** The Vroom-Yetton decision model maps when a leader should decide alone versus consulting the team. Currently, sub-agents have narrow authority — they execute tasks but can't restructure the backlog. Selectively expanding this (e.g., allowing a DEV agent to split a task it judges too large) would reduce orchestrator bottlenecks, mirroring how managers gradually give high-performers more autonomy.
+**Delegation authority expansion.** The Vroom-Yetton decision model maps when a leader should decide alone versus consulting the team. Currently, sub-agents have narrow authority — they execute tasks but can't restructure the backlog. Selectively expanding this (e.g., allowing a DEVELOPER agent to split a task it judges too large) would reduce orchestrator bottlenecks, mirroring how managers gradually give high-performers more autonomy.
 
-**Outcome-based learning.** Delegation research emphasizes that the _delegator_ learns from outcomes too. Aggregated metrics — QA fail rate by model level, average cycles to Done, time-in-state distributions — would help both the orchestrator agent and the human calibrate their delegation patterns over time.
+**Outcome-based learning.** Delegation research emphasizes that the _delegator_ learns from outcomes too. Aggregated metrics — TESTER fail rate by model level, average cycles to Done, time-in-state distributions — would help both the orchestrator agent and the human calibrate their delegation patterns over time.
 
 ---
 

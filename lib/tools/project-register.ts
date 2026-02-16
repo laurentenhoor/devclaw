@@ -15,40 +15,28 @@ import { resolveRepoPath } from "../projects.js";
 import { createProvider } from "../providers/index.js";
 import { log as auditLog } from "../audit.js";
 import { getAllRoleIds, getLevelsForRole } from "../roles/index.js";
-import { DEFAULT_DEV_INSTRUCTIONS, DEFAULT_QA_INSTRUCTIONS, DEFAULT_ARCHITECT_INSTRUCTIONS } from "../templates.js";
+import { ExecutionMode } from "../workflow.js";
+import { DEFAULT_ROLE_INSTRUCTIONS } from "../templates.js";
+import { DATA_DIR } from "../setup/migrate-layout.js";
 
 /**
- * Scaffold project-specific prompt files.
+ * Scaffold project-specific prompt files for all registered roles.
  * Returns true if files were created, false if they already existed.
  */
 async function scaffoldPromptFiles(workspaceDir: string, projectName: string): Promise<boolean> {
-  const projectDir = path.join(workspaceDir, "projects", "roles", projectName);
-  await fs.mkdir(projectDir, { recursive: true });
+  const promptsDir = path.join(workspaceDir, DATA_DIR, "projects", projectName, "prompts");
+  await fs.mkdir(promptsDir, { recursive: true });
 
-  const projectDev = path.join(projectDir, "dev.md");
-  const projectQa = path.join(projectDir, "qa.md");
   let created = false;
-
-  try {
-    await fs.access(projectDev);
-  } catch {
-    await fs.writeFile(projectDev, DEFAULT_DEV_INSTRUCTIONS, "utf-8");
-    created = true;
-  }
-
-  try {
-    await fs.access(projectQa);
-  } catch {
-    await fs.writeFile(projectQa, DEFAULT_QA_INSTRUCTIONS, "utf-8");
-    created = true;
-  }
-
-  const projectArchitect = path.join(projectDir, "architect.md");
-  try {
-    await fs.access(projectArchitect);
-  } catch {
-    await fs.writeFile(projectArchitect, DEFAULT_ARCHITECT_INSTRUCTIONS, "utf-8");
-    created = true;
+  for (const role of getAllRoleIds()) {
+    const filePath = path.join(promptsDir, `${role}.md`);
+    try {
+      await fs.access(filePath);
+    } catch {
+      const content = DEFAULT_ROLE_INSTRUCTIONS[role] ?? `# ${role.toUpperCase()} Worker Instructions\n\nAdd role-specific instructions here.\n`;
+      await fs.writeFile(filePath, content, "utf-8");
+      created = true;
+    }
   }
 
   return created;
@@ -97,7 +85,7 @@ export function createProjectRegisterTool() {
         },
         roleExecution: {
           type: "string",
-          enum: ["parallel", "sequential"],
+          enum: Object.values(ExecutionMode),
           description: "Project-level role execution mode: parallel (DEV and QA can work simultaneously) or sequential (only one role active at a time). Defaults to parallel.",
         },
       },
@@ -112,7 +100,7 @@ export function createProjectRegisterTool() {
       const baseBranch = params.baseBranch as string;
       const deployBranch = (params.deployBranch as string) ?? baseBranch;
       const deployUrl = (params.deployUrl as string) ?? "";
-      const roleExecution = (params.roleExecution as "parallel" | "sequential") ?? "parallel";
+      const roleExecution = (params.roleExecution as ExecutionMode) ?? ExecutionMode.PARALLEL;
       const workspaceDir = ctx.workspaceDir;
 
       if (!workspaceDir) {
@@ -122,7 +110,8 @@ export function createProjectRegisterTool() {
       // 1. Check project not already registered (allow re-register if incomplete)
       const data = await readProjects(workspaceDir);
       const existing = data.projects[groupId];
-      if (existing && existing.dev?.sessions && Object.keys(existing.dev.sessions).length > 0) {
+      const existingWorkers = existing?.workers ?? {};
+      if (existing && Object.values(existingWorkers).some(w => w.sessions && Object.keys(w.sessions).length > 0)) {
         throw new Error(
           `Project already registered for this group: "${existing.name}". Remove the existing entry first or use a different group.`,
         );
@@ -153,6 +142,12 @@ export function createProjectRegisterTool() {
       await provider.ensureAllStateLabels();
 
       // 5. Add project to projects.json
+      // Build workers map from all registered roles
+      const workers: Record<string, import("../projects.js").WorkerState> = {};
+      for (const role of getAllRoleIds()) {
+        workers[role] = emptyWorkerState([...getLevelsForRole(role)]);
+      }
+
       data.projects[groupId] = {
         name,
         repo,
@@ -163,9 +158,7 @@ export function createProjectRegisterTool() {
         channel,
         provider: providerType,
         roleExecution,
-        dev: emptyWorkerState([...getLevelsForRole("dev")]),
-        qa: emptyWorkerState([...getLevelsForRole("qa")]),
-        architect: emptyWorkerState([...getLevelsForRole("architect")]),
+        workers,
       };
 
       await writeProjects(workspaceDir, data);

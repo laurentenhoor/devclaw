@@ -9,29 +9,10 @@ import { createProvider } from "../providers/index.js";
 import type { Project } from "../projects.js";
 import {
   DEFAULT_WORKFLOW,
+  StateType,
   type WorkflowConfig,
   type Role,
 } from "../workflow.js";
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-/**
- * @deprecated Use string labels from workflow config instead.
- * Kept for backward compatibility.
- */
-export type QueueLabel = "To Improve" | "To Test" | "To Do";
-
-/**
- * @deprecated Use getQueuePriority() instead.
- * Kept for backward compatibility.
- */
-export const QUEUE_PRIORITY: Record<string, number> = {
-  "To Improve": 3,
-  "To Test": 2,
-  "To Do": 1,
-};
 
 // ---------------------------------------------------------------------------
 // Workflow-driven helpers
@@ -47,7 +28,7 @@ export function getQueueLabelsWithPriority(
   const labels: Array<{ label: string; priority: number; role?: Role }> = [];
 
   for (const state of Object.values(workflow.states)) {
-    if (state.type === "queue") {
+    if (state.type === StateType.QUEUE) {
       labels.push({
         label: state.label,
         priority: state.priority ?? 0,

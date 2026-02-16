@@ -27,10 +27,11 @@ describe("task_update tool", () => {
       "Done",
       "To Improve",
       "Refining",
+      "In Review",
     ];
-    
+
     // In a real test, we'd verify these against the tool's enum
-    assert.strictEqual(validStates.length, 8);
+    assert.strictEqual(validStates.length, 9);
   });
 
   it("validates required parameters", () => {

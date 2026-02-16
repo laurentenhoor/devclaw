@@ -1,54 +1,238 @@
 # DevClaw — Configuration Reference
 
-All DevClaw configuration lives in two places: `openclaw.json` (plugin-level settings) and `projects.json` (per-project state).
+DevClaw uses a three-layer configuration system. All role, workflow, and timeout settings live in `workflow.yaml` files — not in `openclaw.json`.
 
-## Plugin Configuration (`openclaw.json`)
+## Three-Layer Config Resolution
 
-DevClaw is configured under `plugins.entries.devclaw.config` in `openclaw.json`.
-
-### Model Tiers
-
-Override which LLM model powers each developer level:
-
-```json
-{
-  "plugins": {
-    "entries": {
-      "devclaw": {
-        "config": {
-          "models": {
-            "dev": {
-              "junior": "anthropic/claude-haiku-4-5",
-              "medior": "anthropic/claude-sonnet-4-5",
-              "senior": "anthropic/claude-opus-4-5"
-            },
-            "qa": {
-              "reviewer": "anthropic/claude-sonnet-4-5",
-              "tester": "anthropic/claude-haiku-4-5"
-            }
-          }
-        }
-      }
-    }
-  }
-}
+```
+Layer 1: Built-in defaults (ROLE_REGISTRY + DEFAULT_WORKFLOW)
+Layer 2: Workspace:  <workspace>/devclaw/workflow.yaml
+Layer 3: Project:    <workspace>/devclaw/projects/<project>/workflow.yaml
 ```
 
-**Resolution order** (per `lib/tiers.ts:resolveModel`):
+Each layer can partially override the one below it. Only the fields you specify are merged — everything else inherits from the layer below.
 
-1. Plugin config `models.<role>.<level>` — explicit override
-2. `DEFAULT_MODELS[role][level]` — built-in defaults (table below)
-3. Passthrough — treat the level string as a raw model ID
+**Source:** [`lib/config/loader.ts`](../lib/config/loader.ts)
+
+**Validation:** Config is validated at load time with Zod schemas ([`lib/config/schema.ts`](../lib/config/schema.ts)). Integrity checks verify transition targets exist, queue states have roles, and terminal states have no outgoing transitions.
+
+---
+
+## Workflow Config (`workflow.yaml`)
+
+The `workflow.yaml` file configures roles, workflow states, and timeouts. Place it at `<workspace>/devclaw/workflow.yaml` for workspace-wide settings, or at `<workspace>/devclaw/projects/<project>/workflow.yaml` for project-specific overrides.
+
+### Role Configuration
+
+Override which LLM model powers each level, customize levels, or disable roles entirely:
+
+```yaml
+roles:
+  developer:
+    models:
+      junior: anthropic/claude-haiku-4-5
+      medior: anthropic/claude-sonnet-4-5
+      senior: anthropic/claude-opus-4-6
+  tester:
+    models:
+      junior: anthropic/claude-haiku-4-5
+      medior: anthropic/claude-sonnet-4-5
+      senior: anthropic/claude-opus-4-6
+  architect:
+    models:
+      junior: anthropic/claude-sonnet-4-5
+      senior: anthropic/claude-opus-4-6
+  # Disable a role entirely:
+  # architect: false
+```
+
+**Role override fields** (all optional — only override what you need):
+
+| Field | Type | Description |
+|---|---|---|
+| `levels` | string[] | Available levels for this role |
+| `defaultLevel` | string | Default level when not specified |
+| `models` | Record<string, string> | Model ID per level |
+| `emoji` | Record<string, string> | Emoji per level for announcements |
+| `completionResults` | string[] | Valid completion results |
 
 **Default models:**
 
-| Role | Level | Default model |
+| Role | Level | Default Model |
 |---|---|---|
-| dev | junior | `anthropic/claude-haiku-4-5` |
-| dev | medior | `anthropic/claude-sonnet-4-5` |
-| dev | senior | `anthropic/claude-opus-4-5` |
-| qa | reviewer | `anthropic/claude-sonnet-4-5` |
-| qa | tester | `anthropic/claude-haiku-4-5` |
+| developer | junior | `anthropic/claude-haiku-4-5` |
+| developer | medior | `anthropic/claude-sonnet-4-5` |
+| developer | senior | `anthropic/claude-opus-4-6` |
+| tester | junior | `anthropic/claude-haiku-4-5` |
+| tester | medior | `anthropic/claude-sonnet-4-5` |
+| tester | senior | `anthropic/claude-opus-4-6` |
+| architect | junior | `anthropic/claude-sonnet-4-5` |
+| architect | senior | `anthropic/claude-opus-4-6` |
+
+**Source:** [`lib/roles/registry.ts`](../lib/roles/registry.ts)
+
+**Model resolution order:**
+
+1. Project `workflow.yaml` → `roles.<role>.models.<level>`
+2. Workspace `workflow.yaml` → `roles.<role>.models.<level>`
+3. Built-in defaults from `ROLE_REGISTRY`
+4. Passthrough — treat the level string as a raw model ID
+
+### Workflow States
+
+The workflow section defines the state machine for issue lifecycle. Each state has a type, label, color, and optional transitions:
+
+```yaml
+workflow:
+  initial: planning
+  states:
+    planning:
+      type: hold
+      label: Planning
+      color: "#95a5a6"
+      on:
+        APPROVE: todo
+    todo:
+      type: queue
+      role: developer
+      label: To Do
+      color: "#428bca"
+      priority: 1
+      on:
+        PICKUP: doing
+    doing:
+      type: active
+      role: developer
+      label: Doing
+      color: "#f0ad4e"
+      on:
+        COMPLETE:
+          target: toTest
+          actions: [gitPull, detectPr]
+        REVIEW:
+          target: reviewing
+          actions: [detectPr]
+        BLOCKED: refining
+    toTest:
+      type: queue
+      role: tester
+      label: To Test
+      color: "#5bc0de"
+      priority: 2
+      on:
+        PICKUP: testing
+    testing:
+      type: active
+      role: tester
+      label: Testing
+      color: "#9b59b6"
+      on:
+        PASS:
+          target: done
+          actions: [closeIssue]
+        FAIL:
+          target: toImprove
+          actions: [reopenIssue]
+        REFINE: refining
+        BLOCKED: refining
+    toImprove:
+      type: queue
+      role: developer
+      label: To Improve
+      color: "#d9534f"
+      priority: 3
+      on:
+        PICKUP: doing
+    refining:
+      type: hold
+      label: Refining
+      color: "#f39c12"
+      on:
+        APPROVE: todo
+    reviewing:
+      type: review
+      label: In Review
+      color: "#c5def5"
+      check: prApproved
+      on:
+        APPROVED:
+          target: toTest
+          actions: [mergePr, gitPull]
+        MERGE_FAILED: toImprove
+        BLOCKED: refining
+    done:
+      type: terminal
+      label: Done
+      color: "#5cb85c"
+    toDesign:
+      type: queue
+      role: architect
+      label: To Design
+      color: "#0075ca"
+      priority: 1
+      on:
+        PICKUP: designing
+    designing:
+      type: active
+      role: architect
+      label: Designing
+      color: "#d4c5f9"
+      on:
+        COMPLETE: planning
+        BLOCKED: refining
+```
+
+**State types:**
+
+| Type | Description |
+|---|---|
+| `queue` | Waiting for pickup. Must have a `role`. Has `priority` for ordering. |
+| `active` | Worker is currently working on it. Must have a `role`. |
+| `hold` | Paused, awaiting human decision. |
+| `review` | Awaiting external check (PR approved/merged). Has `check` field. Heartbeat polls and auto-transitions. |
+| `terminal` | Completed. No outgoing transitions. |
+
+**Built-in actions:**
+
+| Action | Description |
+|---|---|
+| `gitPull` | Pull latest from the base branch |
+| `detectPr` | Auto-detect PR URL from the issue |
+| `mergePr` | Merge the PR associated with the issue. Critical in review states (aborts on failure). |
+| `closeIssue` | Close the issue |
+| `reopenIssue` | Reopen the issue |
+
+**Review checks:**
+
+| Check | Description |
+|---|---|
+| `prMerged` | Transition when the issue's PR is merged |
+| `prApproved` | Transition when the issue's PR is approved or merged |
+
+### Timeouts
+
+```yaml
+timeouts:
+  gitPullMs: 30000
+  gatewayMs: 120000
+  sessionPatchMs: 120000
+  dispatchMs: 120000
+  staleWorkerHours: 2
+```
+
+| Setting | Default | Description |
+|---|---|---|
+| `gitPullMs` | 30000 | Timeout for git pull operations |
+| `gatewayMs` | 120000 | Timeout for gateway RPC calls |
+| `sessionPatchMs` | 120000 | Timeout for session creation |
+| `dispatchMs` | 120000 | Timeout for task dispatch |
+| `staleWorkerHours` | 2 | Hours before a worker is considered stale |
+
+---
+
+## Plugin Configuration (`openclaw.json`)
+
+Some settings still live in `openclaw.json` under `plugins.entries.devclaw.config`:
 
 ### Project Execution Mode
 
@@ -72,8 +256,6 @@ Controls cross-project parallelism:
 |---|---|
 | `"parallel"` (default) | Multiple projects can have active workers simultaneously |
 | `"sequential"` | Only one project's workers active at a time. Useful for single-agent deployments. |
-
-Enforced in `work_heartbeat` and the heartbeat service before dispatching.
 
 ### Heartbeat Service
 
@@ -105,7 +287,7 @@ Token-free interval-based health checks + queue dispatch:
 
 **Source:** [`lib/services/heartbeat.ts`](../lib/services/heartbeat.ts)
 
-The heartbeat service runs as a plugin service tied to the gateway lifecycle. Every tick: health pass (auto-fix zombies, stale workers) → tick pass (fill free slots by priority). Zero LLM tokens consumed.
+The heartbeat service runs as a plugin service tied to the gateway lifecycle. Every tick: health pass (auto-fix zombies, stale workers) → review pass (poll PR status for "In Review" issues) → tick pass (fill free slots by priority). Zero LLM tokens consumed.
 
 ### Notifications
 
@@ -157,7 +339,8 @@ Restrict DevClaw tools to your orchestrator agent:
             "work_heartbeat",
             "project_register",
             "setup",
-            "onboard"
+            "onboard",
+            "design_task"
           ]
         }
       }
@@ -170,7 +353,7 @@ Restrict DevClaw tools to your orchestrator agent:
 
 ## Project State (`projects.json`)
 
-All project state lives in `<workspace>/projects/projects.json`, keyed by group ID.
+All project state lives in `<workspace>/devclaw/projects.json`, keyed by group ID.
 
 **Source:** [`lib/projects.ts`](../lib/projects.ts)
 
@@ -187,26 +370,40 @@ All project state lives in `<workspace>/projects/projects.json`, keyed by group 
       "deployBranch": "development",
       "deployUrl": "https://my-webapp.example.com",
       "channel": "telegram",
+      "provider": "github",
       "roleExecution": "parallel",
-      "dev": {
-        "active": false,
-        "issueId": null,
-        "startTime": null,
-        "level": null,
-        "sessions": {
-          "junior": null,
-          "medior": "agent:orchestrator:subagent:my-webapp-dev-medior",
-          "senior": null
-        }
-      },
-      "qa": {
-        "active": false,
-        "issueId": null,
-        "startTime": null,
-        "level": null,
-        "sessions": {
-          "reviewer": "agent:orchestrator:subagent:my-webapp-qa-reviewer",
-          "tester": null
+      "workers": {
+        "developer": {
+          "active": false,
+          "issueId": null,
+          "startTime": null,
+          "level": null,
+          "sessions": {
+            "junior": null,
+            "medior": "agent:orchestrator:subagent:my-webapp-developer-medior",
+            "senior": null
+          }
+        },
+        "tester": {
+          "active": false,
+          "issueId": null,
+          "startTime": null,
+          "level": null,
+          "sessions": {
+            "junior": null,
+            "medior": "agent:orchestrator:subagent:my-webapp-tester-medior",
+            "senior": null
+          }
+        },
+        "architect": {
+          "active": false,
+          "issueId": null,
+          "startTime": null,
+          "level": null,
+          "sessions": {
+            "junior": null,
+            "senior": null
+          }
         }
       }
     }
@@ -225,29 +422,28 @@ All project state lives in `<workspace>/projects/projects.json`, keyed by group 
 | `deployBranch` | string | Branch that triggers deployment |
 | `deployUrl` | string | Deployment URL |
 | `channel` | string | Messaging channel (`"telegram"`, `"whatsapp"`, etc.) |
-| `roleExecution` | `"parallel"` \| `"sequential"` | DEV/QA parallelism for this project |
+| `provider` | `"github"` \| `"gitlab"` | Issue tracker provider (auto-detected, stored for reuse) |
+| `roleExecution` | `"parallel"` \| `"sequential"` | DEVELOPER/TESTER parallelism for this project |
 
 ### Worker state fields
 
-Each project has `dev` and `qa` worker state objects:
+Each role in the `workers` record has a `WorkerState` object:
 
 | Field | Type | Description |
 |---|---|---|
 | `active` | boolean | Whether this role has an active worker |
 | `issueId` | string \| null | Issue being worked on (as string) |
 | `startTime` | string \| null | ISO timestamp when worker became active |
-| `level` | string \| null | Current level (`junior`, `medior`, `senior`, `reviewer`, `tester`) |
+| `level` | string \| null | Current level (`junior`, `medior`, `senior`) |
 | `sessions` | Record<string, string \| null> | Per-level session keys |
-
-**DEV session keys:** `junior`, `medior`, `senior`
-**QA session keys:** `reviewer`, `tester`
 
 ### Key design decisions
 
 - **Session-per-level** — each level gets its own worker session, accumulating context independently. Level selection maps directly to a session key.
 - **Sessions preserved on completion** — when a worker completes a task, the sessions map is preserved (only `active`, `issueId`, and `startTime` are cleared). This enables session reuse.
-- **Atomic writes** — all writes go through temp-file-then-rename to prevent corruption.
+- **Atomic writes** — all writes go through temp-file-then-rename to prevent corruption. File locking prevents concurrent read-modify-write races.
 - **Sessions persist indefinitely** — no auto-cleanup. The `health` tool handles manual cleanup.
+- **Dynamic workers** — the `workers` record is keyed by role ID (e.g., `developer`, `tester`, `architect`). New roles are created automatically when dispatched.
 
 ---
 
@@ -255,37 +451,43 @@ Each project has `dev` and `qa` worker state objects:
 
 ```
 <workspace>/
-├── projects/
-│   ├── projects.json          ← Project state (auto-managed)
-│   └── roles/
-│       ├── my-webapp/         ← Per-project role instructions (editable)
-│       │   ├── dev.md
-│       │   └── qa.md
-│       ├── another-project/
-│       │   ├── dev.md
-│       │   └── qa.md
-│       └── default/           ← Fallback role instructions
-│           ├── dev.md
-│           └── qa.md
-├── log/
-│   └── audit.log              ← NDJSON event log (auto-managed)
-├── AGENTS.md                  ← Agent identity documentation
-└── HEARTBEAT.md               ← Heartbeat operation guide
+├── devclaw/
+│   ├── projects.json              ← Project state (auto-managed)
+│   ├── workflow.yaml              ← Workspace-level config overrides
+│   ├── prompts/
+│   │   ├── developer.md           ← Default developer instructions
+│   │   ├── tester.md              ← Default tester instructions
+│   │   └── architect.md           ← Default architect instructions
+│   ├── projects/
+│   │   ├── my-webapp/
+│   │   │   ├── workflow.yaml      ← Project-specific config overrides
+│   │   │   └── prompts/
+│   │   │       ├── developer.md   ← Project-specific developer instructions
+│   │   │       ├── tester.md      ← Project-specific tester instructions
+│   │   │       └── architect.md   ← Project-specific architect instructions
+│   │   └── another-project/
+│   │       └── prompts/
+│   │           ├── developer.md
+│   │           └── tester.md
+│   └── log/
+│       └── audit.log              ← NDJSON event log (auto-managed)
+├── AGENTS.md                      ← Agent identity documentation
+└── HEARTBEAT.md                   ← Heartbeat operation guide
 ```
 
 ### Role instruction files
 
-`work_start` loads role instructions from `projects/roles/<project>/<role>.md` at dispatch time, falling back to `projects/roles/default/<role>.md`. These files are appended to the task message sent to worker sessions.
+Role instructions are injected into worker sessions via the `agent:bootstrap` hook at session startup. The hook loads instructions from `devclaw/projects/<project>/prompts/<role>.md`, falling back to `devclaw/prompts/<role>.md`.
 
 Edit to customize: deployment steps, test commands, acceptance criteria, coding standards.
 
-**Source:** [`lib/dispatch.ts:loadRoleInstructions`](../lib/dispatch.ts)
+**Source:** [`lib/bootstrap-hook.ts`](../lib/bootstrap-hook.ts)
 
 ---
 
 ## Audit Log
 
-Append-only NDJSON at `<workspace>/log/audit.log`. Auto-truncated to 250 lines.
+Append-only NDJSON at `<workspace>/devclaw/log/audit.log`. Auto-truncated to 250 lines.
 
 **Source:** [`lib/audit.ts`](../lib/audit.ts)
 
@@ -330,6 +532,8 @@ DevClaw uses an `IssueProvider` interface (`lib/providers/provider.ts`) to abstr
 |---|---|---|
 | GitHub | `gh` | Remote contains `github.com` |
 | GitLab | `glab` | Remote contains `gitlab` |
+
+**Provider resilience:** All calls are wrapped with cockatiel retry (3 attempts, exponential backoff) + circuit breaker (opens after 5 consecutive failures, half-opens after 30s). See [`lib/providers/resilience.ts`](../lib/providers/resilience.ts).
 
 **Planned:** Jira (via REST API)
 

@@ -8,13 +8,14 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
 import { runSetup, type SetupOpts } from "../setup/index.js";
-import { DEV_LEVELS, QA_LEVELS, DEFAULT_MODELS } from "../tiers.js";
+import { getAllDefaultModels, getAllRoleIds, getLevelsForRole } from "../roles/index.js";
+import { ExecutionMode } from "../workflow.js";
 
 export function createSetupTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
     name: "setup",
     label: "Setup",
-    description: `Execute DevClaw setup. Creates AGENTS.md, HEARTBEAT.md, projects/projects.json, and model level config. Optionally creates a new agent with channel binding. Called after onboard collects configuration.`,
+    description: `Execute DevClaw setup. Creates AGENTS.md, HEARTBEAT.md, devclaw/projects.json, devclaw/prompts/, and model level config. Optionally creates a new agent with channel binding. Called after onboard collects configuration.`,
     parameters: {
       type: "object",
       properties: {
@@ -36,44 +37,22 @@ export function createSetupTool(api: OpenClawPluginApi) {
         models: {
           type: "object",
           description: "Model overrides per role and level.",
-          properties: {
-            dev: {
+          properties: Object.fromEntries(
+            getAllRoleIds().map((role) => [role, {
               type: "object",
-              description: "Developer level models",
-              properties: {
-                junior: {
+              description: `${role.toUpperCase()} level models`,
+              properties: Object.fromEntries(
+                getLevelsForRole(role).map((level) => [level, {
                   type: "string",
-                  description: `Default: ${DEFAULT_MODELS.dev.junior}`,
-                },
-                medior: {
-                  type: "string",
-                  description: `Default: ${DEFAULT_MODELS.dev.medior}`,
-                },
-                senior: {
-                  type: "string",
-                  description: `Default: ${DEFAULT_MODELS.dev.senior}`,
-                },
-              },
-            },
-            qa: {
-              type: "object",
-              description: "QA level models",
-              properties: {
-                reviewer: {
-                  type: "string",
-                  description: `Default: ${DEFAULT_MODELS.qa.reviewer}`,
-                },
-                tester: {
-                  type: "string",
-                  description: `Default: ${DEFAULT_MODELS.qa.tester}`,
-                },
-              },
-            },
-          },
+                  description: `Default: ${getAllDefaultModels()[role]?.[level] ?? "auto"}`,
+                }]),
+              ),
+            }]),
+          ),
         },
         projectExecution: {
           type: "string",
-          enum: ["parallel", "sequential"],
+          enum: Object.values(ExecutionMode),
           description: "Project execution mode. Default: parallel.",
         },
       },
@@ -90,8 +69,7 @@ export function createSetupTool(api: OpenClawPluginApi) {
         workspacePath: params.newAgentName ? undefined : ctx.workspaceDir,
         models: params.models as SetupOpts["models"],
         projectExecution: params.projectExecution as
-          | "parallel"
-          | "sequential"
+          | ExecutionMode
           | undefined,
       });
 
@@ -107,12 +85,13 @@ export function createSetupTool(api: OpenClawPluginApi) {
           "",
         );
       }
-      lines.push(
-        "Models:",
-        ...DEV_LEVELS.map((t) => `  dev.${t}: ${result.models.dev[t]}`),
-        ...QA_LEVELS.map((t) => `  qa.${t}: ${result.models.qa[t]}`),
-        "",
-      );
+      lines.push("Models:");
+      for (const [role, levels] of Object.entries(result.models)) {
+        for (const [level, model] of Object.entries(levels)) {
+          lines.push(`  ${role}.${level}: ${model}`);
+        }
+      }
+      lines.push("");
 
       lines.push("Files:", ...result.filesWritten.map((f) => `  ${f}`));
 

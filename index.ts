@@ -24,37 +24,6 @@ const plugin = {
   configSchema: {
     type: "object",
     properties: {
-      models: {
-        type: "object",
-        description: "Model mapping per role and tier",
-        properties: {
-          dev: {
-            type: "object",
-            description: "Developer tier models",
-            properties: {
-              junior: { type: "string" },
-              medior: { type: "string" },
-              senior: { type: "string" },
-            },
-          },
-          qa: {
-            type: "object",
-            description: "QA tier models",
-            properties: {
-              reviewer: { type: "string" },
-              tester: { type: "string" },
-            },
-          },
-          architect: {
-            type: "object",
-            description: "Architect tier models",
-            properties: {
-              opus: { type: "string" },
-              sonnet: { type: "string" },
-            },
-          },
-        },
-      },
       projectExecution: {
         type: "string",
         enum: ["parallel", "sequential"],

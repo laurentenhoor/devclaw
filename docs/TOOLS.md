@@ -1,6 +1,6 @@
 # DevClaw — Tools Reference
 
-Complete reference for all 11 tools registered by DevClaw. See [`index.ts`](../index.ts) for registration.
+Complete reference for all tools registered by DevClaw. See [`index.ts`](../index.ts) for registration.
 
 ## Worker Lifecycle
 
@@ -17,9 +17,9 @@ Pick up a task from the issue queue. Handles level assignment, label transition,
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `issueId` | number | No | Issue ID. If omitted, picks next by priority. |
-| `role` | `"dev"` \| `"qa"` | No | Worker role. Auto-detected from issue label if omitted. |
+| `role` | `"developer"` \| `"tester"` \| `"architect"` | No | Worker role. Auto-detected from issue label if omitted. |
 | `projectGroupId` | string | No | Project group ID. Auto-detected from group context. |
-| `level` | string | No | Developer level (`junior`, `medior`, `senior`, `reviewer`). Auto-detected if omitted. |
+| `level` | string | No | Level (`junior`, `medior`, `senior`). Auto-detected if omitted. |
 
 **What it does atomically:**
 
@@ -28,15 +28,14 @@ Pick up a task from the issue queue. Handles level assignment, label transition,
 3. Fetches issue from tracker, verifies correct label state
 4. Assigns level (LLM-chosen via `level` param → label detection → keyword heuristic fallback)
 5. Resolves level to model ID via config or defaults
-6. Loads prompt instructions from `projects/roles/<project>/<role>.md`
-7. Looks up existing session for assigned level (session-per-level)
-8. Transitions label (e.g. `To Do` → `Doing`)
-9. Creates session via Gateway RPC if new (`sessions.patch`)
-10. Dispatches task to worker session via CLI (`openclaw gateway call agent`)
-11. Updates `projects.json` state (active, issueId, level, session key)
-12. Writes audit log entries (work_start + model_selection)
-13. Sends notification
-14. Returns announcement text
+6. Looks up existing session for assigned level (session-per-level)
+7. Transitions label (e.g. `To Do` → `Doing`)
+8. Creates session via Gateway RPC if new (`sessions.patch`)
+9. Dispatches task to worker session via CLI (`openclaw gateway call agent`)
+10. Updates `projects.json` state (active, issueId, level, session key)
+11. Writes audit log entries (work_start + model_selection)
+12. Sends notification
+13. Returns announcement text
 
 **Level selection priority:**
 
@@ -55,7 +54,7 @@ Pick up a task from the issue queue. Handles level assignment, label transition,
 
 ### `work_finish`
 
-Complete a task with a result. Called by workers (DEV/QA sub-agent sessions) directly, or by the orchestrator.
+Complete a task with a result. Called by workers (DEVELOPER/TESTER/ARCHITECT sub-agent sessions) directly, or by the orchestrator.
 
 **Source:** [`lib/tools/work-finish.ts`](../lib/tools/work-finish.ts)
 
@@ -63,7 +62,7 @@ Complete a task with a result. Called by workers (DEV/QA sub-agent sessions) dir
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `role` | `"dev"` \| `"qa"` | Yes | Worker role |
+| `role` | `"developer"` \| `"tester"` \| `"architect"` | Yes | Worker role |
 | `result` | string | Yes | Completion result (see table below) |
 | `projectGroupId` | string | Yes | Project group ID |
 | `summary` | string | No | Brief summary for the announcement |
@@ -73,12 +72,15 @@ Complete a task with a result. Called by workers (DEV/QA sub-agent sessions) dir
 
 | Role | Result | Label transition | Side effects |
 |---|---|---|---|
-| DEV | `"done"` | Doing → To Test | git pull, auto-detect PR URL |
-| DEV | `"blocked"` | Doing → To Do | Task returns to queue |
-| QA | `"pass"` | Testing → Done | Issue closed |
-| QA | `"fail"` | Testing → To Improve | Issue reopened |
-| QA | `"refine"` | Testing → Refining | Awaits human decision |
-| QA | `"blocked"` | Testing → To Test | Task returns to QA queue |
+| developer | `"done"` | Doing → To Test | git pull, auto-detect PR URL |
+| developer | `"review"` | Doing → In Review | auto-detect PR URL, heartbeat polls for merge |
+| developer | `"blocked"` | Doing → Refining | Awaits human decision |
+| tester | `"pass"` | Testing → Done | Issue closed |
+| tester | `"fail"` | Testing → To Improve | Issue reopened |
+| tester | `"refine"` | Testing → Refining | Awaits human decision |
+| tester | `"blocked"` | Testing → Refining | Awaits human decision |
+| architect | `"done"` | Designing → Planning | Design complete |
+| architect | `"blocked"` | Designing → Refining | Awaits human decision |
 
 **What it does atomically:**
 
@@ -111,7 +113,7 @@ Create a new issue in the project's issue tracker.
 | `description` | string | No | Full issue body (markdown) |
 | `label` | StateLabel | No | State label. Defaults to `"Planning"`. |
 | `assignees` | string[] | No | GitHub/GitLab usernames to assign |
-| `pickup` | boolean | No | If true, immediately pick up for DEV after creation |
+| `pickup` | boolean | No | If true, immediately pick up for DEVELOPER after creation |
 
 **Use cases:**
 
@@ -138,7 +140,7 @@ Change an issue's state label manually without going through the full pickup/com
 | `state` | StateLabel | Yes | New state label |
 | `reason` | string | No | Audit log reason for the change |
 
-**Valid states:** `Planning`, `To Do`, `Doing`, `To Test`, `Testing`, `Done`, `To Improve`, `Refining`
+**Valid states:** `Planning`, `To Do`, `Doing`, `To Test`, `Testing`, `Done`, `To Improve`, `Refining`, `In Review`, `To Design`, `Designing`
 
 **Use cases:**
 
@@ -161,12 +163,12 @@ Add a comment to an issue for feedback, notes, or discussion.
 | `projectGroupId` | string | Yes | Project group ID |
 | `issueId` | number | Yes | Issue ID to comment on |
 | `body` | string | Yes | Comment body (markdown) |
-| `authorRole` | `"dev"` \| `"qa"` \| `"orchestrator"` | No | Attribution role prefix |
+| `authorRole` | `"developer"` \| `"tester"` \| `"orchestrator"` | No | Attribution role prefix |
 
 **Use cases:**
 
-- QA adds review feedback before pass/fail decision
-- DEV posts implementation notes or progress updates
+- TESTER adds review feedback before pass/fail decision
+- DEVELOPER posts implementation notes or progress updates
 - Orchestrator adds summary comments
 
 When `authorRole` is provided, the comment is prefixed with a role emoji and attribution label.
@@ -191,7 +193,7 @@ Lightweight queue + worker state dashboard.
 
 **Returns per project:**
 
-- Worker state: active/idle, current issue, level, start time
+- Worker state per role: active/idle, current issue, level, start time
 - Queue counts: To Do, To Test, To Improve
 - Role execution mode
 
@@ -226,7 +228,7 @@ Worker health scan with optional auto-fix.
 
 ### `work_heartbeat`
 
-Manual trigger for heartbeat: health fix + queue dispatch. Same logic as the background heartbeat service, but invoked on demand.
+Manual trigger for heartbeat: health fix + review polling + queue dispatch. Same logic as the background heartbeat service, but invoked on demand.
 
 **Source:** [`lib/tools/work-heartbeat.ts`](../lib/tools/work-heartbeat.ts)
 
@@ -239,15 +241,16 @@ Manual trigger for heartbeat: health fix + queue dispatch. Same logic as the bac
 | `maxPickups` | number | No | Max worker dispatches per tick. |
 | `activeSessions` | string[] | No | Active session IDs for zombie detection. |
 
-**Two-pass sweep:**
+**Three-pass sweep:**
 
 1. **Health pass** — Runs `checkWorkerHealth` per project per role. Auto-fixes zombies, stale workers, orphaned state.
-2. **Tick pass** — Calls `projectTick` per project. Fills free worker slots by priority (To Improve > To Test > To Do).
+2. **Review pass** — Polls PR status for issues in "In Review" state. Auto-merges and transitions to "To Test" when PR is approved. If merge fails (conflicts), transitions to "To Improve" for developer to fix.
+3. **Tick pass** — Calls `projectTick` per project. Fills free worker slots by priority (To Improve > To Test > To Do).
 
 **Execution guards:**
 
 - `projectExecution: "sequential"` — only one project active at a time
-- `roleExecution: "sequential"` — only one role (DEV or QA) active at a time per project (enforced in `projectTick`)
+- `roleExecution: "sequential"` — only one role active at a time per project
 
 ---
 
@@ -272,18 +275,16 @@ One-time project setup. Creates state labels, scaffolds prompt files, adds proje
 | `baseBranch` | string | Yes | Base branch for development |
 | `deployBranch` | string | No | Deploy branch. Defaults to baseBranch. |
 | `deployUrl` | string | No | Deployment URL |
-| `roleExecution` | `"parallel"` \| `"sequential"` | No | DEV/QA parallelism. Default: `"parallel"`. |
+| `roleExecution` | `"parallel"` \| `"sequential"` | No | DEVELOPER/TESTER parallelism. Default: `"parallel"`. |
 
 **What it does atomically:**
 
 1. Validates project not already registered
 2. Resolves repo path, auto-detects GitHub/GitLab from git remote
 3. Verifies provider health (CLI installed and authenticated)
-4. Creates all 8 state labels (idempotent — safe to run again)
-5. Adds project entry to `projects.json` with empty worker state
-   - DEV sessions: `{ junior: null, medior: null, senior: null }`
-   - QA sessions: `{ reviewer: null, tester: null }`
-6. Scaffolds prompt files: `projects/roles/<project>/dev.md` and `qa.md`
+4. Creates all 11 state labels (idempotent — safe to run again)
+5. Adds project entry to `projects.json` with empty worker state for all registered roles
+6. Scaffolds prompt files: `devclaw/projects/<project>/prompts/<role>.md` for each role
 7. Writes audit log
 
 ---
@@ -301,7 +302,7 @@ Agent + workspace initialization.
 | `newAgentName` | string | No | Create a new agent. Omit to configure current workspace. |
 | `channelBinding` | `"telegram"` \| `"whatsapp"` | No | Channel to bind (with `newAgentName` only) |
 | `migrateFrom` | string | No | Agent ID to migrate channel binding from |
-| `models` | object | No | Model overrides per role and level (see [Configuration](CONFIGURATION.md#model-tiers)) |
+| `models` | object | No | Model overrides per role and level (see [Configuration](CONFIGURATION.md#role-configuration)) |
 | `projectExecution` | `"parallel"` \| `"sequential"` | No | Project execution mode |
 
 **What it does:**
@@ -309,8 +310,8 @@ Agent + workspace initialization.
 1. Creates a new agent or configures existing workspace
 2. Optionally binds messaging channel (Telegram/WhatsApp)
 3. Optionally migrates channel binding from another agent
-4. Writes workspace files: AGENTS.md, HEARTBEAT.md, `projects/projects.json`
-5. Configures model tiers in `openclaw.json`
+4. Writes workspace files: AGENTS.md, HEARTBEAT.md, `devclaw/projects.json`, `devclaw/workflow.yaml`
+5. Scaffolds default prompt files for all roles
 
 ---
 
@@ -328,34 +329,47 @@ Conversational onboarding guide. Returns step-by-step instructions for the agent
 |---|---|---|---|
 | `mode` | `"first-run"` \| `"reconfigure"` | No | Auto-detected from current state |
 
-**Flow:**
+---
 
-1. Call `onboard` — returns QA-style step-by-step instructions
-2. Agent walks user through: agent selection, channel binding, model tiers
-3. Agent calls `setup` with collected answers
-4. User registers projects via `project_register` in group chats
+### `design_task`
+
+Spawn an architect for a design investigation. Creates a "To Design" issue and dispatches an architect worker.
+
+**Source:** [`lib/tools/design-task.ts`](../lib/tools/design-task.ts)
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `projectGroupId` | string | Yes | Project group ID |
+| `title` | string | Yes | Design task title |
+| `description` | string | No | Design problem description |
+| `level` | `"junior"` \| `"senior"` | No | Architect level. Default: `"junior"`. |
 
 ---
 
 ## Completion Rules Reference
 
-The pipeline service (`lib/services/pipeline.ts`) defines declarative completion rules:
+The pipeline service (`lib/services/pipeline.ts`) derives completion rules from the workflow config:
 
 ```
-dev:done    → Doing    → To Test     (git pull, detect PR)
-dev:blocked → Doing    → To Do       (return to queue)
-qa:pass     → Testing  → Done        (close issue)
-qa:fail     → Testing  → To Improve  (reopen issue)
-qa:refine   → Testing  → Refining    (await human decision)
-qa:blocked  → Testing  → To Test     (return to QA queue)
+developer:done    → Doing     → To Test      (git pull, detect PR)
+developer:review  → Doing     → In Review    (detect PR, heartbeat polls for merge)
+developer:blocked → Doing     → Refining     (awaits human decision)
+tester:pass       → Testing   → Done         (close issue)
+tester:fail       → Testing   → To Improve   (reopen issue)
+tester:refine     → Testing   → Refining     (awaits human decision)
+tester:blocked    → Testing   → Refining     (awaits human decision)
+architect:done    → Designing → Planning     (design complete)
+architect:blocked → Designing → Refining     (awaits human decision)
 ```
 
 ## Issue Priority Order
 
 When the heartbeat or `work_heartbeat` fills free worker slots, issues are prioritized:
 
-1. **To Improve** — QA failures get fixed first (highest priority)
-2. **To Test** — Completed DEV work gets reviewed next
+1. **To Improve** — Tester failures get fixed first (highest priority)
+2. **To Test** — Completed developer work gets reviewed next
 3. **To Do** — Fresh tasks are picked up last
 
 This ensures the pipeline clears its backlog before starting new work.

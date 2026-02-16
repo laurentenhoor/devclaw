@@ -10,7 +10,8 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
 import { log as auditLog } from "../audit.js";
-import { STATE_LABELS, type StateLabel } from "../providers/provider.js";
+import type { StateLabel } from "../providers/provider.js";
+import { DEFAULT_WORKFLOW, getStateLabels } from "../workflow.js";
 import { requireWorkspaceDir, resolveProject, resolveProvider } from "../tool-helpers.js";
 
 export function createTaskUpdateTool(api: OpenClawPluginApi) {
@@ -42,8 +43,8 @@ Examples:
         },
         state: {
           type: "string",
-          enum: STATE_LABELS,
-          description: `New state for the issue. One of: ${STATE_LABELS.join(", ")}`,
+          enum: getStateLabels(DEFAULT_WORKFLOW),
+          description: `New state for the issue. One of: ${getStateLabels(DEFAULT_WORKFLOW).join(", ")}`,
         },
         reason: {
           type: "string",

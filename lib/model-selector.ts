@@ -1,8 +1,13 @@
 /**
- * Model selection for dev/qa tasks.
- * Keyword heuristic fallback — used when the orchestrator doesn't specify a level.
- * Returns plain level names (junior, medior, senior, reviewer, tester).
+ * Model selection heuristic fallback — used when the orchestrator doesn't specify a level.
+ * Returns plain level names (junior, medior, senior).
+ *
+ * Adapts to any role's level count:
+ * - 1 level: always returns that level
+ * - 2 levels: simple binary (complex → last, else first)
+ * - 3+ levels: full heuristic (simple → first, complex → last, default → middle)
  */
+import { getLevelsForRole, getDefaultLevel } from "./roles/index.js";
 
 export type LevelSelection = {
   level: string;
@@ -39,62 +44,59 @@ const COMPLEX_KEYWORDS = [
 ];
 
 /**
- * Select appropriate developer level based on task description.
+ * Select appropriate level based on task description and role.
  *
- * Developer levels:
- * - junior: very simple (typos, single-file fixes, CSS tweaks)
- * - medior: standard DEV (features, bug fixes, multi-file changes)
- * - senior: deep/architectural (system-wide refactoring, novel design)
- * - reviewer: QA code inspection and validation
- * - tester: QA manual testing
+ * Adapts to the role's available levels:
+ * - Roles with 1 level → always that level
+ * - Roles with 2 levels → binary: complex keywords → highest, else lowest
+ * - Roles with 3+ levels → full heuristic: simple → lowest, complex → highest, else default
  */
 export function selectLevel(
   issueTitle: string,
   issueDescription: string,
-  role: "dev" | "qa" | "architect",
+  role: string,
 ): LevelSelection {
-  if (role === "qa") {
-    return {
-      level: "reviewer",
-      reason: "Default QA level for code inspection and validation",
-    };
-  }
+  const levels = getLevelsForRole(role);
+  const defaultLvl = getDefaultLevel(role);
 
-  if (role === "architect") {
-    const text = `${issueTitle} ${issueDescription}`.toLowerCase();
-    const isComplex = COMPLEX_KEYWORDS.some((kw) => text.includes(kw));
-    return {
-      level: isComplex ? "opus" : "sonnet",
-      reason: isComplex
-        ? "Complex design task — using opus for depth"
-        : "Standard design task — using sonnet",
-    };
+  // Roles with only 1 level — always return it
+  if (levels.length <= 1) {
+    const level = levels[0] ?? defaultLvl ?? "medior";
+    return { level, reason: `Only level for ${role}` };
   }
 
   const text = `${issueTitle} ${issueDescription}`.toLowerCase();
   const wordCount = text.split(/\s+/).length;
-
-  // Check for simple task indicators
   const isSimple = SIMPLE_KEYWORDS.some((kw) => text.includes(kw));
+  const isComplex = COMPLEX_KEYWORDS.some((kw) => text.includes(kw));
+
+  const lowest = levels[0];
+  const highest = levels[levels.length - 1];
+
+  // Roles with 2 levels — binary decision
+  if (levels.length === 2) {
+    if (isComplex) {
+      return { level: highest, reason: `Complex task — using ${highest}` };
+    }
+    return { level: lowest, reason: `Standard task — using ${lowest}` };
+  }
+
+  // Roles with 3+ levels — full heuristic
   if (isSimple && wordCount < 100) {
     return {
-      level: "junior",
+      level: lowest,
       reason: `Simple task detected (keywords: ${SIMPLE_KEYWORDS.filter((kw) => text.includes(kw)).join(", ")})`,
     };
   }
 
-  // Check for complex task indicators
-  const isComplex = COMPLEX_KEYWORDS.some((kw) => text.includes(kw));
   if (isComplex || wordCount > 500) {
     return {
-      level: "senior",
+      level: highest,
       reason: `Complex task detected (${isComplex ? "keywords: " + COMPLEX_KEYWORDS.filter((kw) => text.includes(kw)).join(", ") : "long description"})`,
     };
   }
 
-  // Default: medior for standard dev work
-  return {
-    level: "medior",
-    reason: "Standard dev task — multi-file changes, features, bug fixes",
-  };
+  // Default level for the role
+  const level = defaultLvl ?? levels[Math.floor(levels.length / 2)];
+  return { level, reason: `Standard ${role} task` };
 }

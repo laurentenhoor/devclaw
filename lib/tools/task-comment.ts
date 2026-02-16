@@ -2,8 +2,8 @@
  * task_comment — Add review comments or notes to an issue.
  *
  * Use cases:
- * - QA worker adds review feedback without blocking pass/fail
- * - DEV worker posts implementation notes
+ * - Tester worker adds review feedback without blocking pass/fail
+ * - Developer worker posts implementation notes
  * - Orchestrator adds summary comments
  */
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
@@ -11,10 +11,11 @@ import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
 import { log as auditLog } from "../audit.js";
 import { requireWorkspaceDir, resolveProject, resolveProvider } from "../tool-helpers.js";
+import { getAllRoleIds, getFallbackEmoji } from "../roles/index.js";
 
-/** Valid author roles for attribution */
-const AUTHOR_ROLES = ["dev", "qa", "orchestrator"] as const;
-type AuthorRole = (typeof AUTHOR_ROLES)[number];
+/** Valid author roles for attribution — all registry roles + orchestrator */
+const AUTHOR_ROLES = [...getAllRoleIds(), "orchestrator"];
+type AuthorRole = string;
 
 export function createTaskCommentTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
@@ -23,15 +24,15 @@ export function createTaskCommentTool(api: OpenClawPluginApi) {
     description: `Add a comment to an issue. Use this for review feedback, implementation notes, or any discussion that doesn't require a state change.
 
 Use cases:
-- QA adds review feedback without blocking pass/fail
-- DEV posts implementation notes or progress updates
+- Tester adds review feedback without blocking pass/fail
+- Developer posts implementation notes or progress updates
 - Orchestrator adds summary comments
 - Cross-referencing related issues or PRs
 
 Examples:
 - Simple: { projectGroupId: "-123456789", issueId: 42, body: "Found an edge case with null inputs" }
-- With role: { projectGroupId: "-123456789", issueId: 42, body: "LGTM!", authorRole: "qa" }
-- Detailed: { projectGroupId: "-123456789", issueId: 42, body: "## Notes\\n\\n- Tested on staging\\n- All checks passing", authorRole: "dev" }`,
+- With role: { projectGroupId: "-123456789", issueId: 42, body: "LGTM!", authorRole: "tester" }
+- Detailed: { projectGroupId: "-123456789", issueId: 42, body: "## Notes\\n\\n- Tested on staging\\n- All checks passing", authorRole: "developer" }`,
     parameters: {
       type: "object",
       required: ["projectGroupId", "issueId", "body"],
@@ -73,7 +74,7 @@ Examples:
       const issue = await provider.getIssue(issueId);
 
       const commentBody = authorRole
-        ? `${ROLE_EMOJI[authorRole]} **${authorRole.toUpperCase()}**: ${body}`
+        ? `${getRoleEmoji(authorRole)} **${authorRole.toUpperCase()}**: ${body}`
         : body;
 
       await provider.addComment(issueId, commentBody);
@@ -99,8 +100,7 @@ Examples:
 // Private helpers
 // ---------------------------------------------------------------------------
 
-const ROLE_EMOJI: Record<AuthorRole, string> = {
-  dev: "👨‍💻",
-  qa: "🔍",
-  orchestrator: "🎛️",
-};
+function getRoleEmoji(role: string): string {
+  if (role === "orchestrator") return "🎛️";
+  return getFallbackEmoji(role);
+}

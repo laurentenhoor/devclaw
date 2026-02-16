@@ -6,7 +6,7 @@
 import type { Command } from "commander";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { runSetup } from "./setup/index.js";
-import { DEV_LEVELS, QA_LEVELS, DEFAULT_MODELS } from "./tiers.js";
+import { getAllDefaultModels, getAllRoleIds, getLevelsForRole } from "./roles/index.js";
 
 /**
  * Register the `devclaw` CLI command group on a Commander program.
@@ -16,37 +16,41 @@ export function registerCli(program: Command, api: OpenClawPluginApi): void {
     .command("devclaw")
     .description("DevClaw development pipeline tools");
 
-  devclaw
+  const setupCmd = devclaw
     .command("setup")
     .description("Set up DevClaw: create agent, configure models, write workspace files")
     .option("--new-agent <name>", "Create a new agent with this name")
     .option("--agent <id>", "Use an existing agent by ID")
-    .option("--workspace <path>", "Direct workspace path")
-    .option("--junior <model>", `Junior dev model (default: ${DEFAULT_MODELS.dev.junior})`)
-    .option("--medior <model>", `Medior dev model (default: ${DEFAULT_MODELS.dev.medior})`)
-    .option("--senior <model>", `Senior dev model (default: ${DEFAULT_MODELS.dev.senior})`)
-    .option("--reviewer <model>", `Reviewer model (default: ${DEFAULT_MODELS.qa.reviewer})`)
-    .option("--tester <model>", `Tester model (default: ${DEFAULT_MODELS.qa.tester})`)
-    .action(async (opts) => {
-      const dev: Record<string, string> = {};
-      const qa: Record<string, string> = {};
-      if (opts.junior) dev.junior = opts.junior;
-      if (opts.medior) dev.medior = opts.medior;
-      if (opts.senior) dev.senior = opts.senior;
-      if (opts.reviewer) qa.reviewer = opts.reviewer;
-      if (opts.tester) qa.tester = opts.tester;
+    .option("--workspace <path>", "Direct workspace path");
 
-      const hasOverrides = Object.keys(dev).length > 0 || Object.keys(qa).length > 0;
-      const models = hasOverrides
-        ? { ...(Object.keys(dev).length > 0 && { dev }), ...(Object.keys(qa).length > 0 && { qa }) }
-        : undefined;
+  // Register dynamic --<role>-<level> options from registry
+  const defaults = getAllDefaultModels();
+  for (const role of getAllRoleIds()) {
+    for (const level of getLevelsForRole(role)) {
+      const flag = `--${role}-${level}`;
+      setupCmd.option(`${flag} <model>`, `${role.toUpperCase()} ${level} model (default: ${defaults[role]?.[level] ?? "auto"})`);
+    }
+  }
+
+  setupCmd.action(async (opts) => {
+      // Build model overrides from CLI flags dynamically
+      const models: Record<string, Record<string, string>> = {};
+      for (const role of getAllRoleIds()) {
+        const roleModels: Record<string, string> = {};
+        for (const level of getLevelsForRole(role)) {
+          // camelCase key: "testerJunior" for --tester-junior, "developerMedior" for --developer-medior
+          const key = `${role}${level.charAt(0).toUpperCase()}${level.slice(1)}`;
+          if (opts[key]) roleModels[level] = opts[key];
+        }
+        if (Object.keys(roleModels).length > 0) models[role] = roleModels;
+      }
 
       const result = await runSetup({
         api,
         newAgentName: opts.newAgent,
         agentId: opts.agent,
         workspacePath: opts.workspace,
-        models,
+        models: Object.keys(models).length > 0 ? models : undefined,
       });
 
       if (result.agentCreated) {
@@ -54,8 +58,11 @@ export function registerCli(program: Command, api: OpenClawPluginApi): void {
       }
 
       console.log("Models configured:");
-      for (const t of DEV_LEVELS) console.log(`  dev.${t}: ${result.models.dev[t]}`);
-      for (const t of QA_LEVELS) console.log(`  qa.${t}: ${result.models.qa[t]}`);
+      for (const [role, levels] of Object.entries(result.models)) {
+        for (const [level, model] of Object.entries(levels)) {
+          console.log(`  ${role}.${level}: ${model}`);
+        }
+      }
 
       console.log("Files written:");
       for (const file of result.filesWritten) {

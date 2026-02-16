@@ -13,8 +13,9 @@ import {
   getSessionForLevel,
   getWorker,
 } from "./projects.js";
-import { resolveModel, getEmoji, getFallbackEmoji } from "./roles/index.js";
+import { resolveModel, getFallbackEmoji } from "./roles/index.js";
 import { notify, getNotificationConfig } from "./notify.js";
+import { loadConfig, type ResolvedRoleConfig } from "./config/index.js";
 
 export type DispatchOpts = {
   workspaceDir: string;
@@ -25,8 +26,8 @@ export type DispatchOpts = {
   issueTitle: string;
   issueDescription: string;
   issueUrl: string;
-  role: "dev" | "qa" | "architect";
-  /** Developer level (junior, medior, senior, reviewer, opus, sonnet) or raw model ID */
+  role: string;
+  /** Developer level (junior, mid, senior) or raw model ID */
   level: string;
   /** Label to transition FROM (e.g. "To Do", "To Test", "To Improve") */
   fromLabel: string;
@@ -63,7 +64,7 @@ export type DispatchResult = {
  */
 export function buildTaskMessage(opts: {
   projectName: string;
-  role: "dev" | "qa" | "architect";
+  role: string;
   issueId: number;
   issueTitle: string;
   issueDescription: string;
@@ -72,16 +73,15 @@ export function buildTaskMessage(opts: {
   baseBranch: string;
   groupId: string;
   comments?: Array<{ author: string; body: string; created_at: string }>;
+  resolvedRole?: ResolvedRoleConfig;
 }): string {
   const {
     projectName, role, issueId, issueTitle,
     issueDescription, issueUrl, repo, baseBranch, groupId,
   } = opts;
 
-  const availableResults =
-    role === "dev" || role === "architect"
-      ? '"done" (completed successfully) or "blocked" (cannot complete, need help)'
-      : '"pass" (approved), "fail" (issues found), "refine" (needs human input), or "blocked" (cannot complete)';
+  const results = opts.resolvedRole?.completionResults ?? [];
+  const availableResults = results.map((r: string) => `"${r}"`).join(", ");
 
   const parts = [
     `${role.toUpperCase()} task for project "${projectName}" — Issue #${issueId}`,
@@ -149,7 +149,10 @@ export async function dispatchTask(
     transitionLabel, provider, pluginConfig, runtime,
   } = opts;
 
-  const model = resolveModel(role, level, pluginConfig);
+  const resolvedConfig = await loadConfig(workspaceDir, project.name);
+  const resolvedRole = resolvedConfig.roles[role];
+  const { timeouts } = resolvedConfig;
+  const model = resolveModel(role, level, resolvedRole);
   const worker = getWorker(project, role);
   const existingSessionKey = getSessionForLevel(worker, level);
   const sessionAction = existingSessionKey ? "send" : "spawn";
@@ -164,7 +167,7 @@ export async function dispatchTask(
     projectName: project.name, role, issueId,
     issueTitle, issueDescription, issueUrl,
     repo: project.repo, baseBranch: project.baseBranch, groupId,
-    comments,
+    comments, resolvedRole,
   });
 
   // Step 1: Transition label (this is the commitment point)
@@ -192,16 +195,22 @@ export async function dispatchTask(
       channel: opts.channel ?? "telegram",
       runtime,
     },
-  ).catch(() => { /* non-fatal */ });
+  ).catch((err) => {
+    auditLog(workspaceDir, "dispatch_warning", {
+      step: "notify", issue: issueId, role,
+      error: (err as Error).message ?? String(err),
+    }).catch(() => {});
+  });
 
   // Step 3: Ensure session exists (fire-and-forget — don't wait for gateway)
   // Session key is deterministic, so we can proceed immediately
-  ensureSessionFireAndForget(sessionKey, model);
+  ensureSessionFireAndForget(sessionKey, model, workspaceDir, timeouts.sessionPatchMs);
 
   // Step 4: Send task to agent (fire-and-forget)
   sendToAgent(sessionKey, taskMessage, {
-    agentId, projectName: project.name, issueId, role,
-    orchestratorSessionKey: opts.sessionKey,
+    agentId, projectName: project.name, issueId, role, level,
+    orchestratorSessionKey: opts.sessionKey, workspaceDir,
+    dispatchTimeoutMs: timeouts.dispatchMs,
   });
 
   // Step 5: Update worker state
@@ -225,7 +234,7 @@ export async function dispatchTask(
     fromLabel, toLabel,
   });
 
-  const announcement = buildAnnouncement(level, role, sessionAction, issueId, issueTitle, issueUrl);
+  const announcement = buildAnnouncement(level, role, sessionAction, issueId, issueTitle, issueUrl, resolvedRole);
 
   return { sessionAction, sessionKey, level, model, announcement };
 }
@@ -239,19 +248,24 @@ export async function dispatchTask(
  * Session key is deterministic, so we don't need to wait for confirmation.
  * If this fails, health check will catch orphaned state later.
  */
-function ensureSessionFireAndForget(sessionKey: string, model: string): void {
+function ensureSessionFireAndForget(sessionKey: string, model: string, workspaceDir: string, timeoutMs = 30_000): void {
   runCommand(
     ["openclaw", "gateway", "call", "sessions.patch", "--params", JSON.stringify({ key: sessionKey, model })],
-    { timeoutMs: 30_000 },
-  ).catch(() => { /* fire-and-forget */ });
+    { timeoutMs },
+  ).catch((err) => {
+    auditLog(workspaceDir, "dispatch_warning", {
+      step: "ensureSession", sessionKey,
+      error: (err as Error).message ?? String(err),
+    }).catch(() => {});
+  });
 }
 
 function sendToAgent(
   sessionKey: string, taskMessage: string,
-  opts: { agentId?: string; projectName: string; issueId: number; role: string; orchestratorSessionKey?: string },
+  opts: { agentId?: string; projectName: string; issueId: number; role: string; level?: string; orchestratorSessionKey?: string; workspaceDir: string; dispatchTimeoutMs?: number },
 ): void {
   const gatewayParams = JSON.stringify({
-    idempotencyKey: `devclaw-${opts.projectName}-${opts.issueId}-${opts.role}-${Date.now()}`,
+    idempotencyKey: `devclaw-${opts.projectName}-${opts.issueId}-${opts.role}-${opts.level ?? "unknown"}-${sessionKey}`,
     agentId: opts.agentId ?? "devclaw",
     sessionKey,
     message: taskMessage,
@@ -262,12 +276,18 @@ function sendToAgent(
   // Fire-and-forget: long-running agent turn, don't await
   runCommand(
     ["openclaw", "gateway", "call", "agent", "--params", gatewayParams, "--expect-final", "--json"],
-    { timeoutMs: 600_000 },
-  ).catch(() => { /* fire-and-forget */ });
+    { timeoutMs: opts.dispatchTimeoutMs ?? 600_000 },
+  ).catch((err) => {
+    auditLog(opts.workspaceDir, "dispatch_warning", {
+      step: "sendToAgent", sessionKey,
+      issue: opts.issueId, role: opts.role,
+      error: (err as Error).message ?? String(err),
+    }).catch(() => {});
+  });
 }
 
 async function recordWorkerState(
-  workspaceDir: string, groupId: string, role: "dev" | "qa" | "architect",
+  workspaceDir: string, groupId: string, role: string,
   opts: { issueId: number; level: string; sessionKey: string; sessionAction: "spawn" | "send" },
 ): Promise<void> {
   await activateWorker(workspaceDir, groupId, role, {
@@ -301,8 +321,9 @@ async function auditDispatch(
 function buildAnnouncement(
   level: string, role: string, sessionAction: "spawn" | "send",
   issueId: number, issueTitle: string, issueUrl: string,
+  resolvedRole?: ResolvedRoleConfig,
 ): string {
-  const emoji = getEmoji(role, level) ?? getFallbackEmoji(role);
+  const emoji = resolvedRole?.emoji[level] ?? getFallbackEmoji(role);
   const actionVerb = sessionAction === "spawn" ? "Spawning" : "Sending";
   return `${emoji} ${actionVerb} ${role.toUpperCase()} (${level}) for #${issueId}: ${issueTitle}\n🔗 ${issueUrl}`;
 }

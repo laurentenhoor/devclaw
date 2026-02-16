@@ -15,18 +15,18 @@ describe("status execution-aware sequencing", () => {
   });
 
   describe("role assignment", () => {
-    it("should assign To Improve to dev", () => {
-      // To Improve = dev work
+    it("should assign To Improve to developer", () => {
+      // To Improve = developer work
       assert.ok(true);
     });
 
-    it("should assign To Do to dev", () => {
-      // To Do = dev work
+    it("should assign To Do to developer", () => {
+      // To Do = developer work
       assert.ok(true);
     });
 
-    it("should assign To Test to qa", () => {
-      // To Test = qa work
+    it("should assign To Test to tester", () => {
+      // To Test = tester work
       assert.ok(true);
     });
   });
@@ -43,12 +43,12 @@ describe("status execution-aware sequencing", () => {
     });
 
     it("should support parallel role execution within project", () => {
-      // DEV and QA can run simultaneously
+      // Developer and Tester can run simultaneously
       assert.ok(true);
     });
 
     it("should support sequential role execution within project", () => {
-      // DEV and QA alternate
+      // Developer and Tester alternate
       assert.ok(true);
     });
   });

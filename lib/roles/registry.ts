@@ -14,15 +14,15 @@
 import type { RoleConfig } from "./types.js";
 
 export const ROLE_REGISTRY: Record<string, RoleConfig> = {
-  dev: {
-    id: "dev",
-    displayName: "DEV",
+  developer: {
+    id: "developer",
+    displayName: "DEVELOPER",
     levels: ["junior", "medior", "senior"],
     defaultLevel: "medior",
     models: {
       junior: "anthropic/claude-haiku-4-5",
       medior: "anthropic/claude-sonnet-4-5",
-      senior: "anthropic/claude-opus-4-5",
+      senior: "anthropic/claude-opus-4-6",
     },
     emoji: {
       junior: "⚡",
@@ -30,42 +30,44 @@ export const ROLE_REGISTRY: Record<string, RoleConfig> = {
       senior: "🧠",
     },
     fallbackEmoji: "🔧",
-    completionResults: ["done", "blocked"],
-    sessionKeyPattern: "dev",
+    completionResults: ["done", "review", "blocked"],
+    sessionKeyPattern: "developer",
     notifications: { onStart: true, onComplete: true },
   },
 
-  qa: {
-    id: "qa",
-    displayName: "QA",
-    levels: ["reviewer", "tester"],
-    defaultLevel: "reviewer",
+  tester: {
+    id: "tester",
+    displayName: "TESTER",
+    levels: ["junior", "medior", "senior"],
+    defaultLevel: "medior",
     models: {
-      reviewer: "anthropic/claude-sonnet-4-5",
-      tester: "anthropic/claude-haiku-4-5",
+      junior: "anthropic/claude-haiku-4-5",
+      medior: "anthropic/claude-sonnet-4-5",
+      senior: "anthropic/claude-opus-4-6",
     },
     emoji: {
-      reviewer: "🔍",
-      tester: "👀",
+      junior: "⚡",
+      medior: "🔍",
+      senior: "🧠",
     },
     fallbackEmoji: "🔍",
     completionResults: ["pass", "fail", "refine", "blocked"],
-    sessionKeyPattern: "qa",
+    sessionKeyPattern: "tester",
     notifications: { onStart: true, onComplete: true },
   },
 
   architect: {
     id: "architect",
     displayName: "ARCHITECT",
-    levels: ["opus", "sonnet"],
-    defaultLevel: "sonnet",
+    levels: ["junior", "senior"],
+    defaultLevel: "junior",
     models: {
-      opus: "anthropic/claude-opus-4-5",
-      sonnet: "anthropic/claude-sonnet-4-5",
+      junior: "anthropic/claude-sonnet-4-5",
+      senior: "anthropic/claude-opus-4-6",
     },
     emoji: {
-      opus: "🏗️",
-      sonnet: "📐",
+      junior: "📐",
+      senior: "🏗️",
     },
     fallbackEmoji: "🏗️",
     completionResults: ["done", "blocked"],

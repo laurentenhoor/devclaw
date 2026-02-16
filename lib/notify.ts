@@ -21,7 +21,7 @@ export type NotifyEvent =
       issueId: number;
       issueTitle: string;
       issueUrl: string;
-      role: "dev" | "qa" | "architect";
+      role: string;
       level: string;
       sessionAction: "spawn" | "send";
     }
@@ -31,7 +31,7 @@ export type NotifyEvent =
       groupId: string;
       issueId: number;
       issueUrl: string;
-      role: "dev" | "qa" | "architect";
+      role: string;
       result: "done" | "pass" | "fail" | "refine" | "blocked";
       summary?: string;
       nextState?: string;

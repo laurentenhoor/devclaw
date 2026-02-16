@@ -1,216 +1,215 @@
-# DevClaw Testing Guide
+# DevClaw — Testing Guide
 
-Comprehensive automated testing for DevClaw onboarding and setup.
+DevClaw uses Node.js built-in test runner (`node:test`) with `node:assert/strict` for all tests.
 
 ## Quick Start
 
 ```bash
-# Install dependencies
-npm install
-
 # Run all tests
-npm test
+npx tsx --test lib/**/*.test.ts
 
-# Run with coverage report
-npm run test:coverage
+# Run a specific test file
+npx tsx --test lib/roles/registry.test.ts
 
-# Run in watch mode (auto-rerun on changes)
-npm run test:watch
+# Run E2E tests only
+npx tsx --test lib/services/*.e2e.test.ts
 
-# Run with UI (browser-based test explorer)
-npm run test:ui
+# Build (also type-checks all test files)
+npm run build
 ```
 
-## Test Coverage
+## Test Files
 
-### Scenario 1: New User (No Prior DevClaw Setup)
-**File:** `tests/setup/new-user.test.ts`
+### Unit Tests
 
-**What's tested:**
-- First-time agent creation with default models
-- Channel binding creation (telegram/whatsapp)
-- Workspace file generation (AGENTS.md, HEARTBEAT.md, projects/, log/)
-- Plugin configuration initialization
-- Error handling: channel not configured
-- Error handling: channel disabled
+| File | What it tests |
+|---|---|
+| [lib/roles/registry.test.ts](../lib/roles/registry.test.ts) | Role registry: role lookup, level resolution, model defaults |
+| [lib/projects.test.ts](../lib/projects.test.ts) | Project state: read/write, worker state, atomic file operations |
+| [lib/bootstrap-hook.test.ts](../lib/bootstrap-hook.test.ts) | Bootstrap hook: role instruction loading, source tracking, overloads |
+| [lib/tools/task-update.test.ts](../lib/tools/task-update.test.ts) | Task update tool: label transitions, validation |
+| [lib/tools/design-task.test.ts](../lib/tools/design-task.test.ts) | Design task tool: architect dispatch |
+| [lib/tools/queue-status.test.ts](../lib/tools/queue-status.test.ts) | Queue status formatting |
+| [lib/setup/migrate-layout.test.ts](../lib/setup/migrate-layout.test.ts) | Workspace layout migration: `projects/` → `devclaw/` |
 
-**Example:**
+### E2E Tests
+
+| File | What it tests |
+|---|---|
+| [lib/services/pipeline.e2e.test.ts](../lib/services/pipeline.e2e.test.ts) | Full pipeline: completion rules, label transitions, actions |
+| [lib/services/bootstrap.e2e.test.ts](../lib/services/bootstrap.e2e.test.ts) | Bootstrap hook chain: session key → parse → load instructions → inject |
+
+## Test Infrastructure
+
+### Test Harness (`lib/testing/`)
+
+The [`lib/testing/`](../lib/testing/) module provides E2E test infrastructure:
+
 ```typescript
-// Before: openclaw.json has no DevClaw agents
-{
-  "agents": { "list": [{ "id": "main", ... }] },
-  "bindings": [],
-  "plugins": { "entries": {} }
-}
+import { createTestHarness } from "../testing/index.js";
 
-// After: New orchestrator created
-{
-  "agents": {
-    "list": [
-      { "id": "main", ... },
-      { "id": "my-first-orchestrator", ... }
-    ]
+const h = await createTestHarness({
+  projectName: "my-project",
+  groupId: "-1234567890",
+  workflow: DEFAULT_WORKFLOW,
+  workers: {
+    developer: { active: true, issueId: "42", level: "medior" },
   },
-  "bindings": [
-    { "agentId": "my-first-orchestrator", "match": { "channel": "telegram" } }
-  ],
-  "plugins": {
-    "entries": {
-      "devclaw": {
-        "config": {
-          "models": {
-            "dev": {
-              "junior": "anthropic/claude-haiku-4-5",
-              "medior": "anthropic/claude-sonnet-4-5",
-              "senior": "anthropic/claude-opus-4-5"
-            },
-            "qa": {
-              "reviewer": "anthropic/claude-sonnet-4-5",
-              "tester": "anthropic/claude-haiku-4-5"
-            }
-          }
-        }
-      }
-    }
-  }
+});
+try {
+  // ... run tests against h.provider, h.commands, etc.
+} finally {
+  await h.cleanup();
 }
 ```
 
-### Scenario 2: Existing User (Migration)
-**File:** `tests/setup/existing-user.test.ts`
+**`createTestHarness()`** scaffolds:
+- Temporary workspace directory with `devclaw/` data dir and `log/` subdirectory
+- `projects.json` with test project and configurable worker state
+- Mock `runCommand` via `CommandInterceptor` (captures all CLI calls)
+- `TestProvider` — in-memory `IssueProvider` with call tracking
 
-**What's tested:**
-- Channel conflict detection (existing channel-wide binding)
-- Binding migration from old agent to new agent
-- Custom model preservation during migration
-- Old agent preservation (not deleted)
-- Error handling: migration source doesn't exist
-- Error handling: migration source has no binding
+### TestProvider
 
-**Example:**
+In-memory implementation of `IssueProvider` for testing. Tracks all provider method calls and maintains in-memory issue state:
+
 ```typescript
-// Before: Old orchestrator has telegram binding
-{
-  "agents": {
-    "list": [
-      { "id": "main", ... },
-      { "id": "old-orchestrator", ... }
-    ]
-  },
-  "bindings": [
-    { "agentId": "old-orchestrator", "match": { "channel": "telegram" } }
-  ]
-}
+const h = await createTestHarness();
+h.provider.seedIssue(42, {
+  title: "Fix the bug",
+  labels: ["Doing"],
+  state: "open",
+});
 
-// After: Binding migrated to new orchestrator
-{
-  "agents": {
-    "list": [
-      { "id": "main", ... },
-      { "id": "old-orchestrator", ... },
-      { "id": "new-orchestrator", ... }
-    ]
-  },
-  "bindings": [
-    { "agentId": "new-orchestrator", "match": { "channel": "telegram" } }
-  ]
-}
+// After running pipeline code:
+const calls = h.provider.calls;  // All method invocations
 ```
 
-### Scenario 3: Power User (Multiple Agents)
-**File:** `tests/setup/power-user.test.ts`
+### CommandInterceptor
 
-**What's tested:**
-- No conflicts with group-specific bindings
-- Channel-wide binding creation alongside group bindings
-- Multiple orchestrators coexisting
-- Routing logic (specific bindings win over channel-wide)
-- WhatsApp support
-- Scale testing (12+ orchestrators)
+Captures all `runCommand` calls during tests. Provides filtering and extraction helpers:
 
-**Example:**
 ```typescript
-// Before: Two project orchestrators with group-specific bindings
-{
-  "agents": {
-    "list": [
-      { "id": "project-a-orchestrator", ... },
-      { "id": "project-b-orchestrator", ... }
-    ]
-  },
-  "bindings": [
-    {
-      "agentId": "project-a-orchestrator",
-      "match": { "channel": "telegram", "peer": { "kind": "group", "id": "-1001234567890" } }
-    },
-    {
-      "agentId": "project-b-orchestrator",
-      "match": { "channel": "telegram", "peer": { "kind": "group", "id": "-1009876543210" } }
-    }
-  ]
-}
+// All captured commands
+h.commands.commands;
 
-// After: Channel-wide orchestrator added (no conflicts)
-{
-  "agents": {
-    "list": [
-      { "id": "project-a-orchestrator", ... },
-      { "id": "project-b-orchestrator", ... },
-      { "id": "global-orchestrator", ... }
-    ]
-  },
-  "bindings": [
-    {
-      "agentId": "project-a-orchestrator",
-      "match": { "channel": "telegram", "peer": { "kind": "group", "id": "-1001234567890" } }
-    },
-    {
-      "agentId": "project-b-orchestrator",
-      "match": { "channel": "telegram", "peer": { "kind": "group", "id": "-1009876543210" } }
-    },
-    {
-      "agentId": "global-orchestrator",
-      "match": { "channel": "telegram" }  // Channel-wide (no peer)
-    }
-  ]
-}
+// Filter by command name
+h.commands.commandsFor("openclaw");
 
-// Routing: Group messages go to specific agents, everything else goes to global
+// Extract task messages dispatched to workers
+h.commands.taskMessages();
+
+// Extract session creation patches
+h.commands.sessionPatches();
+
+// Reset between test cases
+h.commands.reset();
 ```
 
-## Test Architecture
+### simulateBootstrap
 
-### Mock File System
-The tests use an in-memory mock file system (`MockFileSystem`) that simulates:
-- Reading/writing openclaw.json
-- Creating/reading workspace files
-- Tracking command executions (openclaw agents add)
+Tests the full bootstrap hook chain without a live OpenClaw gateway:
 
-**Why?** Tests run in isolation without touching the real file system, making them:
-- Fast (no I/O)
-- Reliable (no file conflicts)
-- Repeatable (clean state every test)
-
-### Fixtures
-Pre-built configurations for different user types:
-- `createNewUserConfig()` - Empty slate
-- `createCommonUserConfig()` - One orchestrator with binding
-- `createPowerUserConfig()` - Multiple orchestrators with group bindings
-- `createNoChannelConfig()` - Channel not configured
-- `createDisabledChannelConfig()` - Channel disabled
-
-### Assertions
-Reusable assertion helpers that make tests readable:
 ```typescript
-assertAgentExists(mockFs, "my-agent", "My Agent");
-assertChannelBinding(mockFs, "my-agent", "telegram");
-assertWorkspaceFilesExist(mockFs, "my-agent");
-assertDevClawConfig(mockFs, { junior: "anthropic/claude-haiku-4-5" });
+// Write a project-specific prompt
+await h.writePrompt("developer", "Custom dev instructions", "my-project");
+
+// Simulate bootstrap for a developer session
+const files = await h.simulateBootstrap(
+  "agent:orchestrator:subagent:my-project-developer-medior"
+);
+
+// Verify injected bootstrap files
+assert.strictEqual(files.length, 1);
+assert.strictEqual(files[0].content, "Custom dev instructions");
+```
+
+## Writing Tests
+
+### Pattern: Unit Test
+
+```typescript
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+
+describe("my feature", () => {
+  it("should do something", () => {
+    const result = myFunction("input");
+    assert.strictEqual(result, "expected");
+  });
+});
+```
+
+### Pattern: E2E Pipeline Test
+
+```typescript
+import { describe, it, afterEach } from "node:test";
+import assert from "node:assert/strict";
+import { createTestHarness, type TestHarness } from "../testing/index.js";
+import { executeCompletion } from "./pipeline.js";
+
+describe("pipeline completion", () => {
+  let h: TestHarness;
+
+  afterEach(async () => {
+    if (h) await h.cleanup();
+  });
+
+  it("developer:done transitions Doing → To Test", async () => {
+    h = await createTestHarness({
+      workers: {
+        developer: { active: true, issueId: "42", level: "medior" },
+      },
+    });
+    h.provider.seedIssue(42, { labels: ["Doing"], state: "open" });
+
+    const result = await executeCompletion({
+      workspaceDir: h.workspaceDir,
+      groupId: h.groupId,
+      project: h.project,
+      workflow: h.workflow,
+      provider: h.provider,
+      role: "developer",
+      result: "done",
+    });
+
+    assert.strictEqual(result.rule.to, "To Test");
+  });
+});
+```
+
+### Pattern: Bootstrap Hook Test
+
+```typescript
+import { describe, it, afterEach } from "node:test";
+import assert from "node:assert/strict";
+import { createTestHarness, type TestHarness } from "../testing/index.js";
+
+describe("bootstrap instructions", () => {
+  let h: TestHarness;
+
+  afterEach(async () => {
+    if (h) await h.cleanup();
+  });
+
+  it("injects project-specific prompt for developer", async () => {
+    h = await createTestHarness({ projectName: "webapp" });
+    await h.writePrompt("developer", "Build with React", "webapp");
+
+    const files = await h.simulateBootstrap(
+      "agent:orchestrator:subagent:webapp-developer-medior"
+    );
+
+    assert.strictEqual(files.length, 1);
+    assert.ok(files[0].content?.includes("React"));
+  });
+});
 ```
 
 ## CI/CD Integration
 
 ### GitHub Actions
+
 ```yaml
 name: Test
 on: [push, pull_request]
@@ -218,122 +217,52 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
       - run: npm ci
-      - run: npm test
-      - run: npm run test:coverage
-      - uses: codecov/codecov-action@v3
-        with:
-          files: ./coverage/coverage-final.json
+      - run: npm run build
+      - run: npx tsx --test lib/**/*.test.ts
 ```
 
 ### GitLab CI
+
 ```yaml
 test:
   image: node:20
   script:
     - npm ci
-    - npm test
-    - npm run test:coverage
-  coverage: '/Lines\s*:\s*(\d+\.\d+)%/'
-  artifacts:
-    reports:
-      coverage_report:
-        coverage_format: cobertura
-        path: coverage/cobertura-coverage.xml
+    - npm run build
+    - npx tsx --test lib/**/*.test.ts
 ```
 
 ## Debugging Tests
 
 ### Run specific test
+
 ```bash
-npm test -- new-user              # Run all new-user tests
-npm test -- "should create agent" # Run tests matching pattern
+# Run by file
+npx tsx --test lib/roles/registry.test.ts
+
+# Run by name pattern
+npx tsx --test --test-name-pattern "should have all expected roles" lib/**/*.test.ts
 ```
 
 ### Debug with Node inspector
+
 ```bash
-node --inspect-brk node_modules/.bin/vitest run
+node --inspect-brk node_modules/.bin/tsx --test lib/roles/registry.test.ts
 ```
 
-Then open Chrome DevTools at `chrome://inspect`
-
-### View coverage report
-```bash
-npm run test:coverage
-open coverage/index.html
-```
-
-## Adding Tests
-
-### 1. Choose the right test file
-- New feature → `tests/setup/new-user.test.ts`
-- Migration feature → `tests/setup/existing-user.test.ts`
-- Multi-agent feature → `tests/setup/power-user.test.ts`
-
-### 2. Write the test
-```typescript
-import { describe, it, expect, beforeEach } from "vitest";
-import { MockFileSystem } from "../helpers/mock-fs.js";
-import { createNewUserConfig } from "../helpers/fixtures.js";
-import { assertAgentExists } from "../helpers/assertions.js";
-
-describe("My new feature", () => {
-  let mockFs: MockFileSystem;
-
-  beforeEach(() => {
-    mockFs = new MockFileSystem(createNewUserConfig());
-  });
-
-  it("should do something useful", async () => {
-    // GIVEN: initial state (via fixture)
-    const beforeCount = countAgents(mockFs);
-
-    // WHEN: execute the operation
-    const config = mockFs.getConfig();
-    config.agents.list.push({
-      id: "test-agent",
-      name: "Test Agent",
-      workspace: "/home/test/.openclaw/workspace-test-agent",
-      agentDir: "/home/test/.openclaw/agents/test-agent/agent",
-    });
-    mockFs.setConfig(config);
-
-    // THEN: verify the outcome
-    assertAgentExists(mockFs, "test-agent", "Test Agent");
-    expect(countAgents(mockFs)).toBe(beforeCount + 1);
-  });
-});
-```
-
-### 3. Run your test
-```bash
-npm test -- "should do something useful"
-```
+Then open Chrome DevTools at `chrome://inspect`.
 
 ## Best Practices
 
-### ✅ DO
-- Test one thing per test
-- Use descriptive test names ("should create agent with telegram binding")
-- Use fixtures for initial state
-- Use assertion helpers for readability
-- Test error cases
-
-### ❌ DON'T
-- Test implementation details (test behavior, not internals)
-- Share state between tests (use beforeEach)
-- Mock everything (only mock file system and commands)
-- Write brittle tests (avoid hard-coded UUIDs, timestamps)
-
-## Test Metrics
-
-Current coverage:
-- **Lines:** Target 80%+
-- **Functions:** Target 90%+
-- **Branches:** Target 75%+
-
-Run `npm run test:coverage` to see detailed metrics.
+- **Use `node:test` + `node:assert/strict`** — no test framework dependencies
+- **Use `createTestHarness()`** for any test that needs workspace state, providers, or command interception
+- **Always call `h.cleanup()`** in `afterEach` to remove temp directories
+- **Seed provider state** with `h.provider.seedIssue()` before testing pipeline operations
+- **Use `h.commands`** to verify what CLI commands were dispatched without actually running them
+- **One assertion focus per test** — test one behavior, not the whole pipeline
+- **Test error cases** — invalid roles, missing projects, bad state transitions

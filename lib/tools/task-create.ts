@@ -13,8 +13,12 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
 import { log as auditLog } from "../audit.js";
-import { STATE_LABELS, type StateLabel } from "../providers/provider.js";
+import type { StateLabel } from "../providers/provider.js";
+import { DEFAULT_WORKFLOW, getStateLabels } from "../workflow.js";
 import { requireWorkspaceDir, resolveProject, resolveProvider } from "../tool-helpers.js";
+
+/** Derive the initial state label from the workflow config. */
+const INITIAL_LABEL = DEFAULT_WORKFLOW.states[DEFAULT_WORKFLOW.initial].label;
 
 export function createTaskCreateTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
@@ -22,10 +26,10 @@ export function createTaskCreateTool(api: OpenClawPluginApi) {
     label: "Task Create",
     description: `Create a new task (issue) in the project's issue tracker. Use this to file bugs, features, or tasks from chat.
 
-**IMPORTANT:** Always creates in "Planning" unless the user explicitly asks to start work immediately. Never set label to "To Do" on your own — "Planning" issues require human review before entering the queue.
+**IMPORTANT:** Always creates in "${INITIAL_LABEL}" unless the user explicitly asks to start work immediately. Never set label to "To Do" on your own — "${INITIAL_LABEL}" issues require human review before entering the queue.
 
 Examples:
-- Default: { title: "Fix login bug" } → created in Planning
+- Default: { title: "Fix login bug" } → created in ${INITIAL_LABEL}
 - User says "create and start working": { title: "Implement auth", description: "...", label: "To Do" }`,
     parameters: {
       type: "object",
@@ -45,8 +49,8 @@ Examples:
         },
         label: {
           type: "string",
-          description: `State label. Defaults to "Planning" — only use "To Do" when the user explicitly asks to start work immediately.`,
-          enum: STATE_LABELS,
+          description: `State label. Defaults to "${INITIAL_LABEL}" — only use "To Do" when the user explicitly asks to start work immediately.`,
+          enum: getStateLabels(DEFAULT_WORKFLOW),
         },
         assignees: {
           type: "array",
@@ -64,7 +68,7 @@ Examples:
       const groupId = params.projectGroupId as string;
       const title = params.title as string;
       const description = (params.description as string) ?? "";
-      const label = (params.label as StateLabel) ?? "Planning";
+      const label = (params.label as StateLabel) ?? INITIAL_LABEL;
       const assignees = (params.assignees as string[] | undefined) ?? [];
       const pickup = (params.pickup as boolean) ?? false;
       const workspaceDir = requireWorkspaceDir(ctx);

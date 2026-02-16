@@ -18,7 +18,6 @@ import { readProjects, getProject } from "../projects.js";
 import { log as auditLog } from "../audit.js";
 import { checkWorkerHealth, scanOrphanedLabels, fetchGatewaySessions, type HealthFix } from "../services/health.js";
 import { requireWorkspaceDir, resolveProvider } from "../tool-helpers.js";
-import { getAllRoleIds } from "../roles/index.js";
 
 export function createHealthTool() {
   return (ctx: ToolContext) => ({
@@ -52,13 +51,13 @@ export function createHealthTool() {
         if (!project) continue;
         const { provider } = await resolveProvider(project);
 
-        for (const role of getAllRoleIds()) {
+        for (const role of Object.keys(project.workers)) {
           // Worker health check (session liveness, label consistency, etc)
           const healthFixes = await checkWorkerHealth({
             workspaceDir,
             groupId: pid,
             project,
-            role: role as any,
+            role,
             sessions,
             autoFix: fix,
             provider,
@@ -70,7 +69,7 @@ export function createHealthTool() {
             workspaceDir,
             groupId: pid,
             project,
-            role: role as any,
+            role,
             autoFix: fix,
             provider,
           });

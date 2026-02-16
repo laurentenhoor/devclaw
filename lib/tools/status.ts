@@ -11,7 +11,7 @@ import { readProjects, getProject } from "../projects.js";
 import { log as auditLog } from "../audit.js";
 import { fetchProjectQueues, getTotalQueuedCount, getQueueLabelsWithPriority } from "../services/queue.js";
 import { requireWorkspaceDir, getPluginConfig } from "../tool-helpers.js";
-import { DEFAULT_WORKFLOW } from "../workflow.js";
+import { loadWorkflow, ExecutionMode } from "../workflow.js";
 
 export function createStatusTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
@@ -30,10 +30,10 @@ export function createStatusTool(api: OpenClawPluginApi) {
       const groupId = params.projectGroupId as string | undefined;
 
       const pluginConfig = getPluginConfig(api);
-      const projectExecution = (pluginConfig?.projectExecution as string) ?? "parallel";
+      const projectExecution = (pluginConfig?.projectExecution as string) ?? ExecutionMode.PARALLEL;
 
-      // TODO: Load per-project workflow when supported
-      const workflow = DEFAULT_WORKFLOW;
+      // Load workspace-level workflow (per-project loaded inside map)
+      const workflow = await loadWorkflow(workspaceDir);
 
       const data = await readProjects(workspaceDir);
       const projectIds = groupId ? [groupId] : Object.keys(data.projects);
@@ -52,28 +52,22 @@ export function createStatusTool(api: OpenClawPluginApi) {
             queueCounts[label] = issues.length;
           }
 
+          // Build dynamic workers summary
+          const workers: Record<string, { active: boolean; issueId: string | null; level: string | null; startTime: string | null }> = {};
+          for (const [role, worker] of Object.entries(project.workers)) {
+            workers[role] = {
+              active: worker.active,
+              issueId: worker.issueId,
+              level: worker.level,
+              startTime: worker.startTime,
+            };
+          }
+
           return {
             name: project.name,
             groupId: pid,
-            roleExecution: project.roleExecution ?? "parallel",
-            dev: {
-              active: project.dev.active,
-              issueId: project.dev.issueId,
-              level: project.dev.level,
-              startTime: project.dev.startTime,
-            },
-            qa: {
-              active: project.qa.active,
-              issueId: project.qa.issueId,
-              level: project.qa.level,
-              startTime: project.qa.startTime,
-            },
-            architect: {
-              active: project.architect.active,
-              issueId: project.architect.issueId,
-              level: project.architect.level,
-              startTime: project.architect.startTime,
-            },
+            roleExecution: project.roleExecution ?? ExecutionMode.PARALLEL,
+            workers,
             queue: queueCounts,
           };
         }),

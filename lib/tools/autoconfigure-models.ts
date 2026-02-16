@@ -102,7 +102,7 @@ export function createAutoConfigureModelsTool(api: OpenClawPluginApi) {
         if (modelCount === 1) {
           message += "ℹ️  Only one authenticated model found — assigned to all roles.";
         } else {
-          message += "ℹ️  Models assigned by capability tier (Tier 1 → senior, Tier 2 → medior/reviewer, Tier 3 → junior/tester).";
+          message += "ℹ️  Models assigned by capability tier (Tier 1 → senior, Tier 2 → mid, Tier 3 → junior).";
         }
 
         if (preferProvider) {

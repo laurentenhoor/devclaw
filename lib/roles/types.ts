@@ -7,7 +7,7 @@
 
 /** Configuration for a single worker role. */
 export type RoleConfig = {
-  /** Unique role identifier (e.g., "dev", "qa", "architect"). */
+  /** Unique role identifier (e.g., "developer", "tester", "architect"). */
   id: string;
   /** Human-readable display name. */
   displayName: string;
@@ -23,7 +23,7 @@ export type RoleConfig = {
   fallbackEmoji: string;
   /** Valid completion results for this role. */
   completionResults: readonly string[];
-  /** Regex pattern fragment for session key matching (e.g., "dev|qa|architect"). */
+  /** Regex pattern fragment for session key matching (e.g., "developer|tester|architect"). */
   sessionKeyPattern: string;
   /** Notification config per event type. */
   notifications: {

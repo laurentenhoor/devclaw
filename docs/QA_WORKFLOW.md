@@ -20,7 +20,7 @@ task_comment({
   projectGroupId: "<group-id>",
   issueId: <issue-number>,
   body: "## QA Review\n\n**Tested:**\n- [List what you tested]\n\n**Results:**\n- [Pass/fail details]\n\n**Environment:**\n- [Test environment details]",
-  authorRole: "qa"
+  authorRole: "tester"
 })
 ```
 
@@ -30,21 +30,21 @@ After posting your comment, call `work_finish`:
 
 ```javascript
 work_finish({
-  role: "qa",
+  role: "tester",
   projectGroupId: "<group-id>",
   result: "pass",  // or "fail", "refine", "blocked"
   summary: "Brief summary of review outcome"
 })
 ```
 
-## QA Results
+## TESTER Results
 
 | Result | Label transition | Meaning |
 |---|---|---|
 | `"pass"` | Testing → Done | Approved. Issue closed. |
-| `"fail"` | Testing → To Improve | Issues found. Issue reopened, sent back to DEV. |
+| `"fail"` | Testing → To Improve | Issues found. Issue reopened, sent back to DEVELOPER. |
 | `"refine"` | Testing → Refining | Needs human decision. Pipeline pauses. |
-| `"blocked"` | Testing → To Test | Cannot complete (env issues, etc.). Returns to QA queue. |
+| `"blocked"` | Testing → Refining | Cannot complete (env issues, etc.). Awaits human decision. |
 
 ## Why Comments Are Required
 
@@ -96,14 +96,14 @@ work_finish({
 
 ## Enforcement
 
-QA workers receive instructions via role templates to:
+TESTER workers receive instructions via role templates to:
 - Always call `task_comment` BEFORE `work_finish`
 - Include specific details about what was tested
 - Document results, environment, and any notes
 
 Prompt templates affected:
-- `projects/roles/<project>/qa.md`
-- All project-specific QA templates should follow this pattern
+- `devclaw/projects/<project>/prompts/tester.md`
+- `devclaw/prompts/tester.md` (default)
 
 ## Best Practices
 
@@ -116,5 +116,5 @@ Prompt templates affected:
 ## Related
 
 - Tool: [`task_comment`](TOOLS.md#task_comment) — Add comments to issues
-- Tool: [`work_finish`](TOOLS.md#work_finish) — Complete QA tasks
-- Config: [`projects/roles/<project>/qa.md`](CONFIGURATION.md#role-instruction-files) — QA role instructions
+- Tool: [`work_finish`](TOOLS.md#work_finish) — Complete TESTER tasks
+- Config: [`devclaw/projects/<project>/prompts/tester.md`](CONFIGURATION.md#role-instruction-files) — Tester role instructions
