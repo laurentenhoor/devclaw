@@ -66,7 +66,8 @@ export async function runSetup(opts: SetupOpts): Promise<SetupResult> {
 
   await writePluginConfig(opts.api, agentId, opts.projectExecution);
 
-  const filesWritten = await scaffoldWorkspace(workspacePath);
+  const defaultWorkspacePath = getDefaultWorkspacePath(opts.api);
+  const filesWritten = await scaffoldWorkspace(workspacePath, defaultWorkspacePath);
 
   const models = buildModelConfig(opts.models);
   await writeModelsToWorkflow(workspacePath, models);
@@ -138,6 +139,15 @@ function buildModelConfig(overrides?: SetupOpts["models"]): ModelConfig {
   }
 
   return result;
+}
+
+function getDefaultWorkspacePath(api: OpenClawPluginApi): string | undefined {
+  try {
+    const config = api.runtime.config.loadConfig();
+    return (config as any).agents?.defaults?.workspace ?? undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**

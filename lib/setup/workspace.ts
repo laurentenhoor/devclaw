@@ -8,6 +8,8 @@ import path from "node:path";
 import {
   AGENTS_MD_TEMPLATE,
   HEARTBEAT_MD_TEMPLATE,
+  IDENTITY_MD_TEMPLATE,
+  SOUL_MD_TEMPLATE,
   WORKFLOW_YAML_TEMPLATE,
   DEFAULT_ROLE_INSTRUCTIONS,
 } from "../templates.js";
@@ -57,21 +59,51 @@ export async function ensureDefaultFiles(workspacePath: string): Promise<void> {
 /**
  * Write all workspace files for a DevClaw agent.
  * Returns the list of files that were written (skips files that already exist).
+ *
+ * @param defaultWorkspacePath — If provided, USER.md is copied from here (only if not already present).
  */
-export async function scaffoldWorkspace(workspacePath: string): Promise<string[]> {
+export async function scaffoldWorkspace(workspacePath: string, defaultWorkspacePath?: string): Promise<string[]> {
   // Migrate old layout if detected
   await migrateWorkspaceLayout(workspacePath);
 
+  const written: string[] = [];
+
   // AGENTS.md (backup existing — stays at workspace root)
   await backupAndWrite(path.join(workspacePath, "AGENTS.md"), AGENTS_MD_TEMPLATE);
+  written.push("AGENTS.md");
 
   // HEARTBEAT.md (stays at workspace root)
   await backupAndWrite(path.join(workspacePath, "HEARTBEAT.md"), HEARTBEAT_MD_TEMPLATE);
+  written.push("HEARTBEAT.md");
+
+  // IDENTITY.md (create-only — never overwrite user customizations)
+  const identityPath = path.join(workspacePath, "IDENTITY.md");
+  if (!await fileExists(identityPath)) {
+    await fs.writeFile(identityPath, IDENTITY_MD_TEMPLATE, "utf-8");
+    written.push("IDENTITY.md");
+  }
+
+  // SOUL.md (create-only — never overwrite user customizations)
+  const soulPath = path.join(workspacePath, "SOUL.md");
+  if (!await fileExists(soulPath)) {
+    await fs.writeFile(soulPath, SOUL_MD_TEMPLATE, "utf-8");
+    written.push("SOUL.md");
+  }
+
+  // USER.md — copy from default workspace if available (create-only)
+  const userPath = path.join(workspacePath, "USER.md");
+  if (!await fileExists(userPath) && defaultWorkspacePath) {
+    const sourceUser = path.join(defaultWorkspacePath, "USER.md");
+    if (await fileExists(sourceUser)) {
+      await fs.copyFile(sourceUser, userPath);
+      written.push("USER.md");
+    }
+  }
 
   // Ensure all data-dir defaults (workflow.yaml, prompts, etc.)
   await ensureDefaultFiles(workspacePath);
 
-  return ["AGENTS.md", "HEARTBEAT.md"];
+  return written;
 }
 
 // ---------------------------------------------------------------------------
