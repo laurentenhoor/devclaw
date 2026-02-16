@@ -15,7 +15,8 @@ import { resolveRepoPath } from "../projects.js";
 import { createProvider } from "../providers/index.js";
 import { log as auditLog } from "../audit.js";
 import { getAllRoleIds, getLevelsForRole } from "../roles/index.js";
-import { ExecutionMode } from "../workflow.js";
+import { ExecutionMode, getRoleLabels } from "../workflow.js";
+import { loadConfig } from "../config/index.js";
 import { DEFAULT_ROLE_INSTRUCTIONS } from "../templates.js";
 import { DATA_DIR } from "../setup/migrate-layout.js";
 
@@ -140,6 +141,13 @@ export function createProjectRegisterTool() {
 
       // 4. Create all state labels (idempotent)
       await provider.ensureAllStateLabels();
+
+      // 4b. Create role:level + step routing labels (e.g. developer:junior, review:human, test:skip)
+      const resolvedConfig = await loadConfig(workspaceDir, name);
+      const roleLabels = getRoleLabels(resolvedConfig.roles);
+      for (const { name: labelName, color } of roleLabels) {
+        await provider.ensureLabel(labelName, color);
+      }
 
       // 5. Add project to projects.json
       // Build workers map from all registered roles

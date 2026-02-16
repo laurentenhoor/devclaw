@@ -191,6 +191,7 @@ export async function createTestHarness(opts?: HarnessOptions): Promise<TestHarn
     developer: emptyWorkerState(["junior", "medior", "senior"]),
     tester: emptyWorkerState(["junior", "medior", "senior"]),
     architect: emptyWorkerState(["junior", "senior"]),
+    reviewer: emptyWorkerState(["junior", "senior"]),
   };
 
   // Apply worker overrides
@@ -264,6 +265,7 @@ export async function createTestHarness(opts?: HarnessOptions): Promise<TestHarn
           hookCallback = cb;
         },
         logger: {
+          debug() {},
           info() {},
           warn() {},
           error() {},

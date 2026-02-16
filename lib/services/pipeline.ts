@@ -10,6 +10,7 @@ import { runCommand } from "../run-command.js";
 import { notify, getNotificationConfig } from "../notify.js";
 import { log as auditLog } from "../audit.js";
 import { loadConfig } from "../config/index.js";
+import { detectStepRouting } from "./queue-scan.js";
 import {
   DEFAULT_WORKFLOW,
   Action,
@@ -143,6 +144,36 @@ export async function executeCompletion(opts: {
       case Action.REOPEN_ISSUE:
         await provider.reopenIssue(issueId);
         break;
+    }
+  }
+
+  // Send review routing notification when developer completes
+  if (role === "developer" && result === "done") {
+    // Re-fetch issue to get labels after transition
+    const updated = await provider.getIssue(issueId);
+    const routing = detectStepRouting(updated.labels, "review") as "human" | "agent" | null;
+    if (routing === "human" || routing === "agent") {
+      notify(
+        {
+          type: "reviewNeeded",
+          project: projectName,
+          groupId,
+          issueId,
+          issueUrl: updated.web_url,
+          issueTitle: updated.title,
+          routing,
+          prUrl,
+        },
+        {
+          workspaceDir,
+          config: notifyConfig,
+          groupId,
+          channel: channel ?? "telegram",
+          runtime,
+        },
+      ).catch((err) => {
+        auditLog(workspaceDir, "pipeline_warning", { step: "reviewNotify", issue: issueId, role, error: (err as Error).message ?? String(err) }).catch(() => {});
+      });
     }
   }
 

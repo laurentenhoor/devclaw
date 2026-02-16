@@ -16,6 +16,7 @@ import {
 import { resolveModel, getFallbackEmoji } from "./roles/index.js";
 import { notify, getNotificationConfig } from "./notify.js";
 import { loadConfig, type ResolvedRoleConfig } from "./config/index.js";
+import { ReviewPolicy, resolveReviewRouting } from "./workflow.js";
 
 export type DispatchOpts = {
   workspaceDir: string;
@@ -74,6 +75,8 @@ export function buildTaskMessage(opts: {
   groupId: string;
   comments?: Array<{ author: string; body: string; created_at: string }>;
   resolvedRole?: ResolvedRoleConfig;
+  /** PR context for reviewer role (URL + diff) */
+  prContext?: { url: string; diff?: string };
 }): string {
   const {
     projectName, role, issueId, issueTitle,
@@ -98,6 +101,19 @@ export function buildTaskMessage(opts: {
     for (const comment of recentComments) {
       const date = new Date(comment.created_at).toLocaleString();
       parts.push(``, `**${comment.author}** (${date}):`, comment.body);
+    }
+  }
+
+  // Include PR context for reviewer role
+  if (opts.prContext) {
+    parts.push(``, `## Pull Request`, `🔗 ${opts.prContext.url}`);
+    if (opts.prContext.diff) {
+      // Truncate large diffs to avoid bloating context
+      const maxDiffLen = 50_000;
+      const diff = opts.prContext.diff.length > maxDiffLen
+        ? opts.prContext.diff.slice(0, maxDiffLen) + "\n... (diff truncated, see PR for full changes)"
+        : opts.prContext.diff;
+      parts.push(``, `### Diff`, "```diff", diff, "```");
     }
   }
 
@@ -163,15 +179,51 @@ export async function dispatchTask(
   // Fetch comments to include in task context
   const comments = await provider.listComments(issueId);
 
+  // Fetch PR context for reviewer role
+  let prContext: { url: string; diff?: string } | undefined;
+  if (role === "reviewer") {
+    try {
+      const prStatus = await provider.getPrStatus(issueId);
+      if (prStatus.url) {
+        const diff = await provider.getPrDiff(issueId) ?? undefined;
+        prContext = { url: prStatus.url, diff };
+      }
+    } catch {
+      // Best-effort — reviewer can still work from issue context
+    }
+  }
+
   const taskMessage = buildTaskMessage({
     projectName: project.name, role, issueId,
     issueTitle, issueDescription, issueUrl,
     repo: project.repo, baseBranch: project.baseBranch, groupId,
-    comments, resolvedRole,
+    comments, resolvedRole, prContext,
   });
 
   // Step 1: Transition label (this is the commitment point)
   await transitionLabel(issueId, fromLabel, toLabel);
+
+  // Step 1b: Apply role:level label (best-effort — failure must not abort dispatch)
+  try {
+    const issue = await provider.getIssue(issueId);
+    const oldRoleLabels = issue.labels.filter((l) => l.startsWith(`${role}:`));
+    if (oldRoleLabels.length > 0) {
+      await provider.removeLabels(issueId, oldRoleLabels);
+    }
+    await provider.addLabel(issueId, `${role}:${level}`);
+
+    // Step 1c: Apply review routing label when developer dispatched (best-effort)
+    if (role === "developer") {
+      const reviewLabel = resolveReviewRouting(
+        resolvedConfig.workflow.reviewPolicy ?? ReviewPolicy.AUTO, level,
+      );
+      const oldRouting = issue.labels.filter((l) => l.startsWith("review:"));
+      if (oldRouting.length > 0) await provider.removeLabels(issueId, oldRouting);
+      await provider.addLabel(issueId, reviewLabel);
+    }
+  } catch {
+    // Best-effort — label failure must not abort dispatch
+  }
 
   // Step 2: Send notification early (before session dispatch which can timeout)
   // This ensures users see the notification even if gateway is slow

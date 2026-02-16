@@ -18,13 +18,13 @@ export function createWorkFinishTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
     name: "work_finish",
     label: "Work Finish",
-    description: `Complete a task: Developer done/blocked, Tester pass/fail/refine/blocked. Handles label transition, state update, issue close/reopen, notifications, and audit logging.`,
+    description: `Complete a task: Developer done (PR created, goes to review) or blocked. Tester pass/fail/refine/blocked. Reviewer approve/reject/blocked. Handles label transition, state update, issue close/reopen, notifications, and audit logging.`,
     parameters: {
       type: "object",
       required: ["role", "result", "projectGroupId"],
       properties: {
         role: { type: "string", enum: getAllRoleIds(), description: "Worker role" },
-        result: { type: "string", enum: ["done", "pass", "fail", "refine", "blocked"], description: "Completion result" },
+        result: { type: "string", enum: ["done", "pass", "fail", "refine", "blocked", "approve", "reject"], description: "Completion result" },
         projectGroupId: { type: "string", description: "Project group ID" },
         summary: { type: "string", description: "Brief summary" },
         prUrl: { type: "string", description: "PR/MR URL (auto-detected if omitted)" },

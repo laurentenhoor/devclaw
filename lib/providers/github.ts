@@ -50,6 +50,34 @@ export class GitHubProvider implements IssueProvider {
     });
   }
 
+  /**
+   * Find PRs associated with an issue.
+   * Primary: match by head branch pattern (fix/123-, feature/123-, etc.)
+   * Fallback: word-boundary match on #123 in title/body.
+   */
+  private async findPrsForIssue<T extends { title: string; body: string; headRefName?: string }>(
+    issueId: number,
+    state: "open" | "merged" | "all",
+    fields: string,
+  ): Promise<T[]> {
+    try {
+      const args = ["pr", "list", "--json", fields, "--limit", "50"];
+      if (state !== "all") args.push("--state", state);
+      const raw = await this.gh(args);
+      if (!raw) return [];
+      const prs = JSON.parse(raw) as T[];
+      const branchPat = new RegExp(`^(?:fix|feature|chore|bugfix|hotfix)/${issueId}-`);
+      const titlePat = new RegExp(`\\b#${issueId}\\b`);
+
+      // Primary: match by branch name
+      const byBranch = prs.filter((pr) => pr.headRefName && branchPat.test(pr.headRefName));
+      if (byBranch.length > 0) return byBranch;
+
+      // Fallback: word-boundary match in title/body
+      return prs.filter((pr) => titlePat.test(pr.title) || titlePat.test(pr.body ?? ""));
+    } catch { return []; }
+  }
+
   async ensureLabel(name: string, color: string): Promise<void> {
     try { await this.gh(["label", "create", name, "--color", color.replace(/^#/, "")]); }
     catch (err) { if (!(err as Error).message?.includes("already exists")) throw err; }
@@ -102,6 +130,17 @@ export class GitHubProvider implements IssueProvider {
     await this.gh(args);
   }
 
+  async addLabel(issueId: number, label: string): Promise<void> {
+    await this.gh(["issue", "edit", String(issueId), "--add-label", label]);
+  }
+
+  async removeLabels(issueId: number, labels: string[]): Promise<void> {
+    if (labels.length === 0) return;
+    const args = ["issue", "edit", String(issueId)];
+    for (const l of labels) args.push("--remove-label", l);
+    await this.gh(args);
+  }
+
   async closeIssue(issueId: number): Promise<void> { await this.gh(["issue", "close", String(issueId)]); }
   async reopenIssue(issueId: number): Promise<void> { await this.gh(["issue", "reopen", String(issueId)]); }
 
@@ -113,52 +152,48 @@ export class GitHubProvider implements IssueProvider {
   }
 
   async hasMergedMR(issueId: number): Promise<boolean> {
-    try {
-      const raw = await this.gh(["pr", "list", "--state", "merged", "--json", "title,body"]);
-      const prs = JSON.parse(raw) as Array<{ title: string; body: string }>;
-      const pat = `#${issueId}`;
-      return prs.some((pr) => pr.title.includes(pat) || (pr.body ?? "").includes(pat));
-    } catch { return false; }
+    const prs = await this.findPrsForIssue(issueId, "merged", "title,body,headRefName");
+    return prs.length > 0;
   }
 
   async getMergedMRUrl(issueId: number): Promise<string | null> {
-    try {
-      const raw = await this.gh(["pr", "list", "--state", "merged", "--json", "number,title,body,url,mergedAt", "--limit", "20"]);
-      const prs = JSON.parse(raw) as Array<{ number: number; title: string; body: string; url: string; mergedAt: string }>;
-      const pat = `#${issueId}`;
-      return prs.find((pr) => pr.title.includes(pat) || (pr.body ?? "").includes(pat))?.url ?? null;
-    } catch { return null; }
+    type MergedPr = { title: string; body: string; headRefName: string; url: string; mergedAt: string };
+    const prs = await this.findPrsForIssue<MergedPr>(issueId, "merged", "title,body,headRefName,url,mergedAt");
+    if (prs.length === 0) return null;
+    prs.sort((a, b) => new Date(b.mergedAt).getTime() - new Date(a.mergedAt).getTime());
+    return prs[0].url;
   }
 
   async getPrStatus(issueId: number): Promise<PrStatus> {
-    const pat = `#${issueId}`;
     // Check open PRs first
-    try {
-      const raw = await this.gh(["pr", "list", "--state", "open", "--json", "title,body,url,reviewDecision", "--limit", "20"]);
-      const prs = JSON.parse(raw) as Array<{ title: string; body: string; url: string; reviewDecision: string }>;
-      const pr = prs.find((p) => p.title.includes(pat) || (p.body ?? "").includes(pat));
-      if (pr) {
-        const state = pr.reviewDecision === "APPROVED" ? PrState.APPROVED : PrState.OPEN;
-        return { state, url: pr.url };
-      }
-    } catch { /* continue to merged check */ }
+    type OpenPr = { title: string; body: string; headRefName: string; url: string; reviewDecision: string };
+    const open = await this.findPrsForIssue<OpenPr>(issueId, "open", "title,body,headRefName,url,reviewDecision");
+    if (open.length > 0) {
+      const pr = open[0];
+      const state = pr.reviewDecision === "APPROVED" ? PrState.APPROVED : PrState.OPEN;
+      return { state, url: pr.url };
+    }
     // Check merged PRs
-    try {
-      const raw = await this.gh(["pr", "list", "--state", "merged", "--json", "title,body,url", "--limit", "20"]);
-      const prs = JSON.parse(raw) as Array<{ title: string; body: string; url: string }>;
-      const pr = prs.find((p) => p.title.includes(pat) || (p.body ?? "").includes(pat));
-      if (pr) return { state: PrState.MERGED, url: pr.url };
-    } catch { /* ignore */ }
+    type MergedPr = { title: string; body: string; headRefName: string; url: string };
+    const merged = await this.findPrsForIssue<MergedPr>(issueId, "merged", "title,body,headRefName,url");
+    if (merged.length > 0) return { state: PrState.MERGED, url: merged[0].url };
     return { state: PrState.CLOSED, url: null };
   }
 
   async mergePr(issueId: number): Promise<void> {
-    const pat = `#${issueId}`;
-    const raw = await this.gh(["pr", "list", "--state", "open", "--json", "number,title,body,url", "--limit", "20"]);
-    const prs = JSON.parse(raw) as Array<{ number: number; title: string; body: string; url: string }>;
-    const pr = prs.find((p) => p.title.includes(pat) || (p.body ?? "").includes(pat));
-    if (!pr) throw new Error(`No open PR found for issue #${issueId}`);
-    await this.gh(["pr", "merge", pr.url, "--merge"]);
+    type OpenPr = { title: string; body: string; headRefName: string; url: string };
+    const prs = await this.findPrsForIssue<OpenPr>(issueId, "open", "title,body,headRefName,url");
+    if (prs.length === 0) throw new Error(`No open PR found for issue #${issueId}`);
+    await this.gh(["pr", "merge", prs[0].url, "--merge"]);
+  }
+
+  async getPrDiff(issueId: number): Promise<string | null> {
+    type OpenPr = { title: string; body: string; headRefName: string; number: number };
+    const prs = await this.findPrsForIssue<OpenPr>(issueId, "open", "title,body,headRefName,number");
+    if (prs.length === 0) return null;
+    try {
+      return await this.gh(["pr", "diff", String(prs[0].number)]);
+    } catch { return null; }
   }
 
   async addComment(issueId: number, body: string): Promise<void> {

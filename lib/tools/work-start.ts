@@ -12,8 +12,8 @@ import type { StateLabel } from "../providers/provider.js";
 import { selectLevel } from "../model-selector.js";
 import { getWorker } from "../projects.js";
 import { dispatchTask } from "../dispatch.js";
-import { findNextIssue, detectRoleFromLabel, detectLevelFromLabels } from "../services/queue-scan.js";
-import { getAllRoleIds, isLevelForRole } from "../roles/index.js";
+import { findNextIssue, detectRoleFromLabel, detectRoleLevelFromLabels } from "../services/queue-scan.js";
+import { getAllRoleIds, getLevelsForRole } from "../roles/index.js";
 import { requireWorkspaceDir, resolveProject, resolveProvider, getPluginConfig } from "../tool-helpers.js";
 import { loadWorkflow, getActiveLabel, ExecutionMode } from "../workflow.js";
 
@@ -81,20 +81,16 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
       // Get target label from workflow
       const targetLabel = getActiveLabel(workflow, role);
 
-      // Select level
+      // Select level: LLM param → own role label → inherit other role label → heuristic
       let selectedLevel: string, levelReason: string, levelSource: string;
       if (levelParam) {
         selectedLevel = levelParam; levelReason = "LLM-selected"; levelSource = "llm";
       } else {
-        const labelLevel = detectLevelFromLabels(issue.labels);
-        if (labelLevel) {
-          if (!isLevelForRole(labelLevel, role)) {
-            // Label level belongs to a different role — use heuristic for this role
-            const s = selectLevel(issue.title, issue.description ?? "", role);
-            selectedLevel = s.level; levelReason = `${role} overrides other role's level "${labelLevel}"`; levelSource = "role-override";
-          } else {
-            selectedLevel = labelLevel; levelReason = `Label: "${labelLevel}"`; levelSource = "label";
-          }
+        const roleLevel = detectRoleLevelFromLabels(issue.labels);
+        if (roleLevel?.role === role) {
+          selectedLevel = roleLevel.level; levelReason = `Label: "${role}:${roleLevel.level}"`; levelSource = "label";
+        } else if (roleLevel && getLevelsForRole(role).includes(roleLevel.level)) {
+          selectedLevel = roleLevel.level; levelReason = `Inherited from ${roleLevel.role}:${roleLevel.level}`; levelSource = "inherited";
         } else {
           const s = selectLevel(issue.title, issue.description ?? "", role);
           selectedLevel = s.level; levelReason = s.reason; levelSource = "heuristic";

@@ -54,6 +54,8 @@ export interface IssueProvider {
   getIssue(issueId: number): Promise<Issue>;
   listComments(issueId: number): Promise<IssueComment[]>;
   transitionLabel(issueId: number, from: StateLabel, to: StateLabel): Promise<void>;
+  addLabel(issueId: number, label: string): Promise<void>;
+  removeLabels(issueId: number, labels: string[]): Promise<void>;
   closeIssue(issueId: number): Promise<void>;
   reopenIssue(issueId: number): Promise<void>;
   hasStateLabel(issue: Issue, expected: StateLabel): boolean;
@@ -62,6 +64,7 @@ export interface IssueProvider {
   getMergedMRUrl(issueId: number): Promise<string | null>;
   getPrStatus(issueId: number): Promise<PrStatus>;
   mergePr(issueId: number): Promise<void>;
+  getPrDiff(issueId: number): Promise<string | null>;
   addComment(issueId: number, body: string): Promise<void>;
   healthCheck(): Promise<boolean>;
 }

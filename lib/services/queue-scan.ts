@@ -22,7 +22,16 @@ import {
 export function detectLevelFromLabels(labels: string[]): string | null {
   const lower = labels.map((l) => l.toLowerCase());
 
-  // Match role.level labels (e.g., "dev.senior", "qa.mid", "architect.junior")
+  // Priority 1: Match role:level labels (e.g., "developer:senior", "tester:junior")
+  for (const l of lower) {
+    const colon = l.indexOf(":");
+    if (colon === -1) continue;
+    const level = l.slice(colon + 1);
+    const all = getAllLevels();
+    if (all.includes(level)) return level;
+  }
+
+  // Priority 2: Match legacy role.level labels (e.g., "dev.senior", "qa.mid")
   for (const l of lower) {
     const dot = l.indexOf(".");
     if (dot === -1) continue;
@@ -35,6 +44,36 @@ export function detectLevelFromLabels(labels: string[]): string | null {
   // Fallback: plain level name
   const all = getAllLevels();
   return all.find((l) => lower.includes(l)) ?? null;
+}
+
+/**
+ * Detect role and level from colon-format labels (e.g. "developer:senior").
+ * Returns the first match found, or null if no role:level label exists.
+ */
+export function detectRoleLevelFromLabels(
+  labels: string[],
+): { role: string; level: string } | null {
+  for (const label of labels) {
+    const colon = label.indexOf(":");
+    if (colon === -1) continue;
+    const role = label.slice(0, colon).toLowerCase();
+    const level = label.slice(colon + 1).toLowerCase();
+    const roleLevels = getLevelsForRole(role);
+    if (roleLevels.includes(level)) return { role, level };
+  }
+  return null;
+}
+
+/**
+ * Detect step routing from labels (e.g. "review:human", "test:skip").
+ * Returns the routing value for the given step, or null if no routing label exists.
+ */
+export function detectStepRouting(
+  labels: string[], step: string,
+): string | null {
+  const prefix = `${step}:`;
+  const match = labels.find((l) => l.toLowerCase().startsWith(prefix));
+  return match ? match.slice(prefix.length).toLowerCase() : null;
 }
 
 /**

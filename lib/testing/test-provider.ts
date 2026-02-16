@@ -37,12 +37,15 @@ export type ProviderCall =
       method: "transitionLabel";
       args: { issueId: number; from: StateLabel; to: StateLabel };
     }
+  | { method: "addLabel"; args: { issueId: number; label: string } }
+  | { method: "removeLabels"; args: { issueId: number; labels: string[] } }
   | { method: "closeIssue"; args: { issueId: number } }
   | { method: "reopenIssue"; args: { issueId: number } }
   | { method: "hasMergedMR"; args: { issueId: number } }
   | { method: "getMergedMRUrl"; args: { issueId: number } }
   | { method: "getPrStatus"; args: { issueId: number } }
   | { method: "mergePr"; args: { issueId: number } }
+  | { method: "getPrDiff"; args: { issueId: number } }
   | { method: "addComment"; args: { issueId: number; body: string } }
   | { method: "healthCheck"; args: {} };
 
@@ -63,6 +66,8 @@ export class TestProvider implements IssueProvider {
   mergedMrUrls = new Map<number, string>();
   /** Issue IDs where mergePr should fail (simulates merge conflicts). */
   mergePrFailures = new Set<number>();
+  /** PR diffs per issue (for reviewer tests). */
+  prDiffs = new Map<number, string>();
   /** All calls, in order. */
   calls: ProviderCall[] = [];
 
@@ -118,6 +123,7 @@ export class TestProvider implements IssueProvider {
     this.prStatuses.clear();
     this.mergedMrUrls.clear();
     this.mergePrFailures.clear();
+    this.prDiffs.clear();
     this.calls = [];
     this.nextIssueId = 1;
   }
@@ -193,6 +199,22 @@ export class TestProvider implements IssueProvider {
     issue.labels.push(to);
   }
 
+  async addLabel(issueId: number, label: string): Promise<void> {
+    this.calls.push({ method: "addLabel", args: { issueId, label } });
+    const issue = this.issues.get(issueId);
+    if (issue && !issue.labels.includes(label)) {
+      issue.labels.push(label);
+    }
+  }
+
+  async removeLabels(issueId: number, labels: string[]): Promise<void> {
+    this.calls.push({ method: "removeLabels", args: { issueId, labels } });
+    const issue = this.issues.get(issueId);
+    if (issue) {
+      issue.labels = issue.labels.filter((l) => !labels.includes(l));
+    }
+  }
+
   async closeIssue(issueId: number): Promise<void> {
     this.calls.push({ method: "closeIssue", args: { issueId } });
     const issue = this.issues.get(issueId);
@@ -239,6 +261,11 @@ export class TestProvider implements IssueProvider {
     if (existing) {
       this.prStatuses.set(issueId, { state: "merged", url: existing.url });
     }
+  }
+
+  async getPrDiff(issueId: number): Promise<string | null> {
+    this.calls.push({ method: "getPrDiff", args: { issueId } });
+    return this.prDiffs.get(issueId) ?? null;
   }
 
   async addComment(issueId: number, body: string): Promise<void> {

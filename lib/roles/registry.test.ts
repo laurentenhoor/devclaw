@@ -32,12 +32,14 @@ describe("role registry", () => {
     assert.ok(ids.includes("developer"));
     assert.ok(ids.includes("tester"));
     assert.ok(ids.includes("architect"));
+    assert.ok(ids.includes("reviewer"));
   });
 
   it("should validate role IDs", () => {
     assert.strictEqual(isValidRole("developer"), true);
     assert.strictEqual(isValidRole("tester"), true);
     assert.strictEqual(isValidRole("architect"), true);
+    assert.strictEqual(isValidRole("reviewer"), true);
     assert.strictEqual(isValidRole("nonexistent"), false);
   });
 
@@ -58,6 +60,7 @@ describe("levels", () => {
     assert.deepStrictEqual([...getLevelsForRole("developer")], ["junior", "medior", "senior"]);
     assert.deepStrictEqual([...getLevelsForRole("tester")], ["junior", "medior", "senior"]);
     assert.deepStrictEqual([...getLevelsForRole("architect")], ["junior", "senior"]);
+    assert.deepStrictEqual([...getLevelsForRole("reviewer")], ["junior", "senior"]);
   });
 
   it("should return empty for unknown role", () => {
@@ -185,17 +188,21 @@ describe("emoji", () => {
 
 describe("completion results", () => {
   it("should return valid results per role", () => {
-    assert.deepStrictEqual([...getCompletionResults("developer")], ["done", "review", "blocked"]);
+    assert.deepStrictEqual([...getCompletionResults("developer")], ["done", "blocked"]);
     assert.deepStrictEqual([...getCompletionResults("tester")], ["pass", "fail", "refine", "blocked"]);
     assert.deepStrictEqual([...getCompletionResults("architect")], ["done", "blocked"]);
+    assert.deepStrictEqual([...getCompletionResults("reviewer")], ["approve", "reject", "blocked"]);
   });
 
   it("should validate results", () => {
     assert.strictEqual(isValidResult("developer", "done"), true);
-    assert.strictEqual(isValidResult("developer", "review"), true);
     assert.strictEqual(isValidResult("developer", "pass"), false);
     assert.strictEqual(isValidResult("tester", "pass"), true);
     assert.strictEqual(isValidResult("tester", "done"), false);
+    assert.strictEqual(isValidResult("reviewer", "approve"), true);
+    assert.strictEqual(isValidResult("reviewer", "reject"), true);
+    assert.strictEqual(isValidResult("reviewer", "escalate"), false);
+    assert.strictEqual(isValidResult("reviewer", "done"), false);
   });
 });
 
@@ -205,6 +212,7 @@ describe("session key pattern", () => {
     assert.ok(pattern.includes("developer"));
     assert.ok(pattern.includes("tester"));
     assert.ok(pattern.includes("architect"));
+    assert.ok(pattern.includes("reviewer"));
   });
 
   it("should work as regex", () => {
@@ -213,6 +221,7 @@ describe("session key pattern", () => {
     assert.ok(regex.test("developer"));
     assert.ok(regex.test("tester"));
     assert.ok(regex.test("architect"));
+    assert.ok(regex.test("reviewer"));
     assert.ok(!regex.test("nonexistent"));
   });
 });

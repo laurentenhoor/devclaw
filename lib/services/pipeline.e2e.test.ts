@@ -13,8 +13,9 @@ import assert from "node:assert";
 import { createTestHarness, type TestHarness } from "../testing/index.js";
 import { dispatchTask } from "../dispatch.js";
 import { executeCompletion } from "./pipeline.js";
+import { projectTick } from "./tick.js";
 import { reviewPass } from "./review.js";
-import { DEFAULT_WORKFLOW } from "../workflow.js";
+import { DEFAULT_WORKFLOW, ReviewPolicy, type WorkflowConfig } from "../workflow.js";
 import { readProjects, getWorker } from "../projects.js";
 
 // ---------------------------------------------------------------------------
@@ -147,10 +148,10 @@ describe("E2E pipeline", () => {
   });
 
   // =========================================================================
-  // Completion — developer:done
+  // Completion — developer:done → To Review (always)
   // =========================================================================
 
-  describe("executeCompletion — developer:done", () => {
+  describe("executeCompletion — developer:done → To Review", () => {
     beforeEach(async () => {
       h = await createTestHarness({
         workers: {
@@ -160,9 +161,7 @@ describe("E2E pipeline", () => {
       h.provider.seedIssue({ iid: 10, title: "Build feature X", labels: ["Doing"] });
     });
 
-    it("should transition Doing → To Test, deactivate worker, run gitPull+detectPr actions", async () => {
-      h.provider.mergedMrUrls.set(10, "https://example.com/mr/5");
-
+    it("should transition Doing → To Review", async () => {
       const output = await executeCompletion({
         workspaceDir: h.workspaceDir,
         groupId: h.groupId,
@@ -175,73 +174,90 @@ describe("E2E pipeline", () => {
         projectName: "test-project",
       });
 
-      // Label transition
-      assert.strictEqual(output.labelTransition, "Doing → To Test");
+      assert.strictEqual(output.labelTransition, "Doing → To Review");
       assert.ok(output.announcement.includes("#10"));
 
-      // Issue state
       const issue = await h.provider.getIssue(10);
-      assert.ok(issue.labels.includes("To Test"), `Labels: ${issue.labels}`);
+      assert.ok(issue.labels.includes("To Review"), `Labels: ${issue.labels}`);
       assert.ok(!issue.labels.includes("Doing"));
 
-      // Worker deactivated
       const data = await readProjects(h.workspaceDir);
-      const worker = getWorker(data.projects[h.groupId], "developer");
-      assert.strictEqual(worker.active, false);
-
-      // PR URL detected
-      assert.strictEqual(output.prUrl, "https://example.com/mr/5");
-
-      // gitPull action was executed
-      const gitCmds = h.commands.commands.filter((c) => c.argv[0] === "git");
-      assert.ok(gitCmds.length > 0, "Should have run git pull");
-      assert.deepStrictEqual(gitCmds[0].argv, ["git", "pull"]);
-
-      // Issue NOT closed (done goes to To Test, not Done)
+      assert.strictEqual(getWorker(data.projects[h.groupId], "developer").active, false);
       assert.strictEqual(output.issueClosed, false);
     });
   });
 
   // =========================================================================
-  // Completion — developer:review
+  // Completion — reviewer:approve / reject
   // =========================================================================
 
-  describe("executeCompletion — developer:review", () => {
+  describe("executeCompletion — reviewer", () => {
     beforeEach(async () => {
       h = await createTestHarness({
         workers: {
-          developer: { active: true, issueId: "20", level: "senior" },
+          reviewer: { active: true, issueId: "25", level: "junior" },
         },
       });
-      h.provider.seedIssue({ iid: 20, title: "Refactor auth", labels: ["Doing"] });
+      h.provider.seedIssue({ iid: 25, title: "Review PR", labels: ["Reviewing"] });
     });
 
-    it("should transition Doing → In Review, deactivate worker", async () => {
+    it("reviewer:approve should transition Reviewing → To Test, merge PR", async () => {
+      h.provider.setPrStatus(25, { state: "open", url: "https://example.com/pr/7" });
+
       const output = await executeCompletion({
         workspaceDir: h.workspaceDir,
         groupId: h.groupId,
-        role: "developer",
-        result: "review",
-        issueId: 20,
-        summary: "PR open for review",
-        prUrl: "https://example.com/pr/3",
+        role: "reviewer",
+        result: "approve",
+        issueId: 25,
+        summary: "Code looks good",
         provider: h.provider,
         repoPath: "/tmp/test-repo",
         projectName: "test-project",
       });
 
-      assert.strictEqual(output.labelTransition, "Doing → In Review");
-      assert.ok(output.nextState.includes("review"), `nextState: ${output.nextState}`);
+      assert.strictEqual(output.labelTransition, "Reviewing → To Test");
+      const issue = await h.provider.getIssue(25);
+      assert.ok(issue.labels.includes("To Test"), `Labels: ${issue.labels}`);
 
-      const issue = await h.provider.getIssue(20);
-      assert.ok(issue.labels.includes("In Review"), `Labels: ${issue.labels}`);
+      const mergeCalls = h.provider.callsTo("mergePr");
+      assert.strictEqual(mergeCalls.length, 1);
+    });
 
-      // Worker should be deactivated
-      const data = await readProjects(h.workspaceDir);
-      assert.strictEqual(getWorker(data.projects[h.groupId], "developer").active, false);
+    it("reviewer:reject should transition Reviewing → To Improve", async () => {
+      const output = await executeCompletion({
+        workspaceDir: h.workspaceDir,
+        groupId: h.groupId,
+        role: "reviewer",
+        result: "reject",
+        issueId: 25,
+        summary: "Missing error handling",
+        provider: h.provider,
+        repoPath: "/tmp/test-repo",
+        projectName: "test-project",
+      });
 
-      // Issue should NOT be closed
-      assert.strictEqual(output.issueClosed, false);
+      assert.strictEqual(output.labelTransition, "Reviewing → To Improve");
+      const issue = await h.provider.getIssue(25);
+      assert.ok(issue.labels.includes("To Improve"), `Labels: ${issue.labels}`);
+    });
+
+    it("reviewer:blocked should transition Reviewing → Refining", async () => {
+      const output = await executeCompletion({
+        workspaceDir: h.workspaceDir,
+        groupId: h.groupId,
+        role: "reviewer",
+        result: "blocked",
+        issueId: 25,
+        summary: "Can't determine correctness",
+        provider: h.provider,
+        repoPath: "/tmp/test-repo",
+        projectName: "test-project",
+      });
+
+      assert.strictEqual(output.labelTransition, "Reviewing → Refining");
+      const issue = await h.provider.getIssue(25);
+      assert.ok(issue.labels.includes("Refining"), `Labels: ${issue.labels}`);
     });
   });
 
@@ -362,7 +378,7 @@ describe("E2E pipeline", () => {
   });
 
   // =========================================================================
-  // Review pass
+  // Review pass — heartbeat polls To Review for human path
   // =========================================================================
 
   describe("reviewPass", () => {
@@ -370,9 +386,8 @@ describe("E2E pipeline", () => {
       h = await createTestHarness();
     });
 
-    it("should auto-merge and transition In Review → To Test when PR is approved", async () => {
-      // Seed issue in "In Review" state
-      h.provider.seedIssue({ iid: 60, title: "Feature Y", labels: ["In Review"] });
+    it("should auto-merge and transition To Review → To Test when PR is approved", async () => {
+      h.provider.seedIssue({ iid: 60, title: "Feature Y", labels: ["To Review"] });
       h.provider.setPrStatus(60, { state: "approved", url: "https://example.com/pr/10" });
 
       const transitions = await reviewPass({
@@ -385,23 +400,20 @@ describe("E2E pipeline", () => {
 
       assert.strictEqual(transitions, 1);
 
-      // Issue should now have "To Test" label
       const issue = await h.provider.getIssue(60);
       assert.ok(issue.labels.includes("To Test"), `Labels: ${issue.labels}`);
-      assert.ok(!issue.labels.includes("In Review"), "Should not have In Review");
+      assert.ok(!issue.labels.includes("To Review"), "Should not have To Review");
 
-      // mergePr action should have been called
       const mergeCalls = h.provider.callsTo("mergePr");
       assert.strictEqual(mergeCalls.length, 1);
       assert.strictEqual(mergeCalls[0].args.issueId, 60);
 
-      // gitPull action should have been attempted
       const gitCmds = h.commands.commands.filter((c) => c.argv[0] === "git");
       assert.ok(gitCmds.length > 0, "Should have run git pull");
     });
 
     it("should NOT transition when PR is still open", async () => {
-      h.provider.seedIssue({ iid: 61, title: "Feature Z", labels: ["In Review"] });
+      h.provider.seedIssue({ iid: 61, title: "Feature Z", labels: ["To Review"] });
       h.provider.setPrStatus(61, { state: "open", url: "https://example.com/pr/11" });
 
       const transitions = await reviewPass({
@@ -414,14 +426,13 @@ describe("E2E pipeline", () => {
 
       assert.strictEqual(transitions, 0);
 
-      // Issue should still have "In Review"
       const issue = await h.provider.getIssue(61);
-      assert.ok(issue.labels.includes("In Review"));
+      assert.ok(issue.labels.includes("To Review"));
     });
 
     it("should handle multiple review issues in one pass", async () => {
-      h.provider.seedIssue({ iid: 70, title: "PR A", labels: ["In Review"] });
-      h.provider.seedIssue({ iid: 71, title: "PR B", labels: ["In Review"] });
+      h.provider.seedIssue({ iid: 70, title: "PR A", labels: ["To Review"] });
+      h.provider.seedIssue({ iid: 71, title: "PR B", labels: ["To Review"] });
       h.provider.setPrStatus(70, { state: "approved", url: "https://example.com/pr/20" });
       h.provider.setPrStatus(71, { state: "approved", url: "https://example.com/pr/21" });
 
@@ -440,13 +451,12 @@ describe("E2E pipeline", () => {
       assert.ok(issue70.labels.includes("To Test"));
       assert.ok(issue71.labels.includes("To Test"));
 
-      // Both should have had mergePr called
       const mergeCalls = h.provider.callsTo("mergePr");
       assert.strictEqual(mergeCalls.length, 2);
     });
 
-    it("should transition In Review → To Improve when merge fails (conflicts)", async () => {
-      h.provider.seedIssue({ iid: 65, title: "Conflicting PR", labels: ["In Review"] });
+    it("should transition To Review → To Improve when merge fails (conflicts)", async () => {
+      h.provider.seedIssue({ iid: 65, title: "Conflicting PR", labels: ["To Review"] });
       h.provider.setPrStatus(65, { state: "approved", url: "https://example.com/pr/15" });
       h.provider.mergePrFailures.add(65);
 
@@ -460,17 +470,14 @@ describe("E2E pipeline", () => {
 
       assert.strictEqual(transitions, 1);
 
-      // Issue should have moved to "To Improve" (not "To Test")
       const issue = await h.provider.getIssue(65);
       assert.ok(issue.labels.includes("To Improve"), `Labels: ${issue.labels}`);
-      assert.ok(!issue.labels.includes("In Review"), "Should not have In Review");
+      assert.ok(!issue.labels.includes("To Review"), "Should not have To Review");
       assert.ok(!issue.labels.includes("To Test"), "Should NOT have To Test");
 
-      // mergePr should have been attempted
       const mergeCalls = h.provider.callsTo("mergePr");
       assert.strictEqual(mergeCalls.length, 1);
 
-      // gitPull should NOT have run (aborted before git pull)
       const gitCmds = h.commands.commands.filter((c) => c.argv[0] === "git");
       assert.strictEqual(gitCmds.length, 0, "Should NOT have run git pull after merge failure");
     });
@@ -481,10 +488,10 @@ describe("E2E pipeline", () => {
   // =========================================================================
 
   describe("full lifecycle", () => {
-    it("developer:done → tester:pass (direct path)", async () => {
+    it("developer:done → reviewer:approve → tester:pass (agent review path)", async () => {
       h = await createTestHarness();
 
-      // 1. Seed issue in To Do
+      // 1. Seed issue
       h.provider.seedIssue({ iid: 100, title: "Build dashboard", labels: ["To Do"] });
 
       // 2. Dispatch developer
@@ -505,10 +512,7 @@ describe("E2E pipeline", () => {
         provider: h.provider,
       });
 
-      let issue = await h.provider.getIssue(100);
-      assert.ok(issue.labels.includes("Doing"));
-
-      // 3. Developer completes → To Test
+      // 3. Developer done → To Review
       await executeCompletion({
         workspaceDir: h.workspaceDir,
         groupId: h.groupId,
@@ -521,17 +525,37 @@ describe("E2E pipeline", () => {
         projectName: "test-project",
       });
 
-      issue = await h.provider.getIssue(100);
-      assert.ok(issue.labels.includes("To Test"), `After dev done: ${issue.labels}`);
+      let issue = await h.provider.getIssue(100);
+      assert.ok(issue.labels.includes("To Review"), `After dev done: ${issue.labels}`);
 
-      // 4. Simulate tester dispatch (activate worker manually for completion)
+      // 4. Reviewer dispatched → Reviewing → approve → To Test
       const { activateWorker } = await import("../projects.js");
+      await activateWorker(h.workspaceDir, h.groupId, "reviewer", {
+        issueId: "100", level: "junior",
+      });
+      await h.provider.transitionLabel(100, "To Review", "Reviewing");
+
+      await executeCompletion({
+        workspaceDir: h.workspaceDir,
+        groupId: h.groupId,
+        role: "reviewer",
+        result: "approve",
+        issueId: 100,
+        summary: "Code looks good",
+        provider: h.provider,
+        repoPath: "/tmp/test-repo",
+        projectName: "test-project",
+      });
+
+      issue = await h.provider.getIssue(100);
+      assert.ok(issue.labels.includes("To Test"), `After reviewer approve: ${issue.labels}`);
+
+      // 5. Tester passes → Done
       await activateWorker(h.workspaceDir, h.groupId, "tester", {
         issueId: "100", level: "medior",
       });
       await h.provider.transitionLabel(100, "To Test", "Testing");
 
-      // 5. Tester passes → Done
       await executeCompletion({
         workspaceDir: h.workspaceDir,
         groupId: h.groupId,
@@ -549,13 +573,12 @@ describe("E2E pipeline", () => {
       assert.strictEqual(issue.state, "closed");
     });
 
-    it("developer:review → review pass → tester:pass (review path)", async () => {
+    it("developer:done → human review pass → tester:pass (human review path)", async () => {
       h = await createTestHarness();
 
-      // 1. Seed issue in To Do
       h.provider.seedIssue({ iid: 200, title: "Auth refactor", labels: ["To Do"] });
 
-      // 2. Dispatch developer
+      // 1. Dispatch developer
       await dispatchTask({
         workspaceDir: h.workspaceDir,
         agentId: "main",
@@ -573,12 +596,12 @@ describe("E2E pipeline", () => {
         provider: h.provider,
       });
 
-      // 3. Developer finishes with "review" → In Review
+      // 2. Developer done → To Review (same state regardless of level)
       await executeCompletion({
         workspaceDir: h.workspaceDir,
         groupId: h.groupId,
         role: "developer",
-        result: "review",
+        result: "done",
         issueId: 200,
         summary: "PR ready for review",
         prUrl: "https://example.com/pr/50",
@@ -588,9 +611,9 @@ describe("E2E pipeline", () => {
       });
 
       let issue = await h.provider.getIssue(200);
-      assert.ok(issue.labels.includes("In Review"), `After review: ${issue.labels}`);
+      assert.ok(issue.labels.includes("To Review"), `After dev done: ${issue.labels}`);
 
-      // 4. PR gets approved — review pass picks it up and auto-merges
+      // 3. Human reviews PR → approved → heartbeat transitions To Review → To Test
       h.provider.setPrStatus(200, { state: "approved", url: "https://example.com/pr/50" });
 
       const transitions = await reviewPass({
@@ -605,7 +628,7 @@ describe("E2E pipeline", () => {
       issue = await h.provider.getIssue(200);
       assert.ok(issue.labels.includes("To Test"), `After review pass: ${issue.labels}`);
 
-      // 5. Tester passes → Done
+      // 4. Tester passes → Done
       const { activateWorker } = await import("../projects.js");
       await activateWorker(h.workspaceDir, h.groupId, "tester", {
         issueId: "200", level: "medior",
@@ -629,7 +652,7 @@ describe("E2E pipeline", () => {
       assert.strictEqual(issue.state, "closed");
     });
 
-    it("developer:done → tester:fail → developer:done → tester:pass (fail cycle)", async () => {
+    it("developer:done → reviewer:reject → developer:done → reviewer:approve → tester:pass (reject cycle)", async () => {
       h = await createTestHarness();
 
       h.provider.seedIssue({ iid: 300, title: "Payment flow", labels: ["To Do"] });
@@ -652,7 +675,7 @@ describe("E2E pipeline", () => {
         provider: h.provider,
       });
 
-      // 2. Developer done → To Test
+      // 2. Developer done → To Review
       await executeCompletion({
         workspaceDir: h.workspaceDir,
         groupId: h.groupId,
@@ -664,31 +687,32 @@ describe("E2E pipeline", () => {
         projectName: "test-project",
       });
 
-      // 3. Activate tester + transition
-      const { activateWorker } = await import("../projects.js");
-      await activateWorker(h.workspaceDir, h.groupId, "tester", {
-        issueId: "300", level: "medior",
-      });
-      await h.provider.transitionLabel(300, "To Test", "Testing");
+      let issue = await h.provider.getIssue(300);
+      assert.ok(issue.labels.includes("To Review"), `After dev done: ${issue.labels}`);
 
-      // 4. Tester FAILS → To Improve
+      // 3. Reviewer REJECTS → To Improve
+      const { activateWorker } = await import("../projects.js");
+      await activateWorker(h.workspaceDir, h.groupId, "reviewer", {
+        issueId: "300", level: "junior",
+      });
+      await h.provider.transitionLabel(300, "To Review", "Reviewing");
+
       await executeCompletion({
         workspaceDir: h.workspaceDir,
         groupId: h.groupId,
-        role: "tester",
-        result: "fail",
+        role: "reviewer",
+        result: "reject",
         issueId: 300,
-        summary: "Validation broken",
+        summary: "Missing validation",
         provider: h.provider,
         repoPath: "/tmp/test-repo",
         projectName: "test-project",
       });
 
-      let issue = await h.provider.getIssue(300);
-      assert.ok(issue.labels.includes("To Improve"), `After fail: ${issue.labels}`);
-      assert.strictEqual(issue.state, "opened"); // reopened
+      issue = await h.provider.getIssue(300);
+      assert.ok(issue.labels.includes("To Improve"), `After reject: ${issue.labels}`);
 
-      // 5. Developer picks up again (To Improve → Doing)
+      // 4. Developer picks up again → fixes → To Review
       await dispatchTask({
         workspaceDir: h.workspaceDir,
         agentId: "main",
@@ -706,7 +730,6 @@ describe("E2E pipeline", () => {
         provider: h.provider,
       });
 
-      // 6. Developer fixes it → To Test
       await executeCompletion({
         workspaceDir: h.workspaceDir,
         groupId: h.groupId,
@@ -720,9 +743,30 @@ describe("E2E pipeline", () => {
       });
 
       issue = await h.provider.getIssue(300);
-      assert.ok(issue.labels.includes("To Test"), `After fix: ${issue.labels}`);
+      assert.ok(issue.labels.includes("To Review"), `After fix: ${issue.labels}`);
 
-      // 7. Tester passes → Done
+      // 5. Reviewer approves this time → To Test
+      await activateWorker(h.workspaceDir, h.groupId, "reviewer", {
+        issueId: "300", level: "junior",
+      });
+      await h.provider.transitionLabel(300, "To Review", "Reviewing");
+
+      await executeCompletion({
+        workspaceDir: h.workspaceDir,
+        groupId: h.groupId,
+        role: "reviewer",
+        result: "approve",
+        issueId: 300,
+        summary: "Looks good now",
+        provider: h.provider,
+        repoPath: "/tmp/test-repo",
+        projectName: "test-project",
+      });
+
+      issue = await h.provider.getIssue(300);
+      assert.ok(issue.labels.includes("To Test"), `After approve: ${issue.labels}`);
+
+      // 6. Tester passes → Done
       await activateWorker(h.workspaceDir, h.groupId, "tester", {
         issueId: "300", level: "medior",
       });
@@ -743,6 +787,229 @@ describe("E2E pipeline", () => {
       issue = await h.provider.getIssue(300);
       assert.ok(issue.labels.includes("Done"), `Final state: ${issue.labels}`);
       assert.strictEqual(issue.state, "closed");
+    });
+  });
+
+  // =========================================================================
+  // Review policy gating — projectTick respects reviewPolicy
+  // =========================================================================
+
+  describe("projectTick — reviewPolicy gating", () => {
+    function workflowWithPolicy(policy: ReviewPolicy): WorkflowConfig {
+      return { ...DEFAULT_WORKFLOW, reviewPolicy: policy };
+    }
+
+    it("reviewPolicy: human should skip reviewer dispatch", async () => {
+      h = await createTestHarness();
+      h.provider.seedIssue({ iid: 80, title: "Needs review", labels: ["To Review"] });
+
+      const result = await projectTick({
+        workspaceDir: h.workspaceDir,
+        groupId: h.groupId,
+        targetRole: "reviewer",
+        workflow: workflowWithPolicy(ReviewPolicy.HUMAN),
+        provider: h.provider,
+      });
+
+      assert.strictEqual(result.pickups.length, 0, "Should NOT dispatch reviewer");
+      const reviewerSkip = result.skipped.find((s) => s.role === "reviewer");
+      assert.ok(reviewerSkip, "Should have skipped reviewer");
+      assert.ok(reviewerSkip!.reason.includes("human"), `Skip reason: ${reviewerSkip!.reason}`);
+    });
+
+    it("reviewPolicy: agent should dispatch reviewer", async () => {
+      h = await createTestHarness();
+      h.provider.seedIssue({ iid: 81, title: "Needs review", labels: ["To Review"] });
+
+      const result = await projectTick({
+        workspaceDir: h.workspaceDir,
+        groupId: h.groupId,
+        agentId: "test-agent",
+        targetRole: "reviewer",
+        workflow: workflowWithPolicy(ReviewPolicy.AGENT),
+        provider: h.provider,
+      });
+
+      assert.strictEqual(result.pickups.length, 1, "Should dispatch reviewer");
+      assert.strictEqual(result.pickups[0].role, "reviewer");
+    });
+
+    it("reviewPolicy: auto should dispatch reviewer for junior-level issues", async () => {
+      h = await createTestHarness();
+      h.provider.seedIssue({ iid: 82, title: "Small fix", labels: ["To Review"] });
+
+      const result = await projectTick({
+        workspaceDir: h.workspaceDir,
+        groupId: h.groupId,
+        agentId: "test-agent",
+        targetRole: "reviewer",
+        workflow: workflowWithPolicy(ReviewPolicy.AUTO),
+        provider: h.provider,
+      });
+
+      // Junior/medior should be dispatched under auto policy
+      assert.strictEqual(result.pickups.length, 1, "Should dispatch reviewer for non-senior");
+    });
+
+    it("reviewPolicy: auto should skip reviewer for senior-level issues (review:human label)", async () => {
+      h = await createTestHarness();
+      // dispatch applies review:human for senior developers (via resolveReviewRouting)
+      h.provider.seedIssue({ iid: 83, title: "Architecture rework", labels: ["To Review", "developer:senior", "review:human"] });
+
+      const result = await projectTick({
+        workspaceDir: h.workspaceDir,
+        groupId: h.groupId,
+        targetRole: "reviewer",
+        workflow: workflowWithPolicy(ReviewPolicy.AUTO),
+        provider: h.provider,
+      });
+
+      assert.strictEqual(result.pickups.length, 0, "Should NOT dispatch reviewer for review:human");
+      const reviewerSkip = result.skipped.find((s) => s.role === "reviewer");
+      assert.ok(reviewerSkip, "Should have skipped reviewer");
+      assert.ok(reviewerSkip!.reason.includes("review:human"), `Skip reason: ${reviewerSkip!.reason}`);
+    });
+
+    it("reviewPolicy: human should still allow developer and tester dispatch", async () => {
+      h = await createTestHarness();
+      h.provider.seedIssue({ iid: 84, title: "Dev task", labels: ["To Do"] });
+      h.provider.seedIssue({ iid: 85, title: "Test task", labels: ["To Test"] });
+
+      const result = await projectTick({
+        workspaceDir: h.workspaceDir,
+        groupId: h.groupId,
+        agentId: "test-agent",
+        workflow: workflowWithPolicy(ReviewPolicy.HUMAN),
+        provider: h.provider,
+      });
+
+      const roles = result.pickups.map((p) => p.role);
+      assert.ok(roles.includes("developer"), `Should dispatch developer, got: ${roles}`);
+      assert.ok(roles.includes("tester"), `Should dispatch tester, got: ${roles}`);
+      assert.ok(!roles.includes("reviewer"), "Should NOT dispatch reviewer");
+    });
+  });
+
+  // =========================================================================
+  // Role:level labels — dispatch applies labels, tick reads them
+  // =========================================================================
+
+  describe("role:level labels", () => {
+    it("dispatch should apply role:level label to issue", async () => {
+      h = await createTestHarness();
+      h.provider.seedIssue({ iid: 400, title: "Label test", labels: ["To Do"] });
+
+      await dispatchTask({
+        workspaceDir: h.workspaceDir,
+        agentId: "test-agent",
+        groupId: h.groupId,
+        project: h.project,
+        issueId: 400,
+        issueTitle: "Label test",
+        issueDescription: "",
+        issueUrl: "https://example.com/issues/400",
+        role: "developer",
+        level: "senior",
+        fromLabel: "To Do",
+        toLabel: "Doing",
+        transitionLabel: (id, from, to) => h.provider.transitionLabel(id, from, to),
+        provider: h.provider,
+      });
+
+      const issue = await h.provider.getIssue(400);
+      assert.ok(issue.labels.includes("developer:senior"), `Should have developer:senior, got: ${issue.labels}`);
+      assert.ok(issue.labels.includes("Doing"), "Should have Doing label");
+      // Senior developer dispatch should also apply review:human routing label
+      assert.ok(issue.labels.includes("review:human"), `Should have review:human for senior, got: ${issue.labels}`);
+    });
+
+    it("dispatch should apply review:agent label for non-senior developer", async () => {
+      h = await createTestHarness();
+      h.provider.seedIssue({ iid: 404, title: "Junior task", labels: ["To Do"] });
+
+      await dispatchTask({
+        workspaceDir: h.workspaceDir,
+        agentId: "test-agent",
+        groupId: h.groupId,
+        project: h.project,
+        issueId: 404,
+        issueTitle: "Junior task",
+        issueDescription: "",
+        issueUrl: "https://example.com/issues/404",
+        role: "developer",
+        level: "junior",
+        fromLabel: "To Do",
+        toLabel: "Doing",
+        transitionLabel: (id, from, to) => h.provider.transitionLabel(id, from, to),
+        provider: h.provider,
+      });
+
+      const issue = await h.provider.getIssue(404);
+      assert.ok(issue.labels.includes("developer:junior"), `Should have developer:junior, got: ${issue.labels}`);
+      assert.ok(issue.labels.includes("review:agent"), `Should have review:agent for junior, got: ${issue.labels}`);
+    });
+
+    it("dispatch should replace old role:level label", async () => {
+      h = await createTestHarness();
+      // Issue already has a developer:junior label from a previous dispatch
+      h.provider.seedIssue({ iid: 401, title: "Re-dispatch", labels: ["To Improve", "developer:junior"] });
+
+      await dispatchTask({
+        workspaceDir: h.workspaceDir,
+        agentId: "test-agent",
+        groupId: h.groupId,
+        project: h.project,
+        issueId: 401,
+        issueTitle: "Re-dispatch",
+        issueDescription: "",
+        issueUrl: "https://example.com/issues/401",
+        role: "developer",
+        level: "medior",
+        fromLabel: "To Improve",
+        toLabel: "Doing",
+        transitionLabel: (id, from, to) => h.provider.transitionLabel(id, from, to),
+        provider: h.provider,
+      });
+
+      const issue = await h.provider.getIssue(401);
+      assert.ok(issue.labels.includes("developer:medior"), `Should have developer:medior, got: ${issue.labels}`);
+      assert.ok(!issue.labels.includes("developer:junior"), "Should NOT have developer:junior");
+    });
+
+    it("projectTick should skip reviewer when review:human label present", async () => {
+      h = await createTestHarness();
+      // review:human applied by dispatch for senior developers
+      h.provider.seedIssue({ iid: 402, title: "Senior review", labels: ["To Review", "developer:senior", "review:human"] });
+
+      const result = await projectTick({
+        workspaceDir: h.workspaceDir,
+        groupId: h.groupId,
+        targetRole: "reviewer",
+        workflow: { ...DEFAULT_WORKFLOW, reviewPolicy: ReviewPolicy.AUTO },
+        provider: h.provider,
+      });
+
+      assert.strictEqual(result.pickups.length, 0, "Should NOT dispatch reviewer for review:human");
+      const reviewerSkip = result.skipped.find((s) => s.role === "reviewer");
+      assert.ok(reviewerSkip, "Should have skipped reviewer");
+      assert.ok(reviewerSkip!.reason.includes("review:human"), `Skip reason: ${reviewerSkip!.reason}`);
+    });
+
+    it("projectTick should dispatch reviewer when review:agent label present", async () => {
+      h = await createTestHarness();
+      h.provider.seedIssue({ iid: 403, title: "Junior fix", labels: ["To Review", "developer:junior", "review:agent"] });
+
+      const result = await projectTick({
+        workspaceDir: h.workspaceDir,
+        groupId: h.groupId,
+        agentId: "test-agent",
+        targetRole: "reviewer",
+        workflow: { ...DEFAULT_WORKFLOW, reviewPolicy: ReviewPolicy.AUTO },
+        provider: h.provider,
+      });
+
+      assert.strictEqual(result.pickups.length, 1, "Should dispatch reviewer for review:agent");
+      assert.strictEqual(result.pickups[0].role, "reviewer");
     });
   });
 

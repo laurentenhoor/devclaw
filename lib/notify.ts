@@ -6,6 +6,7 @@
  * Event types:
  * - workerStart: Worker spawned/resumed for a task (→ project group)
  * - workerComplete: Worker completed task (→ project group)
+ * - reviewNeeded: Issue needs review — human or agent (→ project group)
  */
 import { log as auditLog } from "./audit.js";
 import type { PluginRuntime } from "openclaw/plugin-sdk";
@@ -35,6 +36,16 @@ export type NotifyEvent =
       result: "done" | "pass" | "fail" | "refine" | "blocked";
       summary?: string;
       nextState?: string;
+    }
+  | {
+      type: "reviewNeeded";
+      project: string;
+      groupId: string;
+      issueId: number;
+      issueUrl: string;
+      issueTitle: string;
+      routing: "human" | "agent";
+      prUrl?: string;
     };
 
 /**
@@ -72,6 +83,15 @@ function buildMessage(event: NotifyEvent): string {
         msg += ` → ${event.nextState}`;
       }
       msg += `\n🔗 ${event.issueUrl}`;
+      return msg;
+    }
+
+    case "reviewNeeded": {
+      const icon = event.routing === "human" ? "👀" : "🤖";
+      const who = event.routing === "human" ? "Human review needed" : "Agent review queued";
+      let msg = `${icon} ${who} for #${event.issueId}: ${event.issueTitle}`;
+      if (event.prUrl) msg += `\n🔗 PR: ${event.prUrl}`;
+      msg += `\n📋 Issue: ${event.issueUrl}`;
       return msg;
     }
   }

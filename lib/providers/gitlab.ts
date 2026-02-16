@@ -18,6 +18,16 @@ import {
   type WorkflowConfig,
 } from "../workflow.js";
 
+type GitLabMR = {
+  iid: number;
+  title: string;
+  description: string;
+  web_url: string;
+  state: string;
+  merged_at: string | null;
+  approved_by?: Array<unknown>;
+};
+
 export class GitLabProvider implements IssueProvider {
   private repoPath: string;
   private workflow: WorkflowConfig;
@@ -32,6 +42,15 @@ export class GitLabProvider implements IssueProvider {
       const result = await runCommand(["glab", ...args], { timeoutMs: 30_000, cwd: this.repoPath });
       return result.stdout.trim();
     });
+  }
+
+  /** Get MRs linked to an issue via GitLab's native related_merge_requests API. */
+  private async getRelatedMRs(issueId: number): Promise<GitLabMR[]> {
+    try {
+      const raw = await this.glab(["api", `projects/:id/issues/${issueId}/related_merge_requests`, "--paginate"]);
+      if (!raw) return [];
+      return JSON.parse(raw) as GitLabMR[];
+    } catch { return []; }
   }
 
   async ensureLabel(name: string, color: string): Promise<void> {
@@ -96,6 +115,17 @@ export class GitLabProvider implements IssueProvider {
     await this.glab(args);
   }
 
+  async addLabel(issueId: number, label: string): Promise<void> {
+    await this.glab(["issue", "update", String(issueId), "--label", label]);
+  }
+
+  async removeLabels(issueId: number, labels: string[]): Promise<void> {
+    if (labels.length === 0) return;
+    const args = ["issue", "update", String(issueId)];
+    for (const l of labels) args.push("--unlabel", l);
+    await this.glab(args);
+  }
+
   async closeIssue(issueId: number): Promise<void> { await this.glab(["issue", "close", String(issueId)]); }
   async reopenIssue(issueId: number): Promise<void> { await this.glab(["issue", "reopen", String(issueId)]); }
 
@@ -107,55 +137,56 @@ export class GitLabProvider implements IssueProvider {
   }
 
   async hasMergedMR(issueId: number): Promise<boolean> {
-    try {
-      const raw = await this.glab(["mr", "list", "--output", "json", "--state", "merged"]);
-      const mrs = JSON.parse(raw) as Array<{ title: string; description: string }>;
-      const pat = `#${issueId}`;
-      return mrs.some((mr) => mr.title.includes(pat) || (mr.description ?? "").includes(pat));
-    } catch { return false; }
+    const mrs = await this.getRelatedMRs(issueId);
+    return mrs.some((mr) => mr.state === "merged");
   }
 
   async getMergedMRUrl(issueId: number): Promise<string | null> {
-    try {
-      const raw = await this.glab(["mr", "list", "--output", "json", "--state", "merged"]);
-      const mrs = JSON.parse(raw) as Array<{ iid: number; title: string; description: string; web_url: string; merged_at: string }>;
-      const pat = `#${issueId}`;
-      const mr = mrs
-        .filter((mr) => mr.title.includes(pat) || (mr.description ?? "").includes(pat))
-        .sort((a, b) => new Date(b.merged_at).getTime() - new Date(a.merged_at).getTime())[0];
-      return mr?.web_url ?? null;
-    } catch { return null; }
+    const mrs = await this.getRelatedMRs(issueId);
+    const merged = mrs
+      .filter((mr) => mr.state === "merged" && mr.merged_at)
+      .sort((a, b) => new Date(b.merged_at!).getTime() - new Date(a.merged_at!).getTime());
+    return merged[0]?.web_url ?? null;
   }
 
   async getPrStatus(issueId: number): Promise<PrStatus> {
-    const pat = `#${issueId}`;
+    const mrs = await this.getRelatedMRs(issueId);
     // Check open MRs first
-    try {
-      const raw = await this.glab(["mr", "list", "--output", "json", "--state", "opened"]);
-      const mrs = JSON.parse(raw) as Array<{ title: string; description: string; web_url: string; approved_by?: Array<unknown> }>;
-      const mr = mrs.find((m) => m.title.includes(pat) || (m.description ?? "").includes(pat));
-      if (mr) {
-        const state = mr.approved_by && mr.approved_by.length > 0 ? PrState.APPROVED : PrState.OPEN;
-        return { state, url: mr.web_url };
-      }
-    } catch { /* continue to merged check */ }
+    const open = mrs.find((mr) => mr.state === "opened");
+    if (open) {
+      // related_merge_requests doesn't populate approved_by — use dedicated approvals endpoint
+      const approved = await this.isMrApproved(open.iid);
+      return { state: approved ? PrState.APPROVED : PrState.OPEN, url: open.web_url };
+    }
     // Check merged MRs
-    try {
-      const raw = await this.glab(["mr", "list", "--output", "json", "--state", "merged"]);
-      const mrs = JSON.parse(raw) as Array<{ title: string; description: string; web_url: string }>;
-      const mr = mrs.find((m) => m.title.includes(pat) || (m.description ?? "").includes(pat));
-      if (mr) return { state: PrState.MERGED, url: mr.web_url };
-    } catch { /* ignore */ }
+    const merged = mrs.find((mr) => mr.state === "merged");
+    if (merged) return { state: PrState.MERGED, url: merged.web_url };
     return { state: PrState.CLOSED, url: null };
   }
 
+  /** Check if an MR is approved via the dedicated approvals endpoint. */
+  private async isMrApproved(mrIid: number): Promise<boolean> {
+    try {
+      const raw = await this.glab(["api", `projects/:id/merge_requests/${mrIid}/approvals`]);
+      const data = JSON.parse(raw) as { approved?: boolean; approvals_left?: number };
+      return data.approved === true || (data.approvals_left ?? 1) === 0;
+    } catch { return false; }
+  }
+
   async mergePr(issueId: number): Promise<void> {
-    const pat = `#${issueId}`;
-    const raw = await this.glab(["mr", "list", "--output", "json", "--state", "opened"]);
-    const mrs = JSON.parse(raw) as Array<{ iid: number; title: string; description: string }>;
-    const mr = mrs.find((m) => m.title.includes(pat) || (m.description ?? "").includes(pat));
-    if (!mr) throw new Error(`No open MR found for issue #${issueId}`);
-    await this.glab(["mr", "merge", String(mr.iid)]);
+    const mrs = await this.getRelatedMRs(issueId);
+    const open = mrs.find((mr) => mr.state === "opened");
+    if (!open) throw new Error(`No open MR found for issue #${issueId}`);
+    await this.glab(["mr", "merge", String(open.iid)]);
+  }
+
+  async getPrDiff(issueId: number): Promise<string | null> {
+    const mrs = await this.getRelatedMRs(issueId);
+    const open = mrs.find((mr) => mr.state === "opened");
+    if (!open) return null;
+    try {
+      return await this.glab(["mr", "diff", String(open.iid)]);
+    } catch { return null; }
   }
 
   async addComment(issueId: number, body: string): Promise<void> {

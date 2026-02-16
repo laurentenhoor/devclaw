@@ -19,7 +19,6 @@ export const StateType = {
   ACTIVE: "active",
   HOLD: "hold",
   TERMINAL: "terminal",
-  REVIEW: "review",
 } as const;
 export type StateType = (typeof StateType)[keyof typeof StateType];
 
@@ -29,6 +28,14 @@ export const ExecutionMode = {
   SEQUENTIAL: "sequential",
 } as const;
 export type ExecutionMode = (typeof ExecutionMode)[keyof typeof ExecutionMode];
+
+/** Review policy for PR review after developer completion. */
+export const ReviewPolicy = {
+  HUMAN: "human",
+  AGENT: "agent",
+  AUTO: "auto",
+} as const;
+export type ReviewPolicy = (typeof ReviewPolicy)[keyof typeof ReviewPolicy];
 
 /** Role identifier. Built-in: "developer", "tester", "architect". Extensible via config. */
 export type Role = string;
@@ -63,6 +70,7 @@ export const WorkflowEvent = {
   REFINE: "REFINE",
   BLOCKED: "BLOCKED",
   APPROVE: "APPROVE",
+  REJECT: "REJECT",
 } as const;
 
 export type TransitionTarget = string | {
@@ -84,6 +92,7 @@ export type StateConfig = {
 
 export type WorkflowConfig = {
   initial: string;
+  reviewPolicy?: ReviewPolicy;
   states: Record<string, StateConfig>;
 };
 
@@ -99,6 +108,7 @@ export type CompletionRule = {
 
 export const DEFAULT_WORKFLOW: WorkflowConfig = {
   initial: "planning",
+  reviewPolicy: ReviewPolicy.AUTO,
   states: {
     // ── Main pipeline (happy path) ──────────────────────────────
     planning: {
@@ -121,19 +131,31 @@ export const DEFAULT_WORKFLOW: WorkflowConfig = {
       label: "Doing",
       color: "#f0ad4e",
       on: {
-        [WorkflowEvent.COMPLETE]: { target: "toTest", actions: [Action.GIT_PULL, Action.DETECT_PR] },
-        [WorkflowEvent.REVIEW]: { target: "reviewing", actions: [Action.DETECT_PR] },
+        [WorkflowEvent.COMPLETE]: { target: "toReview", actions: [Action.DETECT_PR] },
         [WorkflowEvent.BLOCKED]: "refining",
       },
     },
-    reviewing: {
-      type: StateType.REVIEW,
-      label: "In Review",
-      color: "#c5def5",
+    toReview: {
+      type: StateType.QUEUE,
+      role: "reviewer",
+      label: "To Review",
+      color: "#7057ff",
+      priority: 2,
       check: ReviewCheck.PR_APPROVED,
       on: {
+        [WorkflowEvent.PICKUP]: "reviewing",
         [WorkflowEvent.APPROVED]: { target: "toTest", actions: [Action.MERGE_PR, Action.GIT_PULL] },
         [WorkflowEvent.MERGE_FAILED]: "toImprove",
+      },
+    },
+    reviewing: {
+      type: StateType.ACTIVE,
+      role: "reviewer",
+      label: "Reviewing",
+      color: "#c5def5",
+      on: {
+        [WorkflowEvent.APPROVE]: { target: "toTest", actions: [Action.MERGE_PR, Action.GIT_PULL] },
+        [WorkflowEvent.REJECT]: "toImprove",
         [WorkflowEvent.BLOCKED]: "refining",
       },
     },
@@ -239,6 +261,83 @@ export function getLabelColors(workflow: WorkflowConfig): Record<string, string>
   }
   return colors;
 }
+
+// ---------------------------------------------------------------------------
+// Role:level labels — dynamic from config
+// ---------------------------------------------------------------------------
+
+/** Step routing label values — per-issue overrides for workflow steps. */
+export const StepRouting = {
+  HUMAN: "human",
+  AGENT: "agent",
+  SKIP: "skip",
+} as const;
+export type StepRoutingValue = (typeof StepRouting)[keyof typeof StepRouting];
+
+/** Known step routing labels (created on the provider during project registration). */
+export const STEP_ROUTING_LABELS: readonly string[] = [
+  "review:human", "review:agent", "review:skip",
+  "test:skip",
+];
+
+/** Step routing label color. */
+const STEP_ROUTING_COLOR = "#d93f0b";
+
+/**
+ * Determine review routing label for an issue based on project policy and developer level.
+ * Called during developer dispatch to persist the routing decision as a label.
+ */
+export function resolveReviewRouting(
+  policy: ReviewPolicy, level: string,
+): "review:human" | "review:agent" {
+  if (policy === ReviewPolicy.HUMAN) return "review:human";
+  if (policy === ReviewPolicy.AGENT) return "review:agent";
+  // AUTO: senior → human, else agent
+  return level === "senior" ? "review:human" : "review:agent";
+}
+
+/** Default colors per role for role:level labels. */
+const ROLE_LABEL_COLORS: Record<string, string> = {
+  developer: "#0e8a16",
+  tester: "#5319e7",
+  architect: "#0075ca",
+  reviewer: "#d93f0b",
+};
+
+/**
+ * Generate all role:level label definitions from resolved config roles.
+ * Returns array of { name, color } for label creation (e.g. "developer:junior").
+ */
+export function getRoleLabels(
+  roles: Record<string, { levels: string[]; enabled?: boolean }>,
+): Array<{ name: string; color: string }> {
+  const labels: Array<{ name: string; color: string }> = [];
+  for (const [roleId, role] of Object.entries(roles)) {
+    if (role.enabled === false) continue;
+    for (const level of role.levels) {
+      labels.push({
+        name: `${roleId}:${level}`,
+        color: getRoleLabelColor(roleId),
+      });
+    }
+  }
+  // Step routing labels (review:human, review:agent, test:skip, etc.)
+  for (const routingLabel of STEP_ROUTING_LABELS) {
+    labels.push({ name: routingLabel, color: STEP_ROUTING_COLOR });
+  }
+  return labels;
+}
+
+/**
+ * Get the label color for a role. Falls back to gray for unknown roles.
+ */
+export function getRoleLabelColor(role: string): string {
+  return ROLE_LABEL_COLORS[role] ?? "#cccccc";
+}
+
+// ---------------------------------------------------------------------------
+// Queue helpers
+// ---------------------------------------------------------------------------
 
 /**
  * Get queue labels for a role, ordered by priority (highest first).
@@ -348,7 +447,6 @@ export function findStateKeyByLabel(workflow: WorkflowConfig, label: string): st
  */
 function resultToEvent(result: string): string {
   if (result === "done") return WorkflowEvent.COMPLETE;
-  if (result === "review") return WorkflowEvent.REVIEW;
   return result.toUpperCase();
 }
 
@@ -405,7 +503,6 @@ export function getNextStateDescription(
   if (!targetState) return "";
 
   if (targetState.type === StateType.TERMINAL) return "Done!";
-  if (targetState.type === StateType.REVIEW) return "awaiting PR review";
   if (targetState.type === StateType.HOLD) return "awaiting human decision";
   if (targetState.type === StateType.QUEUE && targetState.role) {
     return `${targetState.role.toUpperCase()} queue`;
@@ -420,11 +517,12 @@ export function getNextStateDescription(
  */
 const RESULT_EMOJI: Record<string, string> = {
   done: "✅",
-  review: "👀",
   pass: "🎉",
   fail: "❌",
   refine: "🤔",
   blocked: "🚫",
+  approve: "✅",
+  reject: "❌",
 };
 
 export function getCompletionEmoji(_role: Role, result: string): string {

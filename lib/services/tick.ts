@@ -11,15 +11,16 @@ import { createProvider } from "../providers/index.js";
 import { selectLevel } from "../model-selector.js";
 import { getWorker, getSessionForLevel, readProjects } from "../projects.js";
 import { dispatchTask } from "../dispatch.js";
-import { roleForLevel } from "../roles/index.js";
+import { getLevelsForRole } from "../roles/index.js";
 import { loadConfig } from "../config/index.js";
 import {
   ExecutionMode,
+  ReviewPolicy,
   getActiveLabel,
   type WorkflowConfig,
   type Role,
 } from "../workflow.js";
-import { detectLevelFromLabels, findNextIssueForRole } from "./queue-scan.js";
+import { detectRoleLevelFromLabels, detectStepRouting, findNextIssueForRole } from "./queue-scan.js";
 
 // ---------------------------------------------------------------------------
 // projectTick
@@ -109,11 +110,36 @@ export async function projectTick(opts: {
       continue;
     }
 
+    // Review policy gate: fallback for issues dispatched before step routing labels existed
+    if (role === "reviewer") {
+      const policy = workflow.reviewPolicy ?? ReviewPolicy.AUTO;
+      if (policy === ReviewPolicy.HUMAN) {
+        skipped.push({ role, reason: "Review policy: human (heartbeat handles via PR polling)" });
+        continue;
+      }
+    }
+
     const next = await findNextIssueForRole(provider, role, workflow);
     if (!next) continue;
 
     const { issue, label: currentLabel } = next;
     const targetLabel = getActiveLabel(workflow, role);
+
+    // Step routing: check for review:human / review:skip / test:skip labels
+    if (role === "reviewer") {
+      const routing = detectStepRouting(issue.labels, "review");
+      if (routing === "human" || routing === "skip") {
+        skipped.push({ role, reason: `review:${routing} label` });
+        continue;
+      }
+    }
+    if (role === "tester") {
+      const routing = detectStepRouting(issue.labels, "test");
+      if (routing === "skip") {
+        skipped.push({ role, reason: "test:skip label" });
+        continue;
+      }
+    }
 
     // Level selection: label → heuristic
     const selectedLevel = resolveLevelForIssue(issue, role);
@@ -158,15 +184,25 @@ export async function projectTick(opts: {
 // ---------------------------------------------------------------------------
 
 /**
- * Determine the level for an issue based on labels, role overrides, and heuristic fallback.
+ * Determine the level for an issue based on labels and heuristic fallback.
+ *
+ * Priority:
+ * 1. This role's own label (e.g. tester:medior from a previous dispatch)
+ * 2. Inherit from another role's label (e.g. developer:medior → tester uses medior)
+ * 3. Heuristic fallback (first dispatch, no labels yet)
  */
 function resolveLevelForIssue(issue: Issue, role: Role): string {
-  const labelLevel = detectLevelFromLabels(issue.labels);
-  if (labelLevel) {
-    const labelRole = roleForLevel(labelLevel);
-    // If label level belongs to a different role, use heuristic for correct role
-    if (labelRole && labelRole !== role) return selectLevel(issue.title, issue.description ?? "", role).level;
-    return labelLevel;
+  const roleLevel = detectRoleLevelFromLabels(issue.labels);
+
+  // Own role label
+  if (roleLevel?.role === role) return roleLevel.level;
+
+  // Inherit from another role's label if level is valid for this role
+  if (roleLevel) {
+    const levels = getLevelsForRole(role);
+    if (levels.includes(roleLevel.level)) return roleLevel.level;
   }
+
+  // Heuristic fallback
   return selectLevel(issue.title, issue.description ?? "", role).level;
 }

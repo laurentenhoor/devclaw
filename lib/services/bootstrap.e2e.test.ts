@@ -122,16 +122,16 @@ describe("E2E bootstrap — hook injection", () => {
     // Default developer instructions are scaffolded by ensureDefaultFiles
     assert.strictEqual(files.length, 1);
     assert.ok(files[0].content!.includes("DEVELOPER"), "Should contain DEVELOPER heading");
-    assert.ok(files[0].content!.includes("work_finish"), "Should reference work_finish");
+    assert.ok(files[0].content!.includes("worktree"), "Should reference git worktree workflow");
   });
 
   it("should NOT inject anything for unknown custom roles", async () => {
     h = await createTestHarness({ projectName: "custom-app" });
 
     // Simulate a session key for a custom role that has no prompt file
-    // This key won't parse because "reviewer" isn't in the role registry
+    // This key won't parse because "investigator" isn't in the role registry
     const files = await h.simulateBootstrap(
-      "agent:main:subagent:custom-app-reviewer-medior",
+      "agent:main:subagent:custom-app-investigator-medior",
     );
 
     assert.strictEqual(files.length, 0, "Should not inject files for unknown roles");

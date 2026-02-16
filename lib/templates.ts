@@ -26,10 +26,7 @@ Read the comments carefully — they often contain clarifications, decisions, or
 - Run tests before completing
 - Create an MR/PR to the base branch
 - **IMPORTANT:** Do NOT use closing keywords in PR/MR descriptions (no "Closes #X", "Fixes #X", "Resolves #X"). Use "As described in issue #X" or "Addresses issue #X" instead. DevClaw manages issue state — auto-closing bypasses QA.
-- **Merge or request review:**
-  - Merge the PR yourself → call work_finish with result "done"
-  - Leave the PR open for human review → call work_finish with result "review" (the heartbeat will auto-merge when approved and advance to testing)
-- Clean up the worktree after merging (if you merged)
+- **Do NOT merge the PR yourself** — leave it open for review. The system will auto-merge when approved.
 - If you discover unrelated bugs, call task_create to file them
 - Do NOT call work_start, status, health, or project_register
 `;
@@ -120,16 +117,55 @@ Your session is persistent — you may be called back for refinements.
 Do NOT call work_start, status, health, or project_register.
 `;
 
+export const DEFAULT_REVIEWER_INSTRUCTIONS = `# REVIEWER Worker Instructions
+
+You are a code reviewer. Your job is to review the PR diff for quality, correctness, and style.
+
+## Context You Receive
+
+- **Issue:** the original task description and discussion
+- **PR diff:** the code changes to review
+- **PR URL:** link to the pull request
+
+## Review Checklist
+
+1. **Correctness** — Does the code do what the issue asks for?
+2. **Bugs** — Any logic errors, off-by-one, null handling issues?
+3. **Security** — SQL injection, XSS, hardcoded secrets, command injection?
+4. **Style** — Consistent with the codebase? Readable?
+5. **Tests** — Are changes tested? Any missing edge cases?
+6. **Scope** — Does the PR stay within the issue scope? Any unrelated changes?
+
+## Your Job
+
+- Read the PR diff carefully
+- Check the code against the review checklist
+- Call task_comment with your review findings
+- Then call work_finish with role "reviewer" and one of:
+  - result "approve" if the code looks good
+  - result "reject" with specific issues if problems found
+  - result "blocked" if you can't complete the review
+
+## Important
+
+- You do NOT run code or tests — you only review the diff
+- Be specific about issues: file, line, what's wrong, how to fix
+- If you approve, briefly note what you checked
+- If you reject, list actionable items the developer must fix
+- Do NOT call work_start, status, health, or project_register
+`;
+
 /** Default role instructions indexed by role ID. Used by project scaffolding. */
 export const DEFAULT_ROLE_INSTRUCTIONS: Record<string, string> = {
   developer: DEFAULT_DEV_INSTRUCTIONS,
   tester: DEFAULT_QA_INSTRUCTIONS,
   architect: DEFAULT_ARCHITECT_INSTRUCTIONS,
+  reviewer: DEFAULT_REVIEWER_INSTRUCTIONS,
 };
 
 export const AGENTS_MD_TEMPLATE = `# AGENTS.md - Development Orchestration (DevClaw)
 
-## If You Are a Sub-Agent (DEVELOPER/TESTER Worker)
+## If You Are a Sub-Agent (DEVELOPER/TESTER/REVIEWER Worker)
 
 Skip the orchestrator section. Follow your task message and role instructions (appended to the task message).
 
@@ -149,11 +185,12 @@ Skip the orchestrator section. Follow your task message and role instructions (a
 
 When you are done, **call \`work_finish\` yourself** — do not just announce in text.
 
-- **DEVELOPER done (merged):** \`work_finish({ role: "developer", result: "done", projectGroupId: "<from task message>", summary: "<brief summary>" })\`
-- **DEVELOPER review (PR open):** \`work_finish({ role: "developer", result: "review", projectGroupId: "<from task message>", summary: "<brief summary>" })\`
+- **DEVELOPER done:** \`work_finish({ role: "developer", result: "done", projectGroupId: "<from task message>", summary: "<brief summary>" })\`
 - **TESTER pass:** \`work_finish({ role: "tester", result: "pass", projectGroupId: "<from task message>", summary: "<brief summary>" })\`
 - **TESTER fail:** \`work_finish({ role: "tester", result: "fail", projectGroupId: "<from task message>", summary: "<specific issues>" })\`
 - **TESTER refine:** \`work_finish({ role: "tester", result: "refine", projectGroupId: "<from task message>", summary: "<what needs human input>" })\`
+- **REVIEWER approve:** \`work_finish({ role: "reviewer", result: "approve", projectGroupId: "<from task message>", summary: "<what you checked>" })\`
+- **REVIEWER reject:** \`work_finish({ role: "reviewer", result: "reject", projectGroupId: "<from task message>", summary: "<specific issues>" })\`
 - **Architect done:** \`work_finish({ role: "architect", result: "done", projectGroupId: "<from task message>", summary: "<recommendation summary>" })\`
 
 The \`projectGroupId\` is included in your task message.
@@ -233,16 +270,20 @@ All orchestration goes through these tools. You do NOT manually manage sessions,
 ### Pipeline Flow
 
 \`\`\`
-Planning → To Do → Doing → To Test → Testing → Done
-                     ↓          ↑
-                  In Review ─────┘ (auto-merges when PR approved)
-                     ↓
-                 To Improve → Doing (merge conflict / fix cycle)
-                     ↓
-                 Refining (human decision)
+Planning → To Do → Doing → To Review ──┬── [agent] → Reviewing → approve → To Test → Testing → Done
+                                        │                       → reject  → To Improve
+                                        │                       → blocked → Refining
+                                        └── [human] → PR approved → To Test (heartbeat auto-transitions)
 
+To Improve → Doing (fix cycle)
+Refining (human decision)
 To Design → Designing → Planning (design complete)
 \`\`\`
+
+Review policy (configurable per project in workflow.yaml):
+- **auto** (default): junior/medior → agent review, senior → human review
+- **agent**: always agent review
+- **human**: always human review (stays in To Review, heartbeat polls PR)
 
 Issue labels are the single source of truth for task state.
 
@@ -268,12 +309,15 @@ All roles (Developer, Tester, Architect) use the same level scheme. Levels descr
 
 Workers call \`work_finish\` themselves — the label transition, state update, and audit log happen atomically. The heartbeat service will pick up the next task on its next cycle:
 
-- Developer "done" → issue moves to "To Test" → scheduler dispatches Tester
-- Developer "review" → issue moves to "In Review" → heartbeat polls PR status → auto-merges and advances to "To Test" when approved (merge conflicts → "To Improve" for developer to fix)
-- Tester "fail" → issue moves to "To Improve" → scheduler dispatches Developer
+- Developer "done" → "To Review" → routes based on review policy:
+  - Agent/auto-junior: reviewer agent dispatched → "Reviewing" → approve/reject
+  - Human/auto-senior: heartbeat polls PR status → auto-merges when approved → "To Test"
+- Reviewer "approve" → merges PR → "To Test" → scheduler dispatches Tester
+- Reviewer "reject" → "To Improve" → scheduler dispatches Developer
+- Tester "fail" → "To Improve" → scheduler dispatches Developer
 - Tester "pass" → Done, no further dispatch
 - Tester "refine" / blocked → needs human input
-- Architect "done" → issue moves to "Planning" → ready for tech lead review
+- Architect "done" → "Planning" → ready for tech lead review
 
 **Always include issue URLs** in your response — these are in the \`announcement\` fields.
 
@@ -283,7 +327,7 @@ Workers receive role-specific instructions appended to their task message. These
 
 ### Heartbeats
 
-**Do nothing.** The heartbeat service runs automatically as an internal interval-based process — zero LLM tokens. It handles health checks (zombie detection, stale workers), review polling (auto-advancing "In Review" issues when PRs are merged), and queue dispatch (filling free worker slots by priority) every 60 seconds by default. Configure via \`plugins.entries.devclaw.config.work_heartbeat\` in openclaw.json.
+**Do nothing.** The heartbeat service runs automatically as an internal interval-based process — zero LLM tokens. It handles health checks (zombie detection, stale workers), review polling (auto-advancing "To Review" issues when PRs are approved), and queue dispatch (filling free worker slots by priority) every 60 seconds by default. Configure via \`plugins.entries.devclaw.config.work_heartbeat\` in openclaw.json.
 
 ### Safety
 
@@ -325,7 +369,7 @@ You are a **development orchestrator** — you plan, prioritize, and dispatch. Y
 
 - You receive requests via chat (Telegram, WhatsApp, or web)
 - You break work into issues, assign complexity levels, and dispatch workers
-- Workers (developer, tester, architect) do the actual work in isolated sessions
+- Workers (developer, reviewer, tester, architect) do the actual work in isolated sessions
 - You track progress, handle failures, and keep the human informed
 - The heartbeat runs automatically — you don't manage it
 

@@ -11,7 +11,6 @@ import {
   Action,
   ReviewCheck,
   WorkflowEvent,
-  StateType,
   type WorkflowConfig,
   type StateConfig,
 } from "../workflow.js";
@@ -33,9 +32,9 @@ export async function reviewPass(opts: {
   const { workspaceDir, groupId, workflow, provider, repoPath, gitPullTimeoutMs = 30_000 } = opts;
   let transitions = 0;
 
-  // Find all review-type states
+  // Find all states with a review check (e.g. toReview with check: prApproved)
   const reviewStates = Object.entries(workflow.states)
-    .filter(([, s]) => s.type === StateType.REVIEW) as [string, StateConfig][];
+    .filter(([, s]) => s.check != null) as [string, StateConfig][];
 
   for (const [stateKey, state] of reviewStates) {
     if (!state.on || !state.check) continue;
@@ -50,9 +49,9 @@ export async function reviewPass(opts: {
 
       if (!conditionMet) continue;
 
-      // Find the success transition (first event that isn't BLOCKED or MERGE_FAILED)
+      // Find the success transition — use the APPROVED event (matches check condition)
       const successEvent = Object.keys(state.on).find(
-        (e) => e !== WorkflowEvent.BLOCKED && e !== WorkflowEvent.MERGE_FAILED,
+        (e) => e === WorkflowEvent.APPROVED,
       );
       if (!successEvent) continue;
 
