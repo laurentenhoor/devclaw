@@ -266,7 +266,7 @@ Change which model powers each level in `workflow.yaml` — see [Configuration](
 | Session management | Plugin | Creates, reuses, and dispatches to sessions via CLI. Agent never touches session tools. |
 | Task completion | Plugin (`work_finish`) | Workers self-report. Scheduler dispatches next role. |
 | Role instructions | Plugin (bootstrap hook) | Injected into worker sessions via `agent:bootstrap` hook at session startup |
-| Review polling | Plugin (heartbeat) | Auto-advances "In Review" issues when PR is merged |
+| Review polling | Plugin (heartbeat) | Auto-merges and advances "In Review" issues when PR is approved |
 | Config validation | Plugin | Zod schemas validate `workflow.yaml` at load time |
 | Audit logging | Plugin | Automatic NDJSON append per tool call |
 | Zombie detection | Plugin | `health` checks active vs alive |

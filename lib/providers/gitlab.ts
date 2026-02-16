@@ -149,6 +149,15 @@ export class GitLabProvider implements IssueProvider {
     return { state: PrState.CLOSED, url: null };
   }
 
+  async mergePr(issueId: number): Promise<void> {
+    const pat = `#${issueId}`;
+    const raw = await this.glab(["mr", "list", "--output", "json", "--state", "opened"]);
+    const mrs = JSON.parse(raw) as Array<{ iid: number; title: string; description: string }>;
+    const mr = mrs.find((m) => m.title.includes(pat) || (m.description ?? "").includes(pat));
+    if (!mr) throw new Error(`No open MR found for issue #${issueId}`);
+    await this.glab(["mr", "merge", String(mr.iid)]);
+  }
+
   async addComment(issueId: number, body: string): Promise<void> {
     // Pass message directly as argv — no shell escaping needed with spawn
     await this.glab(["issue", "note", String(issueId), "--message", body]);

@@ -48,8 +48,8 @@ DevClaw enforces a configurable but consistent lifecycle for every task. The def
 
 ```
 Planning → To Do → Doing → To Test → Testing → Done
-                         ↘ In Review → (PR merged) → To Test
-                                    ↘ To Improve → Doing (fix cycle)
+                         ↘ In Review → (PR approved → auto-merge) → To Test
+                                    ↘ To Improve → Doing (merge conflict / fix cycle)
                                     ↘ Refining → (human decision)
 ```
 

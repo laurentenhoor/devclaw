@@ -152,6 +152,15 @@ export class GitHubProvider implements IssueProvider {
     return { state: PrState.CLOSED, url: null };
   }
 
+  async mergePr(issueId: number): Promise<void> {
+    const pat = `#${issueId}`;
+    const raw = await this.gh(["pr", "list", "--state", "open", "--json", "number,title,body,url", "--limit", "20"]);
+    const prs = JSON.parse(raw) as Array<{ number: number; title: string; body: string; url: string }>;
+    const pr = prs.find((p) => p.title.includes(pat) || (p.body ?? "").includes(pat));
+    if (!pr) throw new Error(`No open PR found for issue #${issueId}`);
+    await this.gh(["pr", "merge", pr.url, "--merge"]);
+  }
+
   async addComment(issueId: number, body: string): Promise<void> {
     await this.gh(["issue", "comment", String(issueId), "--body", body]);
   }

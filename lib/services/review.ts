@@ -50,8 +50,10 @@ export async function reviewPass(opts: {
 
       if (!conditionMet) continue;
 
-      // Find the success transition (first non-BLOCKED event)
-      const successEvent = Object.keys(state.on).find((e) => e !== WorkflowEvent.BLOCKED);
+      // Find the success transition (first event that isn't BLOCKED or MERGE_FAILED)
+      const successEvent = Object.keys(state.on).find(
+        (e) => e !== WorkflowEvent.BLOCKED && e !== WorkflowEvent.MERGE_FAILED,
+      );
       if (!successEvent) continue;
 
       const transition = state.on[successEvent];
@@ -60,10 +62,41 @@ export async function reviewPass(opts: {
       const targetState = workflow.states[targetKey];
       if (!targetState) continue;
 
-      // Execute transition actions
+      // Execute transition actions — mergePr is critical (aborts on failure)
+      let aborted = false;
       if (actions) {
         for (const action of actions) {
           switch (action) {
+            case Action.MERGE_PR:
+              try {
+                await provider.mergePr(issue.iid);
+              } catch (err) {
+                // Merge failed → fire MERGE_FAILED transition (developer fixes conflicts)
+                await auditLog(workspaceDir, "review_merge_failed", {
+                  groupId,
+                  issueId: issue.iid,
+                  from: state.label,
+                  error: (err as Error).message ?? String(err),
+                });
+                const failedTransition = state.on[WorkflowEvent.MERGE_FAILED];
+                if (failedTransition) {
+                  const failedKey = typeof failedTransition === "string" ? failedTransition : failedTransition.target;
+                  const failedState = workflow.states[failedKey];
+                  if (failedState) {
+                    await provider.transitionLabel(issue.iid, state.label, failedState.label);
+                    await auditLog(workspaceDir, "review_transition", {
+                      groupId,
+                      issueId: issue.iid,
+                      from: state.label,
+                      to: failedState.label,
+                      reason: "merge_failed",
+                    });
+                    transitions++;
+                  }
+                }
+                aborted = true;
+              }
+              break;
             case Action.GIT_PULL:
               try { await runCommand(["git", "pull"], { timeoutMs: gitPullTimeoutMs, cwd: repoPath }); } catch { /* best-effort */ }
               break;
@@ -74,8 +107,11 @@ export async function reviewPass(opts: {
               await provider.reopenIssue(issue.iid);
               break;
           }
+          if (aborted) break;
         }
       }
+
+      if (aborted) continue; // skip normal transition, move to next issue
 
       // Transition label
       await provider.transitionLabel(issue.iid, state.label, targetState.label);

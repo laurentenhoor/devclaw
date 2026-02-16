@@ -244,7 +244,7 @@ Manual trigger for heartbeat: health fix + review polling + queue dispatch. Same
 **Three-pass sweep:**
 
 1. **Health pass** — Runs `checkWorkerHealth` per project per role. Auto-fixes zombies, stale workers, orphaned state.
-2. **Review pass** — Polls PR status for issues in "In Review" state. Transitions to "To Test" when PR is merged.
+2. **Review pass** — Polls PR status for issues in "In Review" state. Auto-merges and transitions to "To Test" when PR is approved. If merge fails (conflicts), transitions to "To Improve" for developer to fix.
 3. **Tick pass** — Calls `projectTick` per project. Fills free worker slots by priority (To Improve > To Test > To Do).
 
 **Execution guards:**

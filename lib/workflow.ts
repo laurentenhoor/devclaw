@@ -39,6 +39,7 @@ export type TransitionAction = string;
 export const Action = {
   GIT_PULL: "gitPull",
   DETECT_PR: "detectPr",
+  MERGE_PR: "mergePr",
   CLOSE_ISSUE: "closeIssue",
   REOPEN_ISSUE: "reopenIssue",
 } as const;
@@ -56,6 +57,7 @@ export const WorkflowEvent = {
   COMPLETE: "COMPLETE",
   REVIEW: "REVIEW",
   APPROVED: "APPROVED",
+  MERGE_FAILED: "MERGE_FAILED",
   PASS: "PASS",
   FAIL: "FAIL",
   REFINE: "REFINE",
@@ -98,6 +100,7 @@ export type CompletionRule = {
 export const DEFAULT_WORKFLOW: WorkflowConfig = {
   initial: "planning",
   states: {
+    // ── Main pipeline (happy path) ──────────────────────────────
     planning: {
       type: StateType.HOLD,
       label: "Planning",
@@ -123,6 +126,17 @@ export const DEFAULT_WORKFLOW: WorkflowConfig = {
         [WorkflowEvent.BLOCKED]: "refining",
       },
     },
+    reviewing: {
+      type: StateType.REVIEW,
+      label: "In Review",
+      color: "#c5def5",
+      check: ReviewCheck.PR_APPROVED,
+      on: {
+        [WorkflowEvent.APPROVED]: { target: "toTest", actions: [Action.MERGE_PR, Action.GIT_PULL] },
+        [WorkflowEvent.MERGE_FAILED]: "toImprove",
+        [WorkflowEvent.BLOCKED]: "refining",
+      },
+    },
     toTest: {
       type: StateType.QUEUE,
       role: "tester",
@@ -143,6 +157,13 @@ export const DEFAULT_WORKFLOW: WorkflowConfig = {
         [WorkflowEvent.BLOCKED]: "refining",
       },
     },
+    done: {
+      type: StateType.TERMINAL,
+      label: "Done",
+      color: "#5cb85c",
+    },
+
+    // ── Side paths (loops back into main pipeline) ──────────────
     toImprove: {
       type: StateType.QUEUE,
       role: "developer",
@@ -157,21 +178,8 @@ export const DEFAULT_WORKFLOW: WorkflowConfig = {
       color: "#f39c12",
       on: { [WorkflowEvent.APPROVE]: "todo" },
     },
-    reviewing: {
-      type: StateType.REVIEW,
-      label: "In Review",
-      color: "#c5def5",
-      check: ReviewCheck.PR_MERGED,
-      on: {
-        [WorkflowEvent.APPROVED]: { target: "toTest", actions: [Action.GIT_PULL] },
-        [WorkflowEvent.BLOCKED]: "refining",
-      },
-    },
-    done: {
-      type: StateType.TERMINAL,
-      label: "Done",
-      color: "#5cb85c",
-    },
+
+    // ── Architect track ─────────────────────────────────────────
     toDesign: {
       type: StateType.QUEUE,
       role: "architect",

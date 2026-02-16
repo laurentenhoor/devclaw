@@ -61,6 +61,7 @@ export interface IssueProvider {
   hasMergedMR(issueId: number): Promise<boolean>;
   getMergedMRUrl(issueId: number): Promise<string | null>;
   getPrStatus(issueId: number): Promise<PrStatus>;
+  mergePr(issueId: number): Promise<void>;
   addComment(issueId: number, body: string): Promise<void>;
   healthCheck(): Promise<boolean>;
 }

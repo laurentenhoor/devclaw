@@ -14,13 +14,13 @@ The issue lifecycle is now a configurable state machine defined in `workflow.yam
 
 ```
 Planning → To Do → Doing → To Test → Testing → Done
-                         ↘ In Review → (PR merged) → To Test
-                                    ↘ To Improve → Doing
+                         ↘ In Review → (PR approved → auto-merge) → To Test
+                                    ↘ To Improve → Doing (merge conflict / fix cycle)
                                     ↘ Refining → (human decision)
 To Design → Designing → Planning
 ```
 
-States have types (`queue`, `active`, `hold`, `review`, `terminal`), transitions with actions (`gitPull`, `detectPr`, `closeIssue`, `reopenIssue`), and review checks (`prMerged`, `prApproved`).
+States have types (`queue`, `active`, `hold`, `review`, `terminal`), transitions with actions (`gitPull`, `detectPr`, `mergePr`, `closeIssue`, `reopenIssue`), and review checks (`prMerged`, `prApproved`).
 
 ### Three-Layer Configuration
 
@@ -42,7 +42,7 @@ Worker sessions receive role-specific instructions via the `agent:bootstrap` hoo
 
 ### In Review State and PR Polling
 
-DEVELOPER can submit a PR for human review (`result: "review"`), which transitions the issue to `In Review`. The heartbeat's review pass polls PR status via `getPrStatus()` on the provider. When the PR is merged, the issue auto-transitions to `To Test` for TESTER pickup.
+DEVELOPER can submit a PR for human review (`result: "review"`), which transitions the issue to `In Review`. The heartbeat's review pass polls PR status via `getPrStatus()` on the provider. When the PR is approved, DevClaw auto-merges via `mergePr()` and transitions to `To Test` for TESTER pickup. If the merge fails (e.g. conflicts), the issue moves to `To Improve` where a developer is auto-dispatched to resolve conflicts.
 
 ### Architect Role
 

@@ -427,7 +427,7 @@ sequenceDiagram
     WF-->>DEV: { announcement: "👀 DEVELOPER REVIEW #42" }
 ```
 
-The issue sits in "In Review" until the heartbeat's **review pass** detects the PR has been merged, then automatically transitions to "To Test".
+The issue sits in "In Review" until the heartbeat's **review pass** detects the PR has been approved. DevClaw then auto-merges the PR and transitions to "To Test". If the merge fails (e.g. conflicts), the issue moves to "To Improve" where a developer is auto-dispatched to resolve conflicts.
 
 ### Phase 6: TESTER pickup
 
@@ -586,7 +586,7 @@ Every piece of data and where it lives:
 │  design_task    → architect dispatch                            │
 │                                                                 │
 │  Bootstrap hook → injects role instructions into worker sessions│
-│  Review pass    → polls PR status, auto-advances In Review      │
+│  Review pass    → polls PR status, auto-merges approved PRs     │
 │  Config loader  → three-layer merge + Zod validation            │
 └─────────────────────────────────────────────────────────────────┘
         ↕ atomic file I/O          ↕ OpenClaw CLI (plugin shells out)
@@ -662,7 +662,7 @@ graph LR
         SD[Session dispatch<br/>create + send via CLI]
         AC[Scheduling<br/>tick queue after work_finish]
         RI[Role instructions<br/>injected via bootstrap hook]
-        RV[Review polling<br/>PR status → auto-advance]
+        RV[Review polling<br/>PR approved → auto-merge]
         A[Audit logging]
         Z[Zombie cleanup]
         CFG[Config validation<br/>Zod + integrity checks]

@@ -153,11 +153,12 @@ workflow:
       type: review
       label: In Review
       color: "#c5def5"
-      check: prMerged
+      check: prApproved
       on:
         APPROVED:
           target: toTest
-          actions: [gitPull]
+          actions: [mergePr, gitPull]
+        MERGE_FAILED: toImprove
         BLOCKED: refining
     done:
       type: terminal
@@ -188,7 +189,7 @@ workflow:
 | `queue` | Waiting for pickup. Must have a `role`. Has `priority` for ordering. |
 | `active` | Worker is currently working on it. Must have a `role`. |
 | `hold` | Paused, awaiting human decision. |
-| `review` | Awaiting external check (PR merged/approved). Has `check` field. |
+| `review` | Awaiting external check (PR approved/merged). Has `check` field. Heartbeat polls and auto-transitions. |
 | `terminal` | Completed. No outgoing transitions. |
 
 **Built-in actions:**
@@ -197,6 +198,7 @@ workflow:
 |---|---|
 | `gitPull` | Pull latest from the base branch |
 | `detectPr` | Auto-detect PR URL from the issue |
+| `mergePr` | Merge the PR associated with the issue. Critical in review states (aborts on failure). |
 | `closeIssue` | Close the issue |
 | `reopenIssue` | Reopen the issue |
 

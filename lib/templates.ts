@@ -2,6 +2,9 @@
  * Shared templates for workspace files.
  * Used by setup and project_register.
  */
+import YAML from "yaml";
+import { DEFAULT_WORKFLOW } from "./workflow.js";
+import { ROLE_REGISTRY } from "./roles/registry.js";
 
 export const DEFAULT_DEV_INSTRUCTIONS = `# DEVELOPER Worker Instructions
 
@@ -25,7 +28,7 @@ Read the comments carefully — they often contain clarifications, decisions, or
 - **IMPORTANT:** Do NOT use closing keywords in PR/MR descriptions (no "Closes #X", "Fixes #X", "Resolves #X"). Use "As described in issue #X" or "Addresses issue #X" instead. DevClaw manages issue state — auto-closing bypasses QA.
 - **Merge or request review:**
   - Merge the PR yourself → call work_finish with result "done"
-  - Leave the PR open for human review → call work_finish with result "review" (the heartbeat will auto-advance when the PR is merged)
+  - Leave the PR open for human review → call work_finish with result "review" (the heartbeat will auto-merge when approved and advance to testing)
 - Clean up the worktree after merging (if you merged)
 - If you discover unrelated bugs, call task_create to file them
 - Do NOT call work_start, status, health, or project_register
@@ -228,9 +231,9 @@ All orchestration goes through these tools. You do NOT manually manage sessions,
 \`\`\`
 Planning → To Do → Doing → To Test → Testing → Done
                      ↓          ↑
-                  In Review ─────┘ (auto-advances when PR merged)
+                  In Review ─────┘ (auto-merges when PR approved)
                      ↓
-                 To Improve → Doing (fix cycle)
+                 To Improve → Doing (merge conflict / fix cycle)
                      ↓
                  Refining (human decision)
 
@@ -262,7 +265,7 @@ All roles (Developer, Tester, Architect) use the same level scheme. Levels descr
 Workers call \`work_finish\` themselves — the label transition, state update, and audit log happen atomically. The heartbeat service will pick up the next task on its next cycle:
 
 - Developer "done" → issue moves to "To Test" → scheduler dispatches Tester
-- Developer "review" → issue moves to "In Review" → heartbeat polls PR status → auto-advances to "To Test" when merged
+- Developer "review" → issue moves to "In Review" → heartbeat polls PR status → auto-merges and advances to "To Test" when approved (merge conflicts → "To Improve" for developer to fix)
 - Tester "fail" → issue moves to "To Improve" → scheduler dispatches Developer
 - Tester "pass" → Done, no further dispatch
 - Tester "refine" / blocked → needs human input
@@ -292,121 +295,19 @@ export const HEARTBEAT_MD_TEMPLATE = `# HEARTBEAT.md
 Do nothing. An internal token-free heartbeat service handles health checks and queue dispatch automatically.
 `;
 
-export const WORKFLOW_YAML_TEMPLATE = `# DevClaw workflow configuration
-# Modify values to customize. Copy to devclaw/projects/<project>/workflow.yaml for project-specific overrides.
+/**
+ * Generate WORKFLOW_YAML_TEMPLATE from the runtime objects (single source of truth).
+ */
+function buildWorkflowYaml(): string {
+  const roles: Record<string, { models: Record<string, string> }> = {};
+  for (const [id, config] of Object.entries(ROLE_REGISTRY)) {
+    roles[id] = { models: { ...config.models } };
+  }
 
-roles:
-  developer:
-    models:
-      junior: anthropic/claude-haiku-4-5
-      medior: anthropic/claude-sonnet-4-5
-      senior: anthropic/claude-opus-4-6
-  tester:
-    models:
-      junior: anthropic/claude-haiku-4-5
-      medior: anthropic/claude-sonnet-4-5
-      senior: anthropic/claude-opus-4-6
-  architect:
-    models:
-      junior: anthropic/claude-sonnet-4-5
-      senior: anthropic/claude-opus-4-6
-  # Disable a role entirely:
-  # architect: false
+  const header =
+    "# DevClaw workflow configuration\n" +
+    "# Modify values to customize. Copy to devclaw/projects/<project>/workflow.yaml for project-specific overrides.\n\n";
+  return header + YAML.stringify({ roles, workflow: DEFAULT_WORKFLOW });
+}
 
-workflow:
-  initial: planning
-  states:
-    planning:
-      type: hold
-      label: Planning
-      color: "#95a5a6"
-      on:
-        APPROVE: todo
-    todo:
-      type: queue
-      role: developer
-      label: To Do
-      color: "#428bca"
-      priority: 1
-      on:
-        PICKUP: doing
-    doing:
-      type: active
-      role: developer
-      label: Doing
-      color: "#f0ad4e"
-      on:
-        COMPLETE:
-          target: toTest
-          actions: [gitPull, detectPr]
-        REVIEW:
-          target: reviewing
-          actions: [detectPr]
-        BLOCKED: refining
-    toTest:
-      type: queue
-      role: tester
-      label: To Test
-      color: "#5bc0de"
-      priority: 2
-      on:
-        PICKUP: testing
-    testing:
-      type: active
-      role: tester
-      label: Testing
-      color: "#9b59b6"
-      on:
-        PASS:
-          target: done
-          actions: [closeIssue]
-        FAIL:
-          target: toImprove
-          actions: [reopenIssue]
-        REFINE: refining
-        BLOCKED: refining
-    toImprove:
-      type: queue
-      role: developer
-      label: To Improve
-      color: "#d9534f"
-      priority: 3
-      on:
-        PICKUP: doing
-    refining:
-      type: hold
-      label: Refining
-      color: "#f39c12"
-      on:
-        APPROVE: todo
-    reviewing:
-      type: review
-      label: In Review
-      color: "#c5def5"
-      check: prMerged
-      on:
-        APPROVED:
-          target: toTest
-          actions: [gitPull]
-        BLOCKED: refining
-    done:
-      type: terminal
-      label: Done
-      color: "#5cb85c"
-    toDesign:
-      type: queue
-      role: architect
-      label: To Design
-      color: "#0075ca"
-      priority: 1
-      on:
-        PICKUP: designing
-    designing:
-      type: active
-      role: architect
-      label: Designing
-      color: "#d4c5f9"
-      on:
-        COMPLETE: planning
-        BLOCKED: refining
-`;
+export const WORKFLOW_YAML_TEMPLATE = buildWorkflowYaml();

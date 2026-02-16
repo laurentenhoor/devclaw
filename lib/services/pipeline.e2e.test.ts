@@ -370,10 +370,10 @@ describe("E2E pipeline", () => {
       h = await createTestHarness();
     });
 
-    it("should transition In Review → To Test when PR is merged", async () => {
+    it("should auto-merge and transition In Review → To Test when PR is approved", async () => {
       // Seed issue in "In Review" state
       h.provider.seedIssue({ iid: 60, title: "Feature Y", labels: ["In Review"] });
-      h.provider.setPrStatus(60, { state: "merged", url: "https://example.com/pr/10" });
+      h.provider.setPrStatus(60, { state: "approved", url: "https://example.com/pr/10" });
 
       const transitions = await reviewPass({
         workspaceDir: h.workspaceDir,
@@ -389,6 +389,11 @@ describe("E2E pipeline", () => {
       const issue = await h.provider.getIssue(60);
       assert.ok(issue.labels.includes("To Test"), `Labels: ${issue.labels}`);
       assert.ok(!issue.labels.includes("In Review"), "Should not have In Review");
+
+      // mergePr action should have been called
+      const mergeCalls = h.provider.callsTo("mergePr");
+      assert.strictEqual(mergeCalls.length, 1);
+      assert.strictEqual(mergeCalls[0].args.issueId, 60);
 
       // gitPull action should have been attempted
       const gitCmds = h.commands.commands.filter((c) => c.argv[0] === "git");
@@ -417,8 +422,8 @@ describe("E2E pipeline", () => {
     it("should handle multiple review issues in one pass", async () => {
       h.provider.seedIssue({ iid: 70, title: "PR A", labels: ["In Review"] });
       h.provider.seedIssue({ iid: 71, title: "PR B", labels: ["In Review"] });
-      h.provider.setPrStatus(70, { state: "merged", url: "https://example.com/pr/20" });
-      h.provider.setPrStatus(71, { state: "merged", url: "https://example.com/pr/21" });
+      h.provider.setPrStatus(70, { state: "approved", url: "https://example.com/pr/20" });
+      h.provider.setPrStatus(71, { state: "approved", url: "https://example.com/pr/21" });
 
       const transitions = await reviewPass({
         workspaceDir: h.workspaceDir,
@@ -434,6 +439,40 @@ describe("E2E pipeline", () => {
       const issue71 = await h.provider.getIssue(71);
       assert.ok(issue70.labels.includes("To Test"));
       assert.ok(issue71.labels.includes("To Test"));
+
+      // Both should have had mergePr called
+      const mergeCalls = h.provider.callsTo("mergePr");
+      assert.strictEqual(mergeCalls.length, 2);
+    });
+
+    it("should transition In Review → To Improve when merge fails (conflicts)", async () => {
+      h.provider.seedIssue({ iid: 65, title: "Conflicting PR", labels: ["In Review"] });
+      h.provider.setPrStatus(65, { state: "approved", url: "https://example.com/pr/15" });
+      h.provider.mergePrFailures.add(65);
+
+      const transitions = await reviewPass({
+        workspaceDir: h.workspaceDir,
+        groupId: h.groupId,
+        workflow: DEFAULT_WORKFLOW,
+        provider: h.provider,
+        repoPath: "/tmp/test-repo",
+      });
+
+      assert.strictEqual(transitions, 1);
+
+      // Issue should have moved to "To Improve" (not "To Test")
+      const issue = await h.provider.getIssue(65);
+      assert.ok(issue.labels.includes("To Improve"), `Labels: ${issue.labels}`);
+      assert.ok(!issue.labels.includes("In Review"), "Should not have In Review");
+      assert.ok(!issue.labels.includes("To Test"), "Should NOT have To Test");
+
+      // mergePr should have been attempted
+      const mergeCalls = h.provider.callsTo("mergePr");
+      assert.strictEqual(mergeCalls.length, 1);
+
+      // gitPull should NOT have run (aborted before git pull)
+      const gitCmds = h.commands.commands.filter((c) => c.argv[0] === "git");
+      assert.strictEqual(gitCmds.length, 0, "Should NOT have run git pull after merge failure");
     });
   });
 
@@ -551,8 +590,8 @@ describe("E2E pipeline", () => {
       let issue = await h.provider.getIssue(200);
       assert.ok(issue.labels.includes("In Review"), `After review: ${issue.labels}`);
 
-      // 4. PR gets merged — review pass picks it up
-      h.provider.setPrStatus(200, { state: "merged", url: "https://example.com/pr/50" });
+      // 4. PR gets approved — review pass picks it up and auto-merges
+      h.provider.setPrStatus(200, { state: "approved", url: "https://example.com/pr/50" });
 
       const transitions = await reviewPass({
         workspaceDir: h.workspaceDir,

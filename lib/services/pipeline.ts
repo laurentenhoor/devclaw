@@ -91,6 +91,11 @@ export async function executeCompletion(opts: {
           auditLog(workspaceDir, "pipeline_warning", { step: "detectPr", issue: issueId, role, error: (err as Error).message ?? String(err) }).catch(() => {});
         } }
         break;
+      case Action.MERGE_PR:
+        try { await provider.mergePr(issueId); } catch (err) {
+          auditLog(workspaceDir, "pipeline_warning", { step: "mergePr", issue: issueId, role, error: (err as Error).message ?? String(err) }).catch(() => {});
+        }
+        break;
     }
   }
 

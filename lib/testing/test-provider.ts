@@ -21,16 +21,28 @@ import { DEFAULT_WORKFLOW, type WorkflowConfig } from "../workflow.js";
 export type ProviderCall =
   | { method: "ensureLabel"; args: { name: string; color: string } }
   | { method: "ensureAllStateLabels"; args: {} }
-  | { method: "createIssue"; args: { title: string; description: string; label: StateLabel; assignees?: string[] } }
+  | {
+      method: "createIssue";
+      args: {
+        title: string;
+        description: string;
+        label: StateLabel;
+        assignees?: string[];
+      };
+    }
   | { method: "listIssuesByLabel"; args: { label: StateLabel } }
   | { method: "getIssue"; args: { issueId: number } }
   | { method: "listComments"; args: { issueId: number } }
-  | { method: "transitionLabel"; args: { issueId: number; from: StateLabel; to: StateLabel } }
+  | {
+      method: "transitionLabel";
+      args: { issueId: number; from: StateLabel; to: StateLabel };
+    }
   | { method: "closeIssue"; args: { issueId: number } }
   | { method: "reopenIssue"; args: { issueId: number } }
   | { method: "hasMergedMR"; args: { issueId: number } }
   | { method: "getMergedMRUrl"; args: { issueId: number } }
   | { method: "getPrStatus"; args: { issueId: number } }
+  | { method: "mergePr"; args: { issueId: number } }
   | { method: "addComment"; args: { issueId: number; body: string } }
   | { method: "healthCheck"; args: {} };
 
@@ -49,6 +61,8 @@ export class TestProvider implements IssueProvider {
   prStatuses = new Map<number, PrStatus>();
   /** Merged MR URLs per issue. */
   mergedMrUrls = new Map<number, string>();
+  /** Issue IDs where mergePr should fail (simulates merge conflicts). */
+  mergePrFailures = new Set<number>();
   /** All calls, in order. */
   calls: ProviderCall[] = [];
 
@@ -71,7 +85,8 @@ export class TestProvider implements IssueProvider {
       description: overrides.description ?? "",
       labels: overrides.labels ?? [],
       state: overrides.state ?? "opened",
-      web_url: overrides.web_url ?? `https://example.com/issues/${overrides.iid}`,
+      web_url:
+        overrides.web_url ?? `https://example.com/issues/${overrides.iid}`,
     };
     this.issues.set(issue.iid, issue);
     if (issue.iid >= this.nextIssueId) this.nextIssueId = issue.iid + 1;
@@ -102,6 +117,7 @@ export class TestProvider implements IssueProvider {
     this.labels.clear();
     this.prStatuses.clear();
     this.mergedMrUrls.clear();
+    this.mergePrFailures.clear();
     this.calls = [];
     this.nextIssueId = 1;
   }
@@ -129,7 +145,10 @@ export class TestProvider implements IssueProvider {
     label: StateLabel,
     assignees?: string[],
   ): Promise<Issue> {
-    this.calls.push({ method: "createIssue", args: { title, description, label, assignees } });
+    this.calls.push({
+      method: "createIssue",
+      args: { title, description, label, assignees },
+    });
     const iid = this.nextIssueId++;
     const issue: Issue = {
       iid,
@@ -210,10 +229,26 @@ export class TestProvider implements IssueProvider {
     return this.prStatuses.get(issueId) ?? { state: "closed", url: null };
   }
 
+  async mergePr(issueId: number): Promise<void> {
+    this.calls.push({ method: "mergePr", args: { issueId } });
+    if (this.mergePrFailures.has(issueId)) {
+      throw new Error(`Merge conflict: cannot merge PR for issue #${issueId}`);
+    }
+    // Simulate successful merge — update PR status to merged
+    const existing = this.prStatuses.get(issueId);
+    if (existing) {
+      this.prStatuses.set(issueId, { state: "merged", url: existing.url });
+    }
+  }
+
   async addComment(issueId: number, body: string): Promise<void> {
     this.calls.push({ method: "addComment", args: { issueId, body } });
     const existing = this.comments.get(issueId) ?? [];
-    existing.push({ author: "test", body, created_at: new Date().toISOString() });
+    existing.push({
+      author: "test",
+      body,
+      created_at: new Date().toISOString(),
+    });
     this.comments.set(issueId, existing);
   }
 
