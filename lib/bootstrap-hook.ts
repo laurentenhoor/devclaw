@@ -44,17 +44,19 @@ export async function loadRoleInstructions(
   projectName: string,
   role: string,
 ): Promise<string> {
-  const projectFile = path.join(workspaceDir, "projects", "roles", projectName, `${role}.md`);
-  try {
-    return await fs.readFile(projectFile, "utf-8");
-  } catch {
-    /* not found — try default */
-  }
-  const defaultFile = path.join(workspaceDir, "projects", "roles", "default", `${role}.md`);
-  try {
-    return await fs.readFile(defaultFile, "utf-8");
-  } catch {
-    /* not found */
+  // Try paths in priority order: new layout first, then legacy fallback
+  const candidates = [
+    path.join(workspaceDir, "devclaw", "projects", projectName, "prompts", `${role}.md`),
+    path.join(workspaceDir, "devclaw", "prompts", `${role}.md`),
+    path.join(workspaceDir, "projects", "roles", projectName, `${role}.md`),
+    path.join(workspaceDir, "projects", "roles", "default", `${role}.md`),
+  ];
+  for (const filePath of candidates) {
+    try {
+      return await fs.readFile(filePath, "utf-8");
+    } catch {
+      /* not found — try next */
+    }
   }
   return "";
 }
