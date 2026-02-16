@@ -185,13 +185,14 @@ describe("emoji", () => {
 
 describe("completion results", () => {
   it("should return valid results per role", () => {
-    assert.deepStrictEqual([...getCompletionResults("developer")], ["done", "blocked"]);
+    assert.deepStrictEqual([...getCompletionResults("developer")], ["done", "review", "blocked"]);
     assert.deepStrictEqual([...getCompletionResults("tester")], ["pass", "fail", "refine", "blocked"]);
     assert.deepStrictEqual([...getCompletionResults("architect")], ["done", "blocked"]);
   });
 
   it("should validate results", () => {
     assert.strictEqual(isValidResult("developer", "done"), true);
+    assert.strictEqual(isValidResult("developer", "review"), true);
     assert.strictEqual(isValidResult("developer", "pass"), false);
     assert.strictEqual(isValidResult("tester", "pass"), true);
     assert.strictEqual(isValidResult("tester", "done"), false);

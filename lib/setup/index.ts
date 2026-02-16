@@ -14,6 +14,7 @@ import { createAgent, resolveWorkspacePath } from "./agent.js";
 import { writePluginConfig } from "./config.js";
 import { scaffoldWorkspace } from "./workspace.js";
 import { DATA_DIR } from "./migrate-layout.js";
+import type { ExecutionMode } from "../workflow.js";
 
 export type ModelConfig = Record<string, Record<string, string>>;
 
@@ -33,7 +34,7 @@ export type SetupOpts = {
   /** Model overrides per role.level. Missing levels use defaults. */
   models?: Record<string, Partial<Record<string, string>>>;
   /** Plugin-level project execution mode: parallel or sequential. Default: parallel. */
-  projectExecution?: "parallel" | "sequential";
+  projectExecution?: ExecutionMode;
 };
 
 export type SetupResult = {

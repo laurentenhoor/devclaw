@@ -9,6 +9,7 @@ import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
 import { runSetup, type SetupOpts } from "../setup/index.js";
 import { getAllDefaultModels, getAllRoleIds, getLevelsForRole } from "../roles/index.js";
+import { ExecutionMode } from "../workflow.js";
 
 export function createSetupTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
@@ -51,7 +52,7 @@ export function createSetupTool(api: OpenClawPluginApi) {
         },
         projectExecution: {
           type: "string",
-          enum: ["parallel", "sequential"],
+          enum: Object.values(ExecutionMode),
           description: "Project execution mode. Default: parallel.",
         },
       },
@@ -68,8 +69,7 @@ export function createSetupTool(api: OpenClawPluginApi) {
         workspacePath: params.newAgentName ? undefined : ctx.workspaceDir,
         models: params.models as SetupOpts["models"],
         projectExecution: params.projectExecution as
-          | "parallel"
-          | "sequential"
+          | ExecutionMode
           | undefined,
       });
 

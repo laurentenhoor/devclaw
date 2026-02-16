@@ -14,7 +14,8 @@ import YAML from "yaml";
 import { ROLE_REGISTRY } from "../roles/registry.js";
 import { DEFAULT_WORKFLOW, type WorkflowConfig } from "../workflow.js";
 import { mergeConfig } from "./merge.js";
-import type { DevClawConfig, ResolvedConfig, ResolvedRoleConfig, RoleOverride } from "./types.js";
+import type { DevClawConfig, ResolvedConfig, ResolvedRoleConfig, ResolvedTimeouts, RoleOverride } from "./types.js";
+import { validateConfig, validateWorkflowIntegrity } from "./schema.js";
 import { DATA_DIR } from "../setup/migrate-layout.js";
 
 /**
@@ -140,20 +141,42 @@ function resolve(config: DevClawConfig): ResolvedConfig {
     states: { ...DEFAULT_WORKFLOW.states, ...config.workflow?.states },
   };
 
-  return { roles, workflow };
+  // Validate structural integrity (cross-references between states)
+  const integrityErrors = validateWorkflowIntegrity(workflow);
+  if (integrityErrors.length > 0) {
+    throw new Error(`Workflow config integrity errors:\n  - ${integrityErrors.join("\n  - ")}`);
+  }
+
+  const timeouts: ResolvedTimeouts = {
+    gitPullMs: config.timeouts?.gitPullMs ?? 30_000,
+    gatewayMs: config.timeouts?.gatewayMs ?? 15_000,
+    sessionPatchMs: config.timeouts?.sessionPatchMs ?? 30_000,
+    dispatchMs: config.timeouts?.dispatchMs ?? 600_000,
+    staleWorkerHours: config.timeouts?.staleWorkerHours ?? 2,
+  };
+
+  return { roles, workflow, timeouts };
 }
 
 // ---------------------------------------------------------------------------
 // File reading helpers
 // ---------------------------------------------------------------------------
 
-/** Read workflow.yaml (new primary config file). */
+/** Read workflow.yaml (new primary config file). Validates structure via Zod. */
 async function readWorkflowFile(dir: string): Promise<DevClawConfig | null> {
   try {
     const content = await fs.readFile(path.join(dir, "workflow.yaml"), "utf-8");
-    return YAML.parse(content) as DevClawConfig;
-  } catch { /* not found */ }
-  return null;
+    const parsed = YAML.parse(content);
+    if (parsed) validateConfig(parsed);
+    return parsed as DevClawConfig;
+  } catch (err: any) {
+    if (err?.code === "ENOENT") return null;
+    // Re-throw validation errors with file context
+    if (err?.name === "ZodError") {
+      throw new Error(`Invalid workflow.yaml in ${dir}: ${err.message}`);
+    }
+    return null;
+  }
 }
 
 /** Read config.yaml (old name, fallback for unmigrated workspaces). */

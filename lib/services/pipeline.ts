@@ -8,8 +8,11 @@ import type { StateLabel, IssueProvider } from "../providers/provider.js";
 import { deactivateWorker } from "../projects.js";
 import { runCommand } from "../run-command.js";
 import { notify, getNotificationConfig } from "../notify.js";
+import { log as auditLog } from "../audit.js";
+import { loadConfig } from "../config/index.js";
 import {
   DEFAULT_WORKFLOW,
+  Action,
   getCompletionRule,
   getNextStateDescription,
   getCompletionEmoji,
@@ -72,18 +75,23 @@ export async function executeCompletion(opts: {
   const rule = getCompletionRule(workflow, role, result);
   if (!rule) throw new Error(`No completion rule for ${key}`);
 
+  const { timeouts } = await loadConfig(workspaceDir, projectName);
   let prUrl = opts.prUrl;
 
-  // Git pull (dev:done)
-  if (rule.gitPull) {
-    try {
-      await runCommand(["git", "pull"], { timeoutMs: 30_000, cwd: repoPath });
-    } catch { /* best-effort */ }
-  }
-
-  // Auto-detect PR URL (dev:done)
-  if (rule.detectPr && !prUrl) {
-    try { prUrl = await provider.getMergedMRUrl(issueId) ?? undefined; } catch { /* ignore */ }
+  // Execute pre-notification actions
+  for (const action of rule.actions) {
+    switch (action) {
+      case Action.GIT_PULL:
+        try { await runCommand(["git", "pull"], { timeoutMs: timeouts.gitPullMs, cwd: repoPath }); } catch (err) {
+          auditLog(workspaceDir, "pipeline_warning", { step: "gitPull", issue: issueId, role, error: (err as Error).message ?? String(err) }).catch(() => {});
+        }
+        break;
+      case Action.DETECT_PR:
+        if (!prUrl) { try { prUrl = await provider.getMergedMRUrl(issueId) ?? undefined; } catch (err) {
+          auditLog(workspaceDir, "pipeline_warning", { step: "detectPr", issue: issueId, role, error: (err as Error).message ?? String(err) }).catch(() => {});
+        } }
+        break;
+    }
   }
 
   // Get issue early (for URL in notification)
@@ -113,15 +121,25 @@ export async function executeCompletion(opts: {
       channel: channel ?? "telegram",
       runtime,
     },
-  ).catch(() => { /* non-fatal */ });
+  ).catch((err) => {
+    auditLog(workspaceDir, "pipeline_warning", { step: "notify", issue: issueId, role, error: (err as Error).message ?? String(err) }).catch(() => {});
+  });
 
   // Deactivate worker + transition label
   await deactivateWorker(workspaceDir, groupId, role);
   await provider.transitionLabel(issueId, rule.from as StateLabel, rule.to as StateLabel);
 
-  // Close/reopen
-  if (rule.closeIssue) await provider.closeIssue(issueId);
-  if (rule.reopenIssue) await provider.reopenIssue(issueId);
+  // Execute post-transition actions
+  for (const action of rule.actions) {
+    switch (action) {
+      case Action.CLOSE_ISSUE:
+        await provider.closeIssue(issueId);
+        break;
+      case Action.REOPEN_ISSUE:
+        await provider.reopenIssue(issueId);
+        break;
+    }
+  }
 
   // Build announcement using workflow-derived emoji
   const emoji = getCompletionEmoji(role, result);
@@ -138,7 +156,7 @@ export async function executeCompletion(opts: {
     nextState,
     prUrl,
     issueUrl: issue.web_url,
-    issueClosed: rule.closeIssue,
-    issueReopened: rule.reopenIssue,
+    issueClosed: rule.actions.includes(Action.CLOSE_ISSUE),
+    issueReopened: rule.actions.includes(Action.REOPEN_ISSUE),
   };
 }

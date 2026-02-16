@@ -19,12 +19,36 @@ export type RoleOverride = {
 };
 
 /**
+ * Configurable timeout values (in milliseconds).
+ * All fields optional — defaults applied at resolution time.
+ */
+export type TimeoutConfig = {
+  gitPullMs?: number;
+  gatewayMs?: number;
+  sessionPatchMs?: number;
+  dispatchMs?: number;
+  staleWorkerHours?: number;
+};
+
+/**
  * The full workflow.yaml shape.
  * All fields optional — missing fields inherit from the layer below.
  */
 export type DevClawConfig = {
   roles?: Record<string, RoleOverride | false>;
   workflow?: Partial<WorkflowConfig>;
+  timeouts?: TimeoutConfig;
+};
+
+/**
+ * Fully resolved timeout config — all fields present with defaults.
+ */
+export type ResolvedTimeouts = {
+  gitPullMs: number;
+  gatewayMs: number;
+  sessionPatchMs: number;
+  dispatchMs: number;
+  staleWorkerHours: number;
 };
 
 /**
@@ -34,6 +58,7 @@ export type DevClawConfig = {
 export type ResolvedConfig = {
   roles: Record<string, ResolvedRoleConfig>;
   workflow: WorkflowConfig;
+  timeouts: ResolvedTimeouts;
 };
 
 /**

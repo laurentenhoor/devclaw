@@ -28,6 +28,20 @@ export type IssueComment = {
   created_at: string;
 };
 
+/** Built-in PR states. */
+export const PrState = {
+  OPEN: "open",
+  APPROVED: "approved",
+  MERGED: "merged",
+  CLOSED: "closed",
+} as const;
+export type PrState = (typeof PrState)[keyof typeof PrState];
+
+export type PrStatus = {
+  state: PrState;
+  url: string | null;
+};
+
 // ---------------------------------------------------------------------------
 // Provider interface
 // ---------------------------------------------------------------------------
@@ -46,6 +60,7 @@ export interface IssueProvider {
   getCurrentStateLabel(issue: Issue): StateLabel | null;
   hasMergedMR(issueId: number): Promise<boolean>;
   getMergedMRUrl(issueId: number): Promise<string | null>;
+  getPrStatus(issueId: number): Promise<PrStatus>;
   addComment(issueId: number, body: string): Promise<void>;
   healthCheck(): Promise<boolean>;
 }

@@ -151,6 +151,7 @@ export async function dispatchTask(
 
   const resolvedConfig = await loadConfig(workspaceDir, project.name);
   const resolvedRole = resolvedConfig.roles[role];
+  const { timeouts } = resolvedConfig;
   const model = resolveModel(role, level, resolvedRole);
   const worker = getWorker(project, role);
   const existingSessionKey = getSessionForLevel(worker, level);
@@ -194,16 +195,22 @@ export async function dispatchTask(
       channel: opts.channel ?? "telegram",
       runtime,
     },
-  ).catch(() => { /* non-fatal */ });
+  ).catch((err) => {
+    auditLog(workspaceDir, "dispatch_warning", {
+      step: "notify", issue: issueId, role,
+      error: (err as Error).message ?? String(err),
+    }).catch(() => {});
+  });
 
   // Step 3: Ensure session exists (fire-and-forget — don't wait for gateway)
   // Session key is deterministic, so we can proceed immediately
-  ensureSessionFireAndForget(sessionKey, model);
+  ensureSessionFireAndForget(sessionKey, model, workspaceDir, timeouts.sessionPatchMs);
 
   // Step 4: Send task to agent (fire-and-forget)
   sendToAgent(sessionKey, taskMessage, {
-    agentId, projectName: project.name, issueId, role,
-    orchestratorSessionKey: opts.sessionKey,
+    agentId, projectName: project.name, issueId, role, level,
+    orchestratorSessionKey: opts.sessionKey, workspaceDir,
+    dispatchTimeoutMs: timeouts.dispatchMs,
   });
 
   // Step 5: Update worker state
@@ -241,19 +248,24 @@ export async function dispatchTask(
  * Session key is deterministic, so we don't need to wait for confirmation.
  * If this fails, health check will catch orphaned state later.
  */
-function ensureSessionFireAndForget(sessionKey: string, model: string): void {
+function ensureSessionFireAndForget(sessionKey: string, model: string, workspaceDir: string, timeoutMs = 30_000): void {
   runCommand(
     ["openclaw", "gateway", "call", "sessions.patch", "--params", JSON.stringify({ key: sessionKey, model })],
-    { timeoutMs: 30_000 },
-  ).catch(() => { /* fire-and-forget */ });
+    { timeoutMs },
+  ).catch((err) => {
+    auditLog(workspaceDir, "dispatch_warning", {
+      step: "ensureSession", sessionKey,
+      error: (err as Error).message ?? String(err),
+    }).catch(() => {});
+  });
 }
 
 function sendToAgent(
   sessionKey: string, taskMessage: string,
-  opts: { agentId?: string; projectName: string; issueId: number; role: string; orchestratorSessionKey?: string },
+  opts: { agentId?: string; projectName: string; issueId: number; role: string; level?: string; orchestratorSessionKey?: string; workspaceDir: string; dispatchTimeoutMs?: number },
 ): void {
   const gatewayParams = JSON.stringify({
-    idempotencyKey: `devclaw-${opts.projectName}-${opts.issueId}-${opts.role}-${Date.now()}`,
+    idempotencyKey: `devclaw-${opts.projectName}-${opts.issueId}-${opts.role}-${opts.level ?? "unknown"}-${sessionKey}`,
     agentId: opts.agentId ?? "devclaw",
     sessionKey,
     message: taskMessage,
@@ -264,8 +276,14 @@ function sendToAgent(
   // Fire-and-forget: long-running agent turn, don't await
   runCommand(
     ["openclaw", "gateway", "call", "agent", "--params", gatewayParams, "--expect-final", "--json"],
-    { timeoutMs: 600_000 },
-  ).catch(() => { /* fire-and-forget */ });
+    { timeoutMs: opts.dispatchTimeoutMs ?? 600_000 },
+  ).catch((err) => {
+    auditLog(opts.workspaceDir, "dispatch_warning", {
+      step: "sendToAgent", sessionKey,
+      issue: opts.issueId, role: opts.role,
+      error: (err as Error).message ?? String(err),
+    }).catch(() => {});
+  });
 }
 
 async function recordWorkerState(

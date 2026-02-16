@@ -83,13 +83,13 @@ export type SessionLookup = Map<string, GatewaySession>;
  * Returns null if gateway is unavailable (timeout, error, etc).
  * Callers should skip session liveness checks if null — unknown ≠ dead.
  */
-export async function fetchGatewaySessions(): Promise<SessionLookup | null> {
+export async function fetchGatewaySessions(gatewayTimeoutMs = 15_000): Promise<SessionLookup | null> {
   const lookup: SessionLookup = new Map();
 
   try {
     const result = await runCommand(
       ["openclaw", "gateway", "call", "status", "--json"],
-      { timeoutMs: 15_000 },
+      { timeoutMs: gatewayTimeoutMs },
     );
 
     const jsonStart = result.stdout.indexOf("{");
@@ -151,10 +151,13 @@ export async function checkWorkerHealth(opts: {
   sessions: SessionLookup | null;
   /** Workflow config (defaults to DEFAULT_WORKFLOW) */
   workflow?: WorkflowConfig;
+  /** Hours after which an active worker is considered stale (default: 2) */
+  staleWorkerHours?: number;
 }): Promise<HealthFix[]> {
   const {
     workspaceDir, groupId, project, role, autoFix, provider, sessions,
     workflow = DEFAULT_WORKFLOW,
+    staleWorkerHours = 2,
   } = opts;
 
   const fixes: HealthFix[] = [];
@@ -316,7 +319,7 @@ export async function checkWorkerHealth(opts: {
   // ---------------------------------------------------------------------------
   if (worker.active && worker.startTime && sessionKey && sessions && isSessionAlive(sessionKey, sessions)) {
     const hours = (Date.now() - new Date(worker.startTime).getTime()) / 3_600_000;
-    if (hours > 2) {
+    if (hours > staleWorkerHours) {
       const fix: HealthFix = {
         issue: {
           type: "stale_worker",

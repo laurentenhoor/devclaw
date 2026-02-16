@@ -9,6 +9,7 @@ import { createProvider } from "../providers/index.js";
 import type { Project } from "../projects.js";
 import {
   DEFAULT_WORKFLOW,
+  StateType,
   type WorkflowConfig,
   type Role,
 } from "../workflow.js";
@@ -27,7 +28,7 @@ export function getQueueLabelsWithPriority(
   const labels: Array<{ label: string; priority: number; role?: Role }> = [];
 
   for (const state of Object.values(workflow.states)) {
-    if (state.type === "queue") {
+    if (state.type === StateType.QUEUE) {
       labels.push({
         label: state.label,
         priority: state.priority ?? 0,

@@ -34,35 +34,60 @@ export function parseDevClawSessionKey(
 }
 
 /**
+ * Result of loading role instructions — includes the source for traceability.
+ */
+export type RoleInstructionsResult = {
+  content: string;
+  /** Which file the instructions were loaded from, or null if none found. */
+  source: string | null;
+};
+
+/**
  * Load role-specific instructions from workspace.
  * Tries project-specific file first, then falls back to default.
+ * Returns both the content and the source path for logging/traceability.
  *
- * This is the same logic previously in dispatch.ts loadRoleInstructions(),
- * now called from the bootstrap hook instead of during dispatch.
+ * Resolution order:
+ *   1. devclaw/projects/<project>/prompts/<role>.md  (project-specific)
+ *   2. projects/roles/<project>/<role>.md             (old project-specific)
+ *   3. devclaw/prompts/<role>.md                      (workspace default)
+ *   4. projects/roles/default/<role>.md               (old default)
  */
 export async function loadRoleInstructions(
   workspaceDir: string,
   projectName: string,
   role: string,
-): Promise<string> {
+): Promise<string>;
+export async function loadRoleInstructions(
+  workspaceDir: string,
+  projectName: string,
+  role: string,
+  opts: { withSource: true },
+): Promise<RoleInstructionsResult>;
+export async function loadRoleInstructions(
+  workspaceDir: string,
+  projectName: string,
+  role: string,
+  opts?: { withSource: true },
+): Promise<string | RoleInstructionsResult> {
   const dataDir = path.join(workspaceDir, DATA_DIR);
 
-  // Project-specific: devclaw/projects/<project>/prompts/<role>.md
-  const projectFile = path.join(dataDir, "projects", projectName, "prompts", `${role}.md`);
-  try { return await fs.readFile(projectFile, "utf-8"); } catch { /* not found */ }
+  const candidates = [
+    path.join(dataDir, "projects", projectName, "prompts", `${role}.md`),
+    path.join(workspaceDir, "projects", "roles", projectName, `${role}.md`),
+    path.join(dataDir, "prompts", `${role}.md`),
+    path.join(workspaceDir, "projects", "roles", "default", `${role}.md`),
+  ];
 
-  // Fallback old path: projects/roles/<project>/<role>.md
-  const oldProjectFile = path.join(workspaceDir, "projects", "roles", projectName, `${role}.md`);
-  try { return await fs.readFile(oldProjectFile, "utf-8"); } catch { /* not found */ }
+  for (const filePath of candidates) {
+    try {
+      const content = await fs.readFile(filePath, "utf-8");
+      if (opts?.withSource) return { content, source: filePath };
+      return content;
+    } catch { /* not found, try next */ }
+  }
 
-  // Default: devclaw/prompts/<role>.md
-  const defaultFile = path.join(dataDir, "prompts", `${role}.md`);
-  try { return await fs.readFile(defaultFile, "utf-8"); } catch { /* not found */ }
-
-  // Fallback old default: projects/roles/default/<role>.md
-  const oldDefaultFile = path.join(workspaceDir, "projects", "roles", "default", `${role}.md`);
-  try { return await fs.readFile(oldDefaultFile, "utf-8"); } catch { /* not found */ }
-
+  if (opts?.withSource) return { content: "", source: null };
   return "";
 }
 
@@ -102,25 +127,26 @@ export function registerBootstrapHook(api: OpenClawPluginApi): void {
     const bootstrapFiles = context.bootstrapFiles;
     if (!Array.isArray(bootstrapFiles)) return;
 
-    const instructions = await loadRoleInstructions(
+    const { content, source } = await loadRoleInstructions(
       workspaceDir,
       parsed.projectName,
       parsed.role,
+      { withSource: true },
     );
 
-    if (!instructions) return;
+    if (!content) return;
 
     // Inject as a virtual bootstrap file. OpenClaw includes these in the
     // agent's system prompt automatically (via buildBootstrapContextFiles).
     bootstrapFiles.push({
       name: "WORKER_INSTRUCTIONS.md" as any,
       path: `<devclaw:${parsed.projectName}:${parsed.role}>`,
-      content: instructions.trim(),
+      content: content.trim(),
       missing: false,
     });
 
     api.logger.info(
-      `Bootstrap hook: injected ${parsed.role} instructions for project "${parsed.projectName}"`,
+      `Bootstrap hook: injected ${parsed.role} instructions for project "${parsed.projectName}" from ${source}`,
     );
   });
 }

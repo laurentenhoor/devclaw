@@ -6,8 +6,11 @@ import {
   type Issue,
   type StateLabel,
   type IssueComment,
+  type PrStatus,
+  PrState,
 } from "./provider.js";
 import { runCommand } from "../run-command.js";
+import { withResilience } from "./resilience.js";
 import {
   DEFAULT_WORKFLOW,
   getStateLabels,
@@ -25,8 +28,10 @@ export class GitLabProvider implements IssueProvider {
   }
 
   private async glab(args: string[]): Promise<string> {
-    const result = await runCommand(["glab", ...args], { timeoutMs: 30_000, cwd: this.repoPath });
-    return result.stdout.trim();
+    return withResilience(async () => {
+      const result = await runCommand(["glab", ...args], { timeoutMs: 30_000, cwd: this.repoPath });
+      return result.stdout.trim();
+    });
   }
 
   async ensureLabel(name: string, color: string): Promise<void> {
@@ -120,6 +125,28 @@ export class GitLabProvider implements IssueProvider {
         .sort((a, b) => new Date(b.merged_at).getTime() - new Date(a.merged_at).getTime())[0];
       return mr?.web_url ?? null;
     } catch { return null; }
+  }
+
+  async getPrStatus(issueId: number): Promise<PrStatus> {
+    const pat = `#${issueId}`;
+    // Check open MRs first
+    try {
+      const raw = await this.glab(["mr", "list", "--output", "json", "--state", "opened"]);
+      const mrs = JSON.parse(raw) as Array<{ title: string; description: string; web_url: string; approved_by?: Array<unknown> }>;
+      const mr = mrs.find((m) => m.title.includes(pat) || (m.description ?? "").includes(pat));
+      if (mr) {
+        const state = mr.approved_by && mr.approved_by.length > 0 ? PrState.APPROVED : PrState.OPEN;
+        return { state, url: mr.web_url };
+      }
+    } catch { /* continue to merged check */ }
+    // Check merged MRs
+    try {
+      const raw = await this.glab(["mr", "list", "--output", "json", "--state", "merged"]);
+      const mrs = JSON.parse(raw) as Array<{ title: string; description: string; web_url: string }>;
+      const mr = mrs.find((m) => m.title.includes(pat) || (m.description ?? "").includes(pat));
+      if (mr) return { state: PrState.MERGED, url: mr.web_url };
+    } catch { /* ignore */ }
+    return { state: PrState.CLOSED, url: null };
   }
 
   async addComment(issueId: number, body: string): Promise<void> {

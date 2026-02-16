@@ -30,7 +30,7 @@ export const ROLE_REGISTRY: Record<string, RoleConfig> = {
       senior: "🧠",
     },
     fallbackEmoji: "🔧",
-    completionResults: ["done", "blocked"],
+    completionResults: ["done", "review", "blocked"],
     sessionKeyPattern: "developer",
     notifications: { onStart: true, onComplete: true },
   },

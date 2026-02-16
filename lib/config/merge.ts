@@ -57,6 +57,11 @@ export function mergeConfig(
     }
   }
 
+  // Merge timeouts
+  if (base.timeouts || overlay.timeouts) {
+    merged.timeouts = { ...base.timeouts, ...overlay.timeouts };
+  }
+
   return merged;
 }
 

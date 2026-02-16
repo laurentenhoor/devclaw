@@ -15,6 +15,7 @@ import { resolveRepoPath } from "../projects.js";
 import { createProvider } from "../providers/index.js";
 import { log as auditLog } from "../audit.js";
 import { getAllRoleIds, getLevelsForRole } from "../roles/index.js";
+import { ExecutionMode } from "../workflow.js";
 import { DEFAULT_ROLE_INSTRUCTIONS } from "../templates.js";
 import { DATA_DIR } from "../setup/migrate-layout.js";
 
@@ -84,7 +85,7 @@ export function createProjectRegisterTool() {
         },
         roleExecution: {
           type: "string",
-          enum: ["parallel", "sequential"],
+          enum: Object.values(ExecutionMode),
           description: "Project-level role execution mode: parallel (DEV and QA can work simultaneously) or sequential (only one role active at a time). Defaults to parallel.",
         },
       },
@@ -99,7 +100,7 @@ export function createProjectRegisterTool() {
       const baseBranch = params.baseBranch as string;
       const deployBranch = (params.deployBranch as string) ?? baseBranch;
       const deployUrl = (params.deployUrl as string) ?? "";
-      const roleExecution = (params.roleExecution as "parallel" | "sequential") ?? "parallel";
+      const roleExecution = (params.roleExecution as ExecutionMode) ?? ExecutionMode.PARALLEL;
       const workspaceDir = ctx.workspaceDir;
 
       if (!workspaceDir) {

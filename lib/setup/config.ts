@@ -6,6 +6,7 @@
  */
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { HEARTBEAT_DEFAULTS } from "../services/heartbeat.js";
+import type { ExecutionMode } from "../workflow.js";
 
 /**
  * Write DevClaw plugin config to openclaw.json plugins section.
@@ -21,7 +22,7 @@ import { HEARTBEAT_DEFAULTS } from "../services/heartbeat.js";
 export async function writePluginConfig(
   api: OpenClawPluginApi,
   agentId?: string,
-  projectExecution?: "parallel" | "sequential",
+  projectExecution?: ExecutionMode,
 ): Promise<void> {
   const config = api.runtime.config.loadConfig() as Record<string, unknown>;
 

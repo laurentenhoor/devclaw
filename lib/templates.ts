@@ -21,10 +21,12 @@ Read the comments carefully — they often contain clarifications, decisions, or
 
 - Work in a git worktree (never switch branches in the main repo)
 - Run tests before completing
-- Create an MR/PR to the base branch and merge it
+- Create an MR/PR to the base branch
 - **IMPORTANT:** Do NOT use closing keywords in PR/MR descriptions (no "Closes #X", "Fixes #X", "Resolves #X"). Use "As described in issue #X" or "Addresses issue #X" instead. DevClaw manages issue state — auto-closing bypasses QA.
-- Clean up the worktree after merging
-- When done, call work_finish with role "developer", result "done", and a brief summary
+- **Merge or request review:**
+  - Merge the PR yourself → call work_finish with result "done"
+  - Leave the PR open for human review → call work_finish with result "review" (the heartbeat will auto-advance when the PR is merged)
+- Clean up the worktree after merging (if you merged)
 - If you discover unrelated bugs, call task_create to file them
 - Do NOT call work_start, status, health, or project_register
 `;
@@ -144,7 +146,8 @@ Skip the orchestrator section. Follow your task message and role instructions (a
 
 When you are done, **call \`work_finish\` yourself** — do not just announce in text.
 
-- **DEVELOPER done:** \`work_finish({ role: "developer", result: "done", projectGroupId: "<from task message>", summary: "<brief summary>" })\`
+- **DEVELOPER done (merged):** \`work_finish({ role: "developer", result: "done", projectGroupId: "<from task message>", summary: "<brief summary>" })\`
+- **DEVELOPER review (PR open):** \`work_finish({ role: "developer", result: "review", projectGroupId: "<from task message>", summary: "<brief summary>" })\`
 - **TESTER pass:** \`work_finish({ role: "tester", result: "pass", projectGroupId: "<from task message>", summary: "<brief summary>" })\`
 - **TESTER fail:** \`work_finish({ role: "tester", result: "fail", projectGroupId: "<from task message>", summary: "<specific issues>" })\`
 - **TESTER refine:** \`work_finish({ role: "tester", result: "refine", projectGroupId: "<from task message>", summary: "<what needs human input>" })\`
@@ -224,10 +227,12 @@ All orchestration goes through these tools. You do NOT manually manage sessions,
 
 \`\`\`
 Planning → To Do → Doing → To Test → Testing → Done
-                               ↓
-                           To Improve → Doing (fix cycle)
-                               ↓
-                           Refining (human decision)
+                     ↓          ↑
+                  In Review ─────┘ (auto-advances when PR merged)
+                     ↓
+                 To Improve → Doing (fix cycle)
+                     ↓
+                 Refining (human decision)
 
 To Design → Designing → Planning (design complete)
 \`\`\`
@@ -257,6 +262,7 @@ All roles (Developer, Tester, Architect) use the same level scheme. Levels descr
 Workers call \`work_finish\` themselves — the label transition, state update, and audit log happen atomically. The heartbeat service will pick up the next task on its next cycle:
 
 - Developer "done" → issue moves to "To Test" → scheduler dispatches Tester
+- Developer "review" → issue moves to "In Review" → heartbeat polls PR status → auto-advances to "To Test" when merged
 - Tester "fail" → issue moves to "To Improve" → scheduler dispatches Developer
 - Tester "pass" → Done, no further dispatch
 - Tester "refine" / blocked → needs human input
@@ -270,7 +276,7 @@ Workers receive role-specific instructions appended to their task message. These
 
 ### Heartbeats
 
-**Do nothing.** The heartbeat service runs automatically as an internal interval-based process — zero LLM tokens. It handles health checks (zombie detection, stale workers) and queue dispatch (filling free worker slots by priority) every 60 seconds by default. Configure via \`plugins.entries.devclaw.config.work_heartbeat\` in openclaw.json.
+**Do nothing.** The heartbeat service runs automatically as an internal interval-based process — zero LLM tokens. It handles health checks (zombie detection, stale workers), review polling (auto-advancing "In Review" issues when PRs are merged), and queue dispatch (filling free worker slots by priority) every 60 seconds by default. Configure via \`plugins.entries.devclaw.config.work_heartbeat\` in openclaw.json.
 
 ### Safety
 
@@ -333,6 +339,9 @@ workflow:
         COMPLETE:
           target: toTest
           actions: [gitPull, detectPr]
+        REVIEW:
+          target: reviewing
+          actions: [detectPr]
         BLOCKED: refining
     toTest:
       type: queue
@@ -370,6 +379,16 @@ workflow:
       color: "#f39c12"
       on:
         APPROVE: todo
+    reviewing:
+      type: review
+      label: In Review
+      color: "#c5def5"
+      check: prMerged
+      on:
+        APPROVED:
+          target: toTest
+          actions: [gitPull]
+        BLOCKED: refining
     done:
       type: terminal
       label: Done

@@ -11,7 +11,7 @@ import { readProjects, getProject } from "../projects.js";
 import { log as auditLog } from "../audit.js";
 import { fetchProjectQueues, getTotalQueuedCount, getQueueLabelsWithPriority } from "../services/queue.js";
 import { requireWorkspaceDir, getPluginConfig } from "../tool-helpers.js";
-import { loadWorkflow } from "../workflow.js";
+import { loadWorkflow, ExecutionMode } from "../workflow.js";
 
 export function createStatusTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
@@ -30,7 +30,7 @@ export function createStatusTool(api: OpenClawPluginApi) {
       const groupId = params.projectGroupId as string | undefined;
 
       const pluginConfig = getPluginConfig(api);
-      const projectExecution = (pluginConfig?.projectExecution as string) ?? "parallel";
+      const projectExecution = (pluginConfig?.projectExecution as string) ?? ExecutionMode.PARALLEL;
 
       // Load workspace-level workflow (per-project loaded inside map)
       const workflow = await loadWorkflow(workspaceDir);
@@ -66,7 +66,7 @@ export function createStatusTool(api: OpenClawPluginApi) {
           return {
             name: project.name,
             groupId: pid,
-            roleExecution: project.roleExecution ?? "parallel",
+            roleExecution: project.roleExecution ?? ExecutionMode.PARALLEL,
             workers,
             queue: queueCounts,
           };
