@@ -18,7 +18,7 @@ describe("task_update tool", () => {
 
   it("supports all state labels", () => {
     const labels = getStateLabels(DEFAULT_WORKFLOW);
-    assert.strictEqual(labels.length, 12);
+    assert.strictEqual(labels.length, 10);
     assert.ok(labels.includes("Planning"));
     assert.ok(labels.includes("Done"));
     assert.ok(labels.includes("To Review"));

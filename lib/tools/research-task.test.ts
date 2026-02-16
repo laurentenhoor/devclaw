@@ -1,6 +1,6 @@
 /**
- * Tests for architect role, design_task tool, and workflow integration.
- * Run with: npx tsx --test lib/tools/design-task.test.ts
+ * Tests for architect role, research_task tool, and workflow integration.
+ * Run with: npx tsx --test lib/tools/research-task.test.ts
  */
 import { describe, it } from "node:test";
 import assert from "node:assert";
@@ -8,8 +8,8 @@ import { parseDevClawSessionKey } from "../bootstrap-hook.js";
 import { isLevelForRole, roleForLevel, resolveModel, getDefaultModel, getEmoji } from "../roles/index.js";
 import { selectLevel } from "../model-selector.js";
 import {
-  DEFAULT_WORKFLOW, getQueueLabels, getActiveLabel, getCompletionRule,
-  getCompletionEmoji, detectRoleFromLabel, getStateLabels,
+  DEFAULT_WORKFLOW, getQueueLabels, getCompletionRule,
+  getCompletionEmoji, getStateLabels, hasWorkflowStates,
 } from "../workflow.js";
 
 describe("architect tiers", () => {
@@ -42,42 +42,38 @@ describe("architect tiers", () => {
   });
 });
 
-describe("architect workflow states", () => {
-  it("should include To Design and Designing in state labels", () => {
+describe("architect workflow — no dedicated states", () => {
+  it("should NOT have To Design or Designing in state labels", () => {
     const labels = getStateLabels(DEFAULT_WORKFLOW);
-    assert.ok(labels.includes("To Design"));
-    assert.ok(labels.includes("Designing"));
+    assert.ok(!labels.includes("To Design"), "To Design should not exist");
+    assert.ok(!labels.includes("Designing"), "Designing should not exist");
   });
 
-  it("should have To Design as architect queue label", () => {
+  it("should have no queue labels for architect", () => {
     const queues = getQueueLabels(DEFAULT_WORKFLOW, "architect");
-    assert.deepStrictEqual(queues, ["To Design"]);
+    assert.deepStrictEqual(queues, []);
   });
 
-  it("should have Designing as architect active label", () => {
-    assert.strictEqual(getActiveLabel(DEFAULT_WORKFLOW, "architect"), "Designing");
+  it("should report architect has no workflow states", () => {
+    assert.strictEqual(hasWorkflowStates(DEFAULT_WORKFLOW, "architect"), false);
   });
 
-  it("should detect architect role from To Design label", () => {
-    assert.strictEqual(detectRoleFromLabel(DEFAULT_WORKFLOW, "To Design"), "architect");
+  it("should report developer has workflow states", () => {
+    assert.strictEqual(hasWorkflowStates(DEFAULT_WORKFLOW, "developer"), true);
   });
 
-  it("should have architect:done completion rule", () => {
-    const rule = getCompletionRule(DEFAULT_WORKFLOW, "architect", "done");
-    assert.ok(rule);
-    assert.strictEqual(rule!.from, "Designing");
-    assert.strictEqual(rule!.to, "Planning");
+  it("should report tester has workflow states", () => {
+    assert.strictEqual(hasWorkflowStates(DEFAULT_WORKFLOW, "tester"), true);
   });
 
-  it("should have architect:blocked completion rule", () => {
-    const rule = getCompletionRule(DEFAULT_WORKFLOW, "architect", "blocked");
-    assert.ok(rule);
-    assert.strictEqual(rule!.from, "Designing");
-    assert.strictEqual(rule!.to, "Refining");
+  it("should have no completion rules for architect (no active state)", () => {
+    const doneRule = getCompletionRule(DEFAULT_WORKFLOW, "architect", "done");
+    assert.strictEqual(doneRule, null);
+    const blockedRule = getCompletionRule(DEFAULT_WORKFLOW, "architect", "blocked");
+    assert.strictEqual(blockedRule, null);
   });
 
-  it("should have completion emoji by result type", () => {
-    // Emoji is now keyed by result, not role:result
+  it("should still have completion emoji for architect results", () => {
     assert.strictEqual(getCompletionEmoji("architect", "done"), "✅");
     assert.strictEqual(getCompletionEmoji("architect", "blocked"), "🚫");
   });

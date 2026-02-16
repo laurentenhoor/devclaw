@@ -10,7 +10,7 @@ import { createProjectRegisterTool } from "./lib/tools/project-register.js";
 import { createSetupTool } from "./lib/tools/setup.js";
 import { createOnboardTool } from "./lib/tools/onboard.js";
 import { createAutoConfigureModelsTool } from "./lib/tools/autoconfigure-models.js";
-import { createDesignTaskTool } from "./lib/tools/design-task.js";
+import { createResearchTaskTool } from "./lib/tools/research-task.js";
 import { registerCli } from "./lib/cli.js";
 import { registerHeartbeatService } from "./lib/services/heartbeat.js";
 import { registerBootstrapHook } from "./lib/bootstrap-hook.js";
@@ -78,7 +78,7 @@ const plugin = {
     api.registerTool(createTaskCommentTool(api), { names: ["task_comment"] });
 
     // Architect
-    api.registerTool(createDesignTaskTool(api), { names: ["design_task"] });
+    api.registerTool(createResearchTaskTool(api), { names: ["research_task"] });
 
     // Operations
     api.registerTool(createStatusTool(api), { names: ["status"] });

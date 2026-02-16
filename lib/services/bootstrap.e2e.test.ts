@@ -213,7 +213,7 @@ describe("E2E bootstrap — hook injection", () => {
 
   it("should resolve architect instructions with project override", async () => {
     h = await createTestHarness({ projectName: "arch-proj" });
-    h.provider.seedIssue({ iid: 6, title: "Design API", labels: ["To Design"] });
+    h.provider.seedIssue({ iid: 6, title: "Design API", labels: ["Planning"] });
 
     await h.writePrompt("architect", "# Default Architect\nGeneral design guidelines.");
     await h.writePrompt("architect", "# Arch Proj Architect\nUse event-driven architecture.", "arch-proj");
@@ -229,8 +229,8 @@ describe("E2E bootstrap — hook injection", () => {
       issueUrl: "https://example.com/issues/6",
       role: "architect",
       level: "senior",
-      fromLabel: "To Design",
-      toLabel: "Designing",
+      fromLabel: "Planning",
+      toLabel: "Planning",
       transitionLabel: (id, from, to) => h.provider.transitionLabel(id, from, to),
       provider: h.provider,
     });

@@ -164,23 +164,9 @@ workflow:
       type: terminal
       label: Done
       color: "#5cb85c"
-    toDesign:
-      type: queue
-      role: architect
-      label: To Design
-      color: "#0075ca"
-      priority: 1
-      on:
-        PICKUP: designing
-    designing:
-      type: active
-      role: architect
-      label: Designing
-      color: "#d4c5f9"
-      on:
-        COMPLETE: planning
-        BLOCKED: refining
 ```
+
+Note: The architect role has no dedicated workflow states. Design tasks are triggered via `research_task` tool only — issues go directly to Planning.
 
 **State types:**
 
@@ -340,7 +326,7 @@ Restrict DevClaw tools to your orchestrator agent:
             "project_register",
             "setup",
             "onboard",
-            "design_task"
+            "research_task"
           ]
         }
       }

@@ -28,6 +28,7 @@ import {
   DEFAULT_WORKFLOW,
   getActiveLabel,
   getRevertLabel,
+  hasWorkflowStates,
   type WorkflowConfig,
   type Role,
 } from "../workflow.js";
@@ -161,6 +162,10 @@ export async function checkWorkerHealth(opts: {
   } = opts;
 
   const fixes: HealthFix[] = [];
+
+  // Skip roles without workflow states (e.g. architect — tool-triggered only)
+  if (!hasWorkflowStates(workflow, role)) return fixes;
+
   const worker = getWorker(project, role);
   const sessionKey = worker.level ? getSessionForLevel(worker, worker.level) : null;
 
@@ -430,6 +435,10 @@ export async function scanOrphanedLabels(opts: {
   } = opts;
 
   const fixes: HealthFix[] = [];
+
+  // Skip roles without workflow states (e.g. architect — tool-triggered only)
+  if (!hasWorkflowStates(workflow, role)) return fixes;
+
   const worker = getWorker(project, role);
 
   // Get labels from workflow config

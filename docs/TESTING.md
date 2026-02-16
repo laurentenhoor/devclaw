@@ -28,7 +28,7 @@ npm run build
 | [lib/projects.test.ts](../lib/projects.test.ts) | Project state: read/write, worker state, atomic file operations |
 | [lib/bootstrap-hook.test.ts](../lib/bootstrap-hook.test.ts) | Bootstrap hook: role instruction loading, source tracking, overloads |
 | [lib/tools/task-update.test.ts](../lib/tools/task-update.test.ts) | Task update tool: label transitions, validation |
-| [lib/tools/design-task.test.ts](../lib/tools/design-task.test.ts) | Design task tool: architect dispatch |
+| [lib/tools/research-task.test.ts](../lib/tools/research-task.test.ts) | Research task tool: architect dispatch |
 | [lib/tools/queue-status.test.ts](../lib/tools/queue-status.test.ts) | Queue status formatting |
 | [lib/setup/migrate-layout.test.ts](../lib/setup/migrate-layout.test.ts) | Workspace layout migration: `projects/` → `devclaw/` |
 

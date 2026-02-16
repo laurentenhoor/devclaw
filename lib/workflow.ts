@@ -201,25 +201,6 @@ export const DEFAULT_WORKFLOW: WorkflowConfig = {
       on: { [WorkflowEvent.APPROVE]: "todo" },
     },
 
-    // ── Architect track ─────────────────────────────────────────
-    toDesign: {
-      type: StateType.QUEUE,
-      role: "architect",
-      label: "To Design",
-      color: "#0075ca",
-      priority: 1,
-      on: { [WorkflowEvent.PICKUP]: "designing" },
-    },
-    designing: {
-      type: StateType.ACTIVE,
-      role: "architect",
-      label: "Designing",
-      color: "#d4c5f9",
-      on: {
-        [WorkflowEvent.COMPLETE]: "planning",
-        [WorkflowEvent.BLOCKED]: "refining",
-      },
-    },
   },
 };
 
@@ -435,6 +416,14 @@ export function findStateByLabel(workflow: WorkflowConfig, label: string): State
  */
 export function findStateKeyByLabel(workflow: WorkflowConfig, label: string): string | null {
   return Object.entries(workflow.states).find(([, s]) => s.label === label)?.[0] ?? null;
+}
+
+/**
+ * Check if a role has any workflow states (queue, active, etc.).
+ * Roles without workflow states (e.g. architect) are dispatched by tool only.
+ */
+export function hasWorkflowStates(workflow: WorkflowConfig, role: Role): boolean {
+  return Object.values(workflow.states).some((s) => s.role === role);
 }
 
 // ---------------------------------------------------------------------------

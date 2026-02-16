@@ -583,7 +583,7 @@ Every piece of data and where it lives:
 │  status         → read labels + read state                      │
 │  health         → check sessions + fix zombies                  │
 │  project_register → labels + prompts + state init (one-time)    │
-│  design_task    → architect dispatch                            │
+│  research_task  → architect dispatch                            │
 │                                                                 │
 │  Bootstrap hook → injects role instructions into worker sessions│
 │  Review pass    → polls PR status, auto-merges approved PRs     │

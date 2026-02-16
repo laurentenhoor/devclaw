@@ -1,9 +1,11 @@
 /**
- * design_task — Spawn an architect to investigate a design problem.
+ * research_task — Spawn an architect to research a design/architecture problem.
  *
- * Creates a "To Design" issue and optionally dispatches an architect worker.
- * The architect investigates systematically, then produces structured findings
- * as a GitHub issue in Planning state.
+ * Creates a Planning issue with rich context and dispatches an architect worker.
+ * The architect researches the problem and produces detailed findings as issue comments.
+ * The issue stays in Planning — ready for human review when the architect completes.
+ *
+ * No queue states — tool-triggered only.
  */
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
@@ -13,33 +15,41 @@ import { getWorker } from "../projects.js";
 import { dispatchTask } from "../dispatch.js";
 import { log as auditLog } from "../audit.js";
 import { requireWorkspaceDir, resolveProject, resolveProvider, getPluginConfig } from "../tool-helpers.js";
-import { loadWorkflow, getActiveLabel, getQueueLabels } from "../workflow.js";
 import { loadConfig } from "../config/index.js";
 import { selectLevel } from "../model-selector.js";
 import { resolveModel } from "../roles/index.js";
 
-export function createDesignTaskTool(api: OpenClawPluginApi) {
+/** Planning label — architect issues go directly here. */
+const PLANNING_LABEL = "Planning";
+
+export function createResearchTaskTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
-    name: "design_task",
-    label: "Design Task",
-    description: `Spawn an architect to investigate a design/architecture problem. Creates a "To Design" issue and dispatches an architect worker with persistent session.
+    name: "research_task",
+    label: "Research Task",
+    description: `Spawn an architect to research a design/architecture problem. Creates a Planning issue and dispatches an architect worker.
+
+IMPORTANT: Provide a detailed description with enough background context for the architect
+to produce actionable, development-ready findings. Include: current state, constraints,
+requirements, relevant code paths, and any prior decisions. The output should be detailed
+enough for a developer to start implementation immediately.
 
 The architect will:
-1. Investigate the problem systematically
-2. Research alternatives (>= 3 options)
-3. Produce structured findings with recommendation
-4. Complete with work_finish, moving the issue to Planning
+1. Research the problem systematically (codebase, docs, web)
+2. Investigate >= 3 alternatives with tradeoffs
+3. Produce a recommendation with implementation outline
+4. Post findings as issue comments, then complete with work_finish
 
 Example:
-  design_task({
+  research_task({
     projectGroupId: "-5176490302",
-    title: "Design: Session persistence strategy",
-    description: "How should sessions be persisted across restarts?",
+    title: "Research: Session persistence strategy",
+    description: "Sessions are lost on restart. Current impl uses in-memory Map in session-store.ts. Constraints: must work with SQLite (already a dep), max 50ms latency on read. Prior discussion in #42 ruled out Redis.",
+    focusAreas: ["SQLite vs file-based", "migration path", "cache invalidation"],
     complexity: "complex"
   })`,
     parameters: {
       type: "object",
-      required: ["projectGroupId", "title"],
+      required: ["projectGroupId", "title", "description"],
       properties: {
         projectGroupId: {
           type: "string",
@@ -47,11 +57,11 @@ Example:
         },
         title: {
           type: "string",
-          description: "Design title (e.g., 'Design: Session persistence')",
+          description: "Research title (e.g., 'Research: Session persistence strategy')",
         },
         description: {
           type: "string",
-          description: "What are we designing & why? Include context and constraints.",
+          description: "Detailed background context: what exists today, why this needs investigation, constraints, relevant code paths, prior decisions. Must be detailed enough for the architect to produce development-ready findings.",
         },
         focusAreas: {
           type: "array",
@@ -81,41 +91,28 @@ Example:
 
       if (!groupId) throw new Error("projectGroupId is required");
       if (!title) throw new Error("title is required");
+      if (!description) throw new Error("description is required — provide detailed background context for the architect");
 
       const { project } = await resolveProject(workspaceDir, groupId);
       const { provider } = await resolveProvider(project);
       const pluginConfig = getPluginConfig(api);
-
-      // Derive labels from workflow config
-      const workflow = await loadWorkflow(workspaceDir, project.name);
       const role = "architect";
-      const queueLabels = getQueueLabels(workflow, role);
-      const queueLabel = queueLabels[0];
-      if (!queueLabel) throw new Error(`No queue state found for role "${role}" in workflow`);
 
-      // Build issue body with focus areas
-      const bodyParts = [description];
+      // Build issue body with rich context
+      const bodyParts = [
+        "## Background",
+        "",
+        description,
+      ];
       if (focusAreas.length > 0) {
         bodyParts.push("", "## Focus Areas", ...focusAreas.map(a => `- ${a}`));
       }
-      bodyParts.push(
-        "", "---",
-        "", "## Architect Output Template",
-        "",
-        "When complete, the architect will produce findings covering:",
-        "1. **Problem Statement** — Why is this design decision important?",
-        "2. **Current State** — What exists today? Limitations?",
-        "3. **Alternatives** (>= 3 options with pros/cons and effort estimates)",
-        "4. **Recommendation** — Which option and why?",
-        "5. **Implementation Outline** — What dev tasks are needed?",
-        "6. **References** — Code, docs, prior art",
-      );
       const issueBody = bodyParts.join("\n");
 
-      // Create issue in queue state
-      const issue = await provider.createIssue(title, issueBody, queueLabel as StateLabel);
+      // Create issue directly in Planning state (no queue — tool-triggered only)
+      const issue = await provider.createIssue(title, issueBody, PLANNING_LABEL as StateLabel);
 
-      await auditLog(workspaceDir, "design_task", {
+      await auditLog(workspaceDir, "research_task", {
         project: project.name, groupId, issueId: issue.iid,
         title, complexity, focusAreas, dryRun,
       });
@@ -132,7 +129,7 @@ Example:
         return jsonResult({
           success: true,
           dryRun: true,
-          issue: { id: issue.iid, title: issue.title, url: issue.web_url, label: queueLabel },
+          issue: { id: issue.iid, title: issue.title, url: issue.web_url, label: PLANNING_LABEL },
           design: { level, model, status: "dry_run" },
           announcement: `📐 [DRY RUN] Would spawn ${role} (${level}) for #${issue.iid}: ${title}\n🔗 ${issue.web_url}`,
         });
@@ -141,22 +138,19 @@ Example:
       // Check worker availability
       const worker = getWorker(project, role);
       if (worker.active) {
-        // Issue created but can't dispatch yet — will be picked up by heartbeat
         return jsonResult({
           success: true,
-          issue: { id: issue.iid, title: issue.title, url: issue.web_url, label: queueLabel },
+          issue: { id: issue.iid, title: issue.title, url: issue.web_url, label: PLANNING_LABEL },
           design: {
             level,
             status: "queued",
-            reason: `${role.toUpperCase()} already active on #${worker.issueId}. Issue queued for pickup.`,
+            reason: `${role.toUpperCase()} already active on #${worker.issueId}. Issue created in Planning — dispatch manually when architect is free.`,
           },
-          announcement: `📐 Created design task #${issue.iid}: ${title} (queued — ${role} busy)\n🔗 ${issue.web_url}`,
+          announcement: `📐 Created research task #${issue.iid}: ${title} (architect busy — issue in Planning)\n🔗 ${issue.web_url}`,
         });
       }
 
-      // Dispatch worker
-      const targetLabel = getActiveLabel(workflow, role);
-
+      // Dispatch architect directly — issue stays in Planning (no state transition)
       const dr = await dispatchTask({
         workspaceDir,
         agentId: ctx.agentId,
@@ -168,8 +162,8 @@ Example:
         issueUrl: issue.web_url,
         role,
         level,
-        fromLabel: queueLabel,
-        toLabel: targetLabel,
+        fromLabel: PLANNING_LABEL,
+        toLabel: PLANNING_LABEL,
         transitionLabel: (id, from, to) => provider.transitionLabel(id, from as StateLabel, to as StateLabel),
         provider,
         pluginConfig,
@@ -180,7 +174,7 @@ Example:
 
       return jsonResult({
         success: true,
-        issue: { id: issue.iid, title: issue.title, url: issue.web_url, label: targetLabel },
+        issue: { id: issue.iid, title: issue.title, url: issue.web_url, label: PLANNING_LABEL },
         design: {
           sessionKey: dr.sessionKey,
           level: dr.level,

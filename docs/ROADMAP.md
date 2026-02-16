@@ -17,7 +17,7 @@ Planning → To Do → Doing → To Test → Testing → Done
                          ↘ In Review → (PR approved → auto-merge) → To Test
                                     ↘ To Improve → Doing (merge conflict / fix cycle)
                                     ↘ Refining → (human decision)
-To Design → Designing → Planning
+research_task → Planning (architect researches, stays in Planning)
 ```
 
 States have types (`queue`, `active`, `hold`, `review`, `terminal`), transitions with actions (`gitPull`, `detectPr`, `mergePr`, `closeIssue`, `reopenIssue`), and review checks (`prMerged`, `prApproved`).
@@ -46,7 +46,7 @@ DEVELOPER can submit a PR for human review (`result: "review"`), which transitio
 
 ### Architect Role
 
-The architect role enables design investigations. `design_task` creates a `To Design` issue and dispatches an architect worker. The architect completes with `done` (→ Planning) or `blocked` (→ Refining).
+The architect role enables design investigations. `research_task` creates a Planning issue with rich context and dispatches an architect worker directly (no queue states). The architect posts findings as comments, then completes with `done` (stays in Planning for human review) or `blocked` (→ Refining).
 
 ### Workspace Layout Migration
 

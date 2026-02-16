@@ -53,7 +53,7 @@ Planning → To Do → Doing → To Test → Testing → Done
                                     ↘ Refining → (human decision)
 ```
 
-The ARCHITECT role adds a parallel track: `To Design → Designing → Planning`.
+The ARCHITECT role is tool-triggered only via `research_task` — no queue states. Issues go directly to Planning, the architect researches and posts findings, then the issue stays in Planning for human review.
 
 Every label transition, state update, and audit log entry happens atomically inside the plugin. The orchestrator agent cannot skip a step, forget a label, or corrupt session state — because those operations are deterministic code, not instructions an LLM follows imperfectly.
 

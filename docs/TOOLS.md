@@ -79,8 +79,8 @@ Complete a task with a result. Called by workers (DEVELOPER/TESTER/ARCHITECT sub
 | tester | `"fail"` | Testing → To Improve | Issue reopened |
 | tester | `"refine"` | Testing → Refining | Awaits human decision |
 | tester | `"blocked"` | Testing → Refining | Awaits human decision |
-| architect | `"done"` | Designing → Planning | Design complete |
-| architect | `"blocked"` | Designing → Refining | Awaits human decision |
+| architect | `"done"` | stays in Planning | Design complete, ready for human review |
+| architect | `"blocked"` | Planning → Refining | Awaits human decision |
 
 **What it does atomically:**
 
@@ -140,7 +140,7 @@ Change an issue's state label manually without going through the full pickup/com
 | `state` | StateLabel | Yes | New state label |
 | `reason` | string | No | Audit log reason for the change |
 
-**Valid states:** `Planning`, `To Do`, `Doing`, `To Test`, `Testing`, `Done`, `To Improve`, `Refining`, `In Review`, `To Design`, `Designing`
+**Valid states:** `Planning`, `To Do`, `Doing`, `To Test`, `Testing`, `Done`, `To Improve`, `Refining`, `In Review`
 
 **Use cases:**
 
@@ -331,11 +331,11 @@ Conversational onboarding guide. Returns step-by-step instructions for the agent
 
 ---
 
-### `design_task`
+### `research_task`
 
-Spawn an architect for a design investigation. Creates a "To Design" issue and dispatches an architect worker.
+Spawn an architect for a design investigation. Creates a Planning issue with rich context and dispatches an architect worker. No queue states — tool-triggered only.
 
-**Source:** [`lib/tools/design-task.ts`](../lib/tools/design-task.ts)
+**Source:** [`lib/tools/research-task.ts`](../lib/tools/research-task.ts)
 
 **Parameters:**
 
@@ -343,8 +343,9 @@ Spawn an architect for a design investigation. Creates a "To Design" issue and d
 |---|---|---|---|
 | `projectGroupId` | string | Yes | Project group ID |
 | `title` | string | Yes | Design task title |
-| `description` | string | No | Design problem description |
-| `level` | `"junior"` \| `"senior"` | No | Architect level. Default: `"junior"`. |
+| `description` | string | Yes | Detailed background context for the architect |
+| `focusAreas` | string[] | No | Specific areas to investigate |
+| `complexity` | `"simple"` \| `"medium"` \| `"complex"` | No | Guides level selection. Default: `"medium"`. |
 
 ---
 
@@ -360,8 +361,8 @@ tester:pass       → Testing   → Done         (close issue)
 tester:fail       → Testing   → To Improve   (reopen issue)
 tester:refine     → Testing   → Refining     (awaits human decision)
 tester:blocked    → Testing   → Refining     (awaits human decision)
-architect:done    → Designing → Planning     (design complete)
-architect:blocked → Designing → Refining     (awaits human decision)
+architect:done    → stays in Planning          (design complete, ready for human review)
+architect:blocked → Planning → Refining       (awaits human decision)
 ```
 
 ## Issue Priority Order
