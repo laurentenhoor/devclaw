@@ -78,6 +78,9 @@ export async function executeCompletion(opts: {
 
   const { timeouts } = await loadConfig(workspaceDir, projectName);
   let prUrl = opts.prUrl;
+  let mergedPr = false;
+  let prTitle: string | undefined;
+  let sourceBranch: string | undefined;
 
   // Execute pre-notification actions
   for (const action of rule.actions) {
@@ -92,12 +95,26 @@ export async function executeCompletion(opts: {
           // Try open PR first (developer just finished — MR is still open), fall back to merged
           const prStatus = await provider.getPrStatus(issueId);
           prUrl = prStatus.url ?? await provider.getMergedMRUrl(issueId) ?? undefined;
+          prTitle = prStatus.title;
+          sourceBranch = prStatus.sourceBranch;
         } catch (err) {
           auditLog(workspaceDir, "pipeline_warning", { step: "detectPr", issue: issueId, role, error: (err as Error).message ?? String(err) }).catch(() => {});
         } }
         break;
       case Action.MERGE_PR:
-        try { await provider.mergePr(issueId); } catch (err) {
+        try {
+          // Grab PR metadata before merging (the MR is still open at this point)
+          if (!prTitle) {
+            try {
+              const prStatus = await provider.getPrStatus(issueId);
+              prUrl = prUrl ?? prStatus.url ?? undefined;
+              prTitle = prStatus.title;
+              sourceBranch = prStatus.sourceBranch;
+            } catch { /* best-effort */ }
+          }
+          await provider.mergePr(issueId);
+          mergedPr = true;
+        } catch (err) {
           auditLog(workspaceDir, "pipeline_warning", { step: "mergePr", issue: issueId, role, error: (err as Error).message ?? String(err) }).catch(() => {});
         }
         break;
@@ -135,6 +152,27 @@ export async function executeCompletion(opts: {
   ).catch((err) => {
     auditLog(workspaceDir, "pipeline_warning", { step: "notify", issue: issueId, role, error: (err as Error).message ?? String(err) }).catch(() => {});
   });
+
+  // Send merge notification when PR was merged during this completion
+  if (mergedPr) {
+    notify(
+      {
+        type: "prMerged",
+        project: projectName,
+        groupId,
+        issueId,
+        issueUrl: issue.web_url,
+        issueTitle: issue.title,
+        prUrl,
+        prTitle,
+        sourceBranch,
+        mergedBy: "pipeline",
+      },
+      { workspaceDir, config: notifyConfig, groupId, channel: channel ?? "telegram", runtime },
+    ).catch((err) => {
+      auditLog(workspaceDir, "pipeline_warning", { step: "mergeNotify", issue: issueId, role, error: (err as Error).message ?? String(err) }).catch(() => {});
+    });
+  }
 
   // Deactivate worker + transition label
   await deactivateWorker(workspaceDir, groupId, role);

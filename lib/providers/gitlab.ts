@@ -24,6 +24,7 @@ type GitLabMR = {
   description: string;
   web_url: string;
   state: string;
+  source_branch?: string;
   merged_at: string | null;
   approved_by?: Array<unknown>;
 };
@@ -156,11 +157,11 @@ export class GitLabProvider implements IssueProvider {
     if (open) {
       // related_merge_requests doesn't populate approved_by — use dedicated approvals endpoint
       const approved = await this.isMrApproved(open.iid);
-      return { state: approved ? PrState.APPROVED : PrState.OPEN, url: open.web_url };
+      return { state: approved ? PrState.APPROVED : PrState.OPEN, url: open.web_url, title: open.title, sourceBranch: open.source_branch };
     }
     // Check merged MRs
     const merged = mrs.find((mr) => mr.state === "merged");
-    if (merged) return { state: PrState.MERGED, url: merged.web_url };
+    if (merged) return { state: PrState.MERGED, url: merged.web_url, title: merged.title, sourceBranch: merged.source_branch };
     return { state: PrState.CLOSED, url: null };
   }
 

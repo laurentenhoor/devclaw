@@ -171,12 +171,12 @@ export class GitHubProvider implements IssueProvider {
     if (open.length > 0) {
       const pr = open[0];
       const state = pr.reviewDecision === "APPROVED" ? PrState.APPROVED : PrState.OPEN;
-      return { state, url: pr.url };
+      return { state, url: pr.url, title: pr.title, sourceBranch: pr.headRefName };
     }
     // Check merged PRs
     type MergedPr = { title: string; body: string; headRefName: string; url: string };
     const merged = await this.findPrsForIssue<MergedPr>(issueId, "merged", "title,body,headRefName,url");
-    if (merged.length > 0) return { state: PrState.MERGED, url: merged[0].url };
+    if (merged.length > 0) return { state: PrState.MERGED, url: merged[0].url, title: merged[0].title, sourceBranch: merged[0].headRefName };
     return { state: PrState.CLOSED, url: null };
   }
 

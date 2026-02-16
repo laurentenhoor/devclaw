@@ -29,8 +29,10 @@ export async function reviewPass(opts: {
   provider: IssueProvider;
   repoPath: string;
   gitPullTimeoutMs?: number;
+  /** Called after a successful PR merge (for notifications). */
+  onMerge?: (issueId: number, prUrl: string | null, prTitle?: string, sourceBranch?: string) => void;
 }): Promise<number> {
-  const { workspaceDir, groupId, workflow, provider, repoPath, gitPullTimeoutMs = 30_000 } = opts;
+  const { workspaceDir, groupId, workflow, provider, repoPath, gitPullTimeoutMs = 30_000, onMerge } = opts;
   let transitions = 0;
 
   // Find all states with a review check (e.g. toReview with check: prApproved)
@@ -73,8 +75,14 @@ export async function reviewPass(opts: {
         for (const action of actions) {
           switch (action) {
             case Action.MERGE_PR:
+              // If the PR is already merged externally, skip the merge call but continue the transition.
+              if (status.state === PrState.MERGED) {
+                onMerge?.(issue.iid, status.url, status.title, status.sourceBranch);
+                break;
+              }
               try {
                 await provider.mergePr(issue.iid);
+                onMerge?.(issue.iid, status.url, status.title, status.sourceBranch);
               } catch (err) {
                 // Merge failed → fire MERGE_FAILED transition (developer fixes conflicts)
                 await auditLog(workspaceDir, "review_merge_failed", {

@@ -40,6 +40,10 @@ export type PrState = (typeof PrState)[keyof typeof PrState];
 export type PrStatus = {
   state: PrState;
   url: string | null;
+  /** MR/PR title (e.g. "feat: add login page"). */
+  title?: string;
+  /** Source branch name (e.g. "feature/7-blog-cms"). */
+  sourceBranch?: string;
 };
 
 // ---------------------------------------------------------------------------

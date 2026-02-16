@@ -22,6 +22,7 @@ import { reviewPass } from "./review.js";
 import { createProvider } from "../providers/index.js";
 import { loadConfig } from "../config/index.js";
 import { ExecutionMode } from "../workflow.js";
+import { notify, getNotificationConfig } from "../notify.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -281,6 +282,7 @@ export async function tick(opts: {
       );
 
       // Review pass: transition issues whose PR check condition is met
+      const notifyConfig = getNotificationConfig(pluginConfig);
       result.totalReviewTransitions += await reviewPass({
         workspaceDir,
         groupId,
@@ -288,6 +290,25 @@ export async function tick(opts: {
         provider,
         repoPath: project.repo,
         gitPullTimeoutMs: resolvedConfig.timeouts.gitPullMs,
+        onMerge: (issueId, prUrl, prTitle, sourceBranch) => {
+          provider.getIssue(issueId).then((issue) => {
+            notify(
+              {
+                type: "prMerged",
+                project: project.name,
+                groupId,
+                issueId,
+                issueUrl: issue.web_url,
+                issueTitle: issue.title,
+                prUrl: prUrl ?? undefined,
+                prTitle,
+                sourceBranch,
+                mergedBy: "heartbeat",
+              },
+              { workspaceDir, config: notifyConfig, groupId, channel: project.channel ?? "telegram" },
+            ).catch(() => {});
+          }).catch(() => {});
+        },
       });
 
       // Budget check: stop if we've hit the limit

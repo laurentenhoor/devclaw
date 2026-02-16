@@ -7,6 +7,7 @@
  * - workerStart: Worker spawned/resumed for a task (→ project group)
  * - workerComplete: Worker completed task (→ project group)
  * - reviewNeeded: Issue needs review — human or agent (→ project group)
+ * - prMerged: PR/MR was merged into the base branch (→ project group)
  */
 import { log as auditLog } from "./audit.js";
 import type { PluginRuntime } from "openclaw/plugin-sdk";
@@ -47,6 +48,18 @@ export type NotifyEvent =
       issueTitle: string;
       routing: "human" | "agent";
       prUrl?: string;
+    }
+  | {
+      type: "prMerged";
+      project: string;
+      groupId: string;
+      issueId: number;
+      issueUrl: string;
+      issueTitle: string;
+      prUrl?: string;
+      prTitle?: string;
+      sourceBranch?: string;
+      mergedBy: "heartbeat" | "agent" | "pipeline";
     };
 
 /**
@@ -92,6 +105,21 @@ function buildMessage(event: NotifyEvent): string {
       const icon = event.routing === "human" ? "👀" : "🤖";
       const who = event.routing === "human" ? "Human review needed" : "Agent review queued";
       let msg = `${icon} ${who} for #${event.issueId}: ${event.issueTitle}`;
+      if (event.prUrl) msg += `\n🔗 PR: ${event.prUrl}`;
+      msg += `\n📋 Issue: ${event.issueUrl}`;
+      return msg;
+    }
+
+    case "prMerged": {
+      const via: Record<string, string> = {
+        heartbeat: "auto-merged after approval",
+        agent: "merged by agent reviewer",
+        pipeline: "merged by reviewer",
+      };
+      let msg = `🔀 PR merged for #${event.issueId}: ${event.issueTitle}`;
+      if (event.prTitle) msg += `\n📝 ${event.prTitle}`;
+      if (event.sourceBranch) msg += `\n🌿 ${event.sourceBranch} → main`;
+      msg += `\n⚡ ${via[event.mergedBy] ?? event.mergedBy}`;
       if (event.prUrl) msg += `\n🔗 PR: ${event.prUrl}`;
       msg += `\n📋 Issue: ${event.issueUrl}`;
       return msg;
