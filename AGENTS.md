@@ -17,6 +17,7 @@ openclaw logs
 ```
 
 Look for the plugin registration line and any errors:
+
 ```
 [plugins] DevClaw plugin registered (11 tools, 1 CLI command group, 1 service)
 ```
