@@ -197,22 +197,23 @@ async function sendMessage(
     // Fallback: use CLI (for unsupported channels or when runtime isn't available)
     // Import lazily to avoid circular dependency issues
     const { runCommand } = await import("./run-command.js");
-    const args = [
-      "openclaw",
-      "message",
-      "send",
-      "--channel",
-      channel,
-      "--target",
-      target,
-      "--message",
-      message,
-      "--json",
-    ];
-    if (channel === "telegram") {
-      args.push("--disable-web-page-preview");
-    }
-    await runCommand(args, { timeoutMs: 30_000 });
+    // Note: openclaw message send CLI doesn't expose disable_web_page_preview flag.
+    // The runtime API path (above) handles it; CLI fallback won't suppress previews.
+    await runCommand(
+      [
+        "openclaw",
+        "message",
+        "send",
+        "--channel",
+        channel,
+        "--target",
+        target,
+        "--message",
+        message,
+        "--json",
+      ],
+      { timeoutMs: 30_000 },
+    );
     return true;
   } catch (err) {
     // Log but don't throw — notifications shouldn't break the main flow
