@@ -247,12 +247,13 @@ export class GitLabProvider implements IssueProvider {
         approvals_left?: number;
         approved_by?: Array<unknown>;
       };
-      // Require at least one explicit approval.  When a project has zero
-      // approval rules, GitLab returns approvals_left:0 even though nobody
-      // has actually reviewed — so approvals_left alone is not trustworthy.
-      if (data.approved === true) return true;
+      // Only trust explicit approvals — ignore bare 'approved' flag.
+      // When a project has zero approval rules, GitLab returns approved:true
+      // even though nobody has actually reviewed, causing false positives.
       const hasExplicitApproval = Array.isArray(data.approved_by) && data.approved_by.length > 0;
-      return hasExplicitApproval && (data.approvals_left ?? 1) === 0;
+      if (!hasExplicitApproval) return false;
+      // All required approvals satisfied
+      return (data.approvals_left ?? 1) <= 0;
     } catch { return false; }
   }
 
