@@ -303,6 +303,24 @@ Control which lifecycle events send notifications:
 | `workerStart` | `true` | Announce when a worker picks up a task |
 | `workerComplete` | `true` | Announce when a worker finishes a task |
 
+### Telegram Link Previews
+
+By default Telegram shows a link preview card for the first URL in each message. This clutters DevClaw notifications with GitHub/GitLab issue cards. Disable it globally with a single config line:
+
+```json
+{
+  "channels": {
+    "telegram": {
+      "linkPreview": false
+    }
+  }
+}
+```
+
+Setting `linkPreview: false` on the Telegram channel config causes OpenClaw to pass `link_preview_options: { is_disabled: true }` to the Telegram Bot API on every send. This is a **gateway-level global setting** — it applies to all messages, not just DevClaw notifications.
+
+> **Recommended for all DevClaw deployments.** DevClaw already uses inline markdown links (`[text](url)`) for cleaner output, and link preview cards add no value in a CI/CD notification context.
+
 ### Agent Tool Permissions
 
 Restrict DevClaw tools to your orchestrator agent:
