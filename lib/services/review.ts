@@ -55,9 +55,12 @@ export async function reviewPass(opts: {
 
       const status = await provider.getPrStatus(issue.iid);
 
+      // Strict separation: PR_APPROVED requires an actual review approval (not just a merge).
+      // PR_MERGED only triggers on merge. This prevents self-merged PRs (no reviews) from
+      // bypassing the review:human gate — a developer merging their own PR must not pass as approved.
       const conditionMet =
         (state.check === ReviewCheck.PR_MERGED && status.state === PrState.MERGED) ||
-        (state.check === ReviewCheck.PR_APPROVED && (status.state === PrState.APPROVED || status.state === PrState.MERGED));
+        (state.check === ReviewCheck.PR_APPROVED && status.state === PrState.APPROVED);
 
       if (!conditionMet) continue;
 

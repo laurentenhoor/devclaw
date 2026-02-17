@@ -173,10 +173,17 @@ export class GitHubProvider implements IssueProvider {
       const state = pr.reviewDecision === "APPROVED" ? PrState.APPROVED : PrState.OPEN;
       return { state, url: pr.url, title: pr.title, sourceBranch: pr.headRefName };
     }
-    // Check merged PRs
-    type MergedPr = { title: string; body: string; headRefName: string; url: string };
-    const merged = await this.findPrsForIssue<MergedPr>(issueId, "merged", "title,body,headRefName,url");
-    if (merged.length > 0) return { state: PrState.MERGED, url: merged[0].url, title: merged[0].title, sourceBranch: merged[0].headRefName };
+    // Check merged PRs — also fetch reviewDecision to detect approved-then-merged vs self-merged.
+    // A PR merged without any approvals (e.g. developer self-merge) returns PrState.MERGED but
+    // reviewDecision will be null/"" (not "APPROVED"), so callers cannot treat it as approved.
+    type MergedPr = { title: string; body: string; headRefName: string; url: string; reviewDecision: string | null };
+    const merged = await this.findPrsForIssue<MergedPr>(issueId, "merged", "title,body,headRefName,url,reviewDecision");
+    if (merged.length > 0) {
+      const pr = merged[0];
+      // If the PR was approved before merge, reflect that — heartbeat can distinguish approve+merge from self-merge.
+      const state = pr.reviewDecision === "APPROVED" ? PrState.APPROVED : PrState.MERGED;
+      return { state, url: pr.url, title: pr.title, sourceBranch: pr.headRefName };
+    }
     return { state: PrState.CLOSED, url: null };
   }
 
