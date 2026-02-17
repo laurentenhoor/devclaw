@@ -103,6 +103,14 @@ export function registerHeartbeatService(api: OpenClawPluginApi) {
         () => runHeartbeatTick(agents, config, pluginConfig, ctx.logger),
         config.intervalSeconds * 1000,
       );
+
+      // Run an immediate tick shortly after startup so queued work is picked up
+      // right away instead of waiting for the full interval (up to 60s).
+      // The 2s delay lets the plugin and providers fully initialize first.
+      setTimeout(
+        () => runHeartbeatTick(agents, config, pluginConfig, ctx.logger),
+        2_000,
+      );
     },
 
     stop: async (ctx) => {
