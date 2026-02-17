@@ -22,7 +22,7 @@ export function createResearchTaskTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
     name: "research_task",
     label: "Research Task",
-    description: `Spawn an architect to research a design/architecture problem. Creates a Planning issue and dispatches an architect worker.
+    description: `Spawn an architect to research a design/architecture problem. Dispatches architect directly — no issue created yet. The architect calls \`work_finish(result='done', summary='<findings>')\` which creates the Planning issue for human review.
 
 IMPORTANT: Provide a detailed description with enough background context for the architect
 to produce actionable, development-ready findings. Include: current state, constraints,

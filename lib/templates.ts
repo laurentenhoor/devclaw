@@ -262,7 +262,7 @@ All orchestration goes through these tools. You do NOT manually manage sessions,
 | \`health\` | Scan worker health: zombies, stale workers, orphaned state. Pass fix=true to auto-fix |
 | \`work_start\` | End-to-end: label transition, level assignment, session create/reuse, dispatch with role instructions |
 | \`work_finish\` | End-to-end: label transition, state update, issue close/reopen |
-| \`research_task\` | Spawn an architect for design investigation. Creates Planning issue with rich context and dispatches architect |
+| \`research_task\` | Dispatch architect to research; Planning issue created from findings when architect calls \`work_finish\` |
 
 ### First Thing on Session Start
 
@@ -278,7 +278,7 @@ Planning → To Do → Doing → To Review ──┬── [agent] → Reviewing
 
 To Improve → Doing (fix cycle)
 Refining (human decision)
-research_task → Planning (architect researches, posts findings, stays in Planning)
+research_task → [architect researches, no issue yet] → work_finish → Planning (created with findings)
 \`\`\`
 
 Review policy (configurable per project in workflow.yaml):
