@@ -110,7 +110,7 @@ export type CompletionRule = {
 
 export const DEFAULT_WORKFLOW: WorkflowConfig = {
   initial: "planning",
-  reviewPolicy: ReviewPolicy.AUTO,
+  reviewPolicy: ReviewPolicy.HUMAN,
   states: {
     // ── Main pipeline (happy path) ──────────────────────────────
     planning: {
@@ -146,7 +146,7 @@ export const DEFAULT_WORKFLOW: WorkflowConfig = {
       check: ReviewCheck.PR_APPROVED,
       on: {
         [WorkflowEvent.PICKUP]: "reviewing",
-        [WorkflowEvent.APPROVED]: { target: "toTest", actions: [Action.MERGE_PR, Action.GIT_PULL] },
+        [WorkflowEvent.APPROVED]: { target: "done", actions: [Action.MERGE_PR, Action.GIT_PULL, Action.CLOSE_ISSUE] },
         [WorkflowEvent.MERGE_FAILED]: "toImprove",
         [WorkflowEvent.CHANGES_REQUESTED]: "toImprove",
         [WorkflowEvent.MERGE_CONFLICT]: "toImprove",
@@ -158,28 +158,8 @@ export const DEFAULT_WORKFLOW: WorkflowConfig = {
       label: "Reviewing",
       color: "#c5def5",
       on: {
-        [WorkflowEvent.APPROVE]: { target: "toTest", actions: [Action.MERGE_PR, Action.GIT_PULL] },
+        [WorkflowEvent.APPROVE]: { target: "done", actions: [Action.MERGE_PR, Action.GIT_PULL, Action.CLOSE_ISSUE] },
         [WorkflowEvent.REJECT]: "toImprove",
-        [WorkflowEvent.BLOCKED]: "refining",
-      },
-    },
-    toTest: {
-      type: StateType.QUEUE,
-      role: "tester",
-      label: "To Test",
-      color: "#5bc0de",
-      priority: 2,
-      on: { [WorkflowEvent.PICKUP]: "testing" },
-    },
-    testing: {
-      type: StateType.ACTIVE,
-      role: "tester",
-      label: "Testing",
-      color: "#9b59b6",
-      on: {
-        [WorkflowEvent.PASS]: { target: "done", actions: [Action.CLOSE_ISSUE] },
-        [WorkflowEvent.FAIL]: { target: "toImprove", actions: [Action.REOPEN_ISSUE] },
-        [WorkflowEvent.REFINE]: "refining",
         [WorkflowEvent.BLOCKED]: "refining",
       },
     },

@@ -271,20 +271,31 @@ All orchestration goes through these tools. You do NOT manually manage sessions,
 ### Pipeline Flow
 
 \`\`\`
-Planning → To Do → Doing → To Review ──┬── [agent] → Reviewing → approve → To Test → Testing → Done
-                                        │                       → reject  → To Improve
-                                        │                       → blocked → Refining
-                                        └── [human] → PR approved → To Test (heartbeat auto-transitions)
+Planning → To Do → Doing → To Review → PR approved → Done (heartbeat auto-merges + closes)
+                                      → PR comments/changes requested → To Improve (fix cycle)
 
 To Improve → Doing (fix cycle)
 Refining (human decision)
-research_task → [architect researches, no issue yet] → work_finish → Planning (created with findings)
+research_task → [architect researches] → work_finish → Planning (findings posted)
 \`\`\`
 
-Review policy (configurable per project in workflow.yaml):
-- **auto** (default): junior/medior → agent review, senior → human review
-- **agent**: always agent review
-- **human**: always human review (stays in To Review, heartbeat polls PR)
+### Review Policy
+
+Configurable per project in \`workflow.yaml\` → \`workflow.reviewPolicy\`:
+
+- **human** (default): All PRs need human approval on GitHub/GitLab. Heartbeat auto-merges when approved.
+- **agent**: Agent reviewer checks every PR before merge.
+- **auto**: Junior/medior → agent review, senior → human review.
+
+### Test Phase (optional)
+
+By default, approved PRs go straight to Done. To add automated QA after review, uncomment the \`toTest\` and \`testing\` states in \`workflow.yaml\` and change the review targets from \`done\` to \`toTest\`. See the comments in \`workflow.yaml\` for step-by-step instructions.
+
+With testing enabled, the flow becomes:
+\`\`\`
+... → To Review → approved → To Test → Testing → pass → Done
+                                                → fail → To Improve
+\`\`\`
 
 Issue labels are the single source of truth for task state.
 
@@ -311,15 +322,19 @@ All roles (Developer, Tester, Architect) use the same level scheme. Levels descr
 Workers call \`work_finish\` themselves — the label transition, state update, and audit log happen atomically. The heartbeat service will pick up the next task on its next cycle:
 
 - Developer "done" → "To Review" → routes based on review policy:
-  - Agent/auto-junior: reviewer agent dispatched → "Reviewing" → approve/reject
-  - Human/auto-senior: heartbeat polls PR status → auto-merges when approved → "To Test"
-- Reviewer "approve" → merges PR → "To Test" → scheduler dispatches Tester
+  - Human (default): heartbeat polls PR status → auto-merges when approved → Done
+  - Agent: reviewer agent dispatched → "Reviewing" → approve/reject
+  - Auto: junior/medior → agent, senior → human
+- Reviewer "approve" → merges PR → Done (or To Test if test phase enabled)
 - Reviewer "reject" → "To Improve" → scheduler dispatches Developer
-- Tester "fail" → "To Improve" → scheduler dispatches Developer
-- Tester "pass" → Done, no further dispatch
-- Tester "refine" / blocked → needs human input
+- PR comments / changes requested → "To Improve" (heartbeat detects automatically)
 - Architect "done" → stays in "Planning" → ready for tech lead review
 - Architect "blocked" → "Refining" → needs human input
+
+If the test phase is enabled in workflow.yaml:
+- Tester "pass" → Done
+- Tester "fail" → "To Improve" → scheduler dispatches Developer
+- Tester "refine" / blocked → needs human input
 
 **Include the \`announcement\` verbatim** in your response — it already contains all relevant links. Do not append separate URL lines.
 
@@ -385,7 +400,7 @@ You are a **development orchestrator** — you plan, prioritize, and dispatch. Y
 ## Boundaries
 
 - **Never write code** — dispatch a developer worker
-- **Never skip testing** — every code change goes through QA
+- **Code goes through review** before merging — enable the test phase in workflow.yaml for automated QA
 - **Never close issues** without a tester pass
 - **Ask before** architectural decisions affecting multiple projects
 
@@ -397,6 +412,10 @@ Each session starts fresh. AGENTS.md defines your operational procedures. This f
 
 /**
  * Generate WORKFLOW_YAML_TEMPLATE from the runtime objects (single source of truth).
+ *
+ * The roles section is auto-generated via YAML.stringify.
+ * The workflow section is hand-crafted to include inline comments showing
+ * how to enable the optional test phase and configure review policy.
  */
 function buildWorkflowYaml(): string {
   const roles: Record<string, { models: Record<string, string> }> = {};
@@ -407,7 +426,143 @@ function buildWorkflowYaml(): string {
   const header =
     "# DevClaw workflow configuration\n" +
     "# Modify values to customize. Copy to devclaw/projects/<project>/workflow.yaml for project-specific overrides.\n\n";
-  return header + YAML.stringify({ roles, workflow: DEFAULT_WORKFLOW });
+
+  const rolesYaml = YAML.stringify({ roles });
+
+  const workflowYaml = `workflow:
+  initial: planning
+  reviewPolicy: human  # Options: human (default), agent, auto
+  # human — All PRs need human approval on GitHub/GitLab. Heartbeat auto-merges when approved.
+  # agent — Agent reviewer checks every PR before merge.
+  # auto  — Junior/medior → agent review, senior → human review.
+  states:
+    planning:
+      type: hold
+      label: Planning
+      color: "#95a5a6"
+      on:
+        APPROVE: todo
+    toResearch:
+      type: queue
+      role: architect
+      label: To Research
+      color: "#0075ca"
+      priority: 1
+      on:
+        PICKUP: researching
+    researching:
+      type: active
+      role: architect
+      label: Researching
+      color: "#4a90e2"
+      on:
+        COMPLETE:
+          target: planning
+          actions: []
+        BLOCKED: refining
+    todo:
+      type: queue
+      role: developer
+      label: To Do
+      color: "#428bca"
+      priority: 1
+      on:
+        PICKUP: doing
+    doing:
+      type: active
+      role: developer
+      label: Doing
+      color: "#f0ad4e"
+      on:
+        COMPLETE:
+          target: toReview
+          actions:
+            - detectPr
+        BLOCKED: refining
+    toReview:
+      type: queue
+      role: reviewer
+      label: To Review
+      color: "#7057ff"
+      priority: 2
+      check: prApproved
+      on:
+        PICKUP: reviewing
+        APPROVED:
+          target: done  # change to "toTest" to enable test phase
+          actions:
+            - mergePr
+            - gitPull
+            - closeIssue  # remove when using test phase (tester closes)
+        MERGE_FAILED: toImprove
+        CHANGES_REQUESTED: toImprove
+        MERGE_CONFLICT: toImprove
+    reviewing:
+      type: active
+      role: reviewer
+      label: Reviewing
+      color: "#c5def5"
+      on:
+        APPROVE:
+          target: done  # change to "toTest" to enable test phase
+          actions:
+            - mergePr
+            - gitPull
+            - closeIssue  # remove when using test phase (tester closes)
+        REJECT: toImprove
+        BLOCKED: refining
+    done:
+      type: terminal
+      label: Done
+      color: "#5cb85c"
+    # --- Test phase (uncomment to enable) ------------------------------------
+    # Adds automated QA after review. To enable:
+    #   1. Uncomment toTest and testing below
+    #   2. Change APPROVED/APPROVE targets above from "done" to "toTest"
+    #   3. Remove closeIssue from APPROVED/APPROVE actions above
+    #   4. Add tester prompts: devclaw/prompts/tester.md
+    #      (or per-project: devclaw/projects/<name>/prompts/tester.md)
+    # toTest:
+    #   type: queue
+    #   role: tester
+    #   label: To Test
+    #   color: "#5bc0de"
+    #   priority: 2
+    #   on:
+    #     PICKUP: testing
+    # testing:
+    #   type: active
+    #   role: tester
+    #   label: Testing
+    #   color: "#9b59b6"
+    #   on:
+    #     PASS:
+    #       target: done
+    #       actions:
+    #         - closeIssue
+    #     FAIL:
+    #       target: toImprove
+    #       actions:
+    #         - reopenIssue
+    #     REFINE: refining
+    #     BLOCKED: refining
+    toImprove:
+      type: queue
+      role: developer
+      label: To Improve
+      color: "#d9534f"
+      priority: 3
+      on:
+        PICKUP: doing
+    refining:
+      type: hold
+      label: Refining
+      color: "#f39c12"
+      on:
+        APPROVE: todo
+`;
+
+  return header + rolesYaml + workflowYaml;
 }
 
 export const WORKFLOW_YAML_TEMPLATE = buildWorkflowYaml();

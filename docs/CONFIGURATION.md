@@ -80,11 +80,14 @@ roles:
 
 ### Workflow States
 
-The workflow section defines the state machine for issue lifecycle. Each state has a type, label, color, and optional transitions:
+The workflow section defines the state machine for issue lifecycle. Each state has a type, label, color, and optional transitions.
+
+The default workflow uses **human review** and **no test phase** — approved PRs go straight to Done. See [Review Policy](#review-policy) and [Test Phase](#test-phase-optional) below for how to customize.
 
 ```yaml
 workflow:
   initial: planning
+  reviewPolicy: human
   states:
     planning:
       type: hold
@@ -107,34 +110,39 @@ workflow:
       color: "#f0ad4e"
       on:
         COMPLETE:
-          target: toTest
-          actions: [gitPull, detectPr]
-        REVIEW:
-          target: reviewing
+          target: toReview
           actions: [detectPr]
         BLOCKED: refining
-    toTest:
+    toReview:
       type: queue
-      role: tester
-      label: To Test
-      color: "#5bc0de"
+      role: reviewer
+      label: To Review
+      color: "#7057ff"
       priority: 2
+      check: prApproved
       on:
-        PICKUP: testing
-    testing:
-      type: active
-      role: tester
-      label: Testing
-      color: "#9b59b6"
-      on:
-        PASS:
+        PICKUP: reviewing
+        APPROVED:
           target: done
-          actions: [closeIssue]
-        FAIL:
-          target: toImprove
-          actions: [reopenIssue]
-        REFINE: refining
+          actions: [mergePr, gitPull, closeIssue]
+        MERGE_FAILED: toImprove
+        CHANGES_REQUESTED: toImprove
+        MERGE_CONFLICT: toImprove
+    reviewing:
+      type: active
+      role: reviewer
+      label: Reviewing
+      color: "#c5def5"
+      on:
+        APPROVE:
+          target: done
+          actions: [mergePr, gitPull, closeIssue]
+        REJECT: toImprove
         BLOCKED: refining
+    done:
+      type: terminal
+      label: Done
+      color: "#5cb85c"
     toImprove:
       type: queue
       role: developer
@@ -149,24 +157,9 @@ workflow:
       color: "#f39c12"
       on:
         APPROVE: todo
-    reviewing:
-      type: review
-      label: In Review
-      color: "#c5def5"
-      check: prApproved
-      on:
-        APPROVED:
-          target: toTest
-          actions: [mergePr, gitPull]
-        MERGE_FAILED: toImprove
-        BLOCKED: refining
-    done:
-      type: terminal
-      label: Done
-      color: "#5cb85c"
 ```
 
-Note: The architect role has no dedicated workflow states. Design tasks are triggered via `research_task` tool only — issues go directly to Planning.
+Note: The architect role has no dedicated workflow states in the main pipeline. Design tasks are triggered via `research_task` tool only — issues go directly to Planning.
 
 **State types:**
 
@@ -194,6 +187,83 @@ Note: The architect role has no dedicated workflow states. Design tasks are trig
 |---|---|
 | `prMerged` | Transition when the issue's PR is merged |
 | `prApproved` | Transition when the issue's PR is approved or merged |
+
+### Review Policy
+
+The `reviewPolicy` field in `workflow.yaml` controls how PRs are reviewed after a developer completes work:
+
+```yaml
+workflow:
+  reviewPolicy: human  # Options: human, agent, auto
+```
+
+| Policy | Behavior |
+|---|---|
+| `human` (default) | All PRs need human approval on GitHub/GitLab. The heartbeat service auto-merges when the PR is approved. PR comments or changes-requested reviews automatically move the issue to "To Improve". |
+| `agent` | An agent reviewer checks every PR before merge. The reviewer agent is dispatched automatically and calls `work_finish` with approve/reject. |
+| `auto` | Junior/medior developer tasks → agent review. Senior developer tasks → human review. Useful for catching obvious issues with AI while reserving human review for complex work. |
+
+Per-issue overrides are also possible via labels: `review:human`, `review:agent`, or `review:skip`. These override the project-level policy for a single issue.
+
+**Source:** [`lib/workflow.ts`](../lib/workflow.ts) — `resolveReviewRouting()`
+
+### Test Phase (optional)
+
+By default, approved PRs go straight to Done. To add automated QA after review, add the `toTest` and `testing` states to your `workflow.yaml` and redirect the review targets.
+
+**Step-by-step:**
+
+1. Add `toTest` and `testing` states (uncomment them in the generated `workflow.yaml`)
+2. Change the `APPROVED` target in `toReview` from `done` to `toTest`
+3. Change the `APPROVE` target in `reviewing` from `done` to `toTest`
+4. Remove `closeIssue` from the `APPROVED`/`APPROVE` actions (the tester handles closing)
+5. Add tester role prompts at `devclaw/prompts/tester.md` (or per-project at `devclaw/projects/<name>/prompts/tester.md`)
+
+**Test states to add:**
+
+```yaml
+    toTest:
+      type: queue
+      role: tester
+      label: To Test
+      color: "#5bc0de"
+      priority: 2
+      on:
+        PICKUP: testing
+    testing:
+      type: active
+      role: tester
+      label: Testing
+      color: "#9b59b6"
+      on:
+        PASS:
+          target: done
+          actions:
+            - closeIssue
+        FAIL:
+          target: toImprove
+          actions:
+            - reopenIssue
+        REFINE: refining
+        BLOCKED: refining
+```
+
+**Review targets after enabling test phase:**
+
+```yaml
+    toReview:
+      on:
+        APPROVED:
+          target: toTest        # was: done
+          actions: [mergePr, gitPull]  # removed: closeIssue
+    reviewing:
+      on:
+        APPROVE:
+          target: toTest        # was: done
+          actions: [mergePr, gitPull]  # removed: closeIssue
+```
+
+Per-issue skip: Add the `test:skip` label to bypass testing for a specific issue.
 
 ### Timeouts
 
