@@ -36,26 +36,37 @@ export function createHealthTool() {
       const workspaceDir = requireWorkspaceDir(ctx);
       const fix = (params.fix as boolean) ?? false;
 
-      const groupId = params.projectGroupId as string | undefined;
+      const slugOrGroupId = params.projectGroupId as string | undefined;
 
       const data = await readProjects(workspaceDir);
-      const projectIds = groupId ? [groupId] : Object.keys(data.projects);
+      
+      // Resolve slug from slugOrGroupId
+      let slugs = Object.keys(data.projects);
+      if (slugOrGroupId) {
+        const project = getProject(data, slugOrGroupId);
+        const slug = project ? 
+          (data.projects[slugOrGroupId] ? slugOrGroupId :
+            Object.keys(data.projects).find(s => data.projects[s].channels.some(ch => ch.groupId === slugOrGroupId)))
+          : undefined;
+        slugs = slug ? [slug] : [];
+      }
 
       // Fetch gateway sessions once for all projects
       const sessions = await fetchGatewaySessions();
 
       const issues: Array<HealthFix & { project: string; role: string }> = [];
 
-      for (const pid of projectIds) {
-        const project = getProject(data, pid);
+      for (const slug of slugs) {
+        const project = data.projects[slug];
         if (!project) continue;
         const { provider } = await resolveProvider(project);
+        const primaryGroupId = project.channels[0]?.groupId || slug;
 
         for (const role of Object.keys(project.workers)) {
           // Worker health check (session liveness, label consistency, etc)
           const healthFixes = await checkWorkerHealth({
             workspaceDir,
-            groupId: pid,
+            groupId: primaryGroupId,
             project,
             role,
             sessions,
@@ -67,7 +78,7 @@ export function createHealthTool() {
           // Orphaned label scan (active labels with no tracking worker)
           const orphanFixes = await scanOrphanedLabels({
             workspaceDir,
-            groupId: pid,
+            groupId: primaryGroupId,
             project,
             role,
             autoFix: fix,
@@ -78,7 +89,7 @@ export function createHealthTool() {
       }
 
       await auditLog(workspaceDir, "health", {
-        projectCount: projectIds.length,
+        projectCount: slugs.length,
         fix,
         issuesFound: issues.length,
         issuesFixed: issues.filter((i) => i.fixed).length,
@@ -88,7 +99,7 @@ export function createHealthTool() {
       return jsonResult({
         success: true,
         fix,
-        projectsScanned: projectIds.length,
+        projectsScanned: slugs.length,
         sessionsQueried: sessions?.size ?? 0,
         issues,
       });

@@ -3,12 +3,32 @@
  * All state mutations go through this module to prevent corruption.
  *
  * Uses file-level locking to prevent concurrent read-modify-write races.
+ *
+ * Schema: Project-first with channels array. Legacy groupId-keyed projects are
+ * auto-migrated to the new schema on first read via schema-migration.ts.
+ *
+ * New schema:
+ * {
+ *   "projects": {
+ *     "devclaw": {
+ *       "slug": "devclaw",
+ *       "repo": "~/git/devclaw",
+ *       "repoRemote": "https://github.com/laurentenhoor/devclaw.git",
+ *       "baseBranch": "main",
+ *       "channels": [
+ *         { "groupId": "-5176490302", "channel": "telegram", "name": "primary", "events": ["*"] }
+ *       ],
+ *       "workers": { ... }
+ *     }
+ *   }
+ * }
  */
 import fs from "node:fs/promises";
 import path from "node:path";
 import { homedir } from "node:os";
 import { migrateProject } from "./migrations.js";
 import { ensureWorkspaceMigrated, DATA_DIR } from "./setup/migrate-layout.js";
+import { isLegacySchema, migrateLegacySchema } from "./schema-migration.js";
 import type { ExecutionMode } from "./workflow.js";
 
 // ---------------------------------------------------------------------------
@@ -65,27 +85,60 @@ export type WorkerState = {
   sessions: Record<string, string | null>;
 };
 
+/**
+ * Channel registration: maps a groupId to messaging endpoint with event filters.
+ */
+export type Channel = {
+  groupId: string;
+  channel: "telegram" | "whatsapp" | "discord" | "slack";
+  name: string; // e.g. "primary", "dev-chat"
+  events: string[]; // e.g. ["*"] for all, ["workerComplete"] for filtered
+};
+
+/**
+ * Project configuration in the new project-first schema.
+ */
 export type Project = {
+  slug: string;
   name: string;
   repo: string;
+  repoRemote?: string; // Git remote URL (e.g., https://github.com/.../repo.git)
   groupName: string;
   deployUrl: string;
   baseBranch: string;
   deployBranch: string;
-  /** Messaging channel for this project's group (e.g. "telegram", "whatsapp", "discord", "slack"). Stored at registration time. */
-  channel?: string;
+  /** Channels registered for this project (notification endpoints). */
+  channels: Channel[];
   /** Issue tracker provider type (github or gitlab). Auto-detected at registration, stored for reuse. */
   provider?: "github" | "gitlab";
   /** Project-level role execution: parallel (DEVELOPER+TESTER can run simultaneously) or sequential (only one role at a time). Default: parallel */
   roleExecution?: ExecutionMode;
   maxDevWorkers?: number;
   maxQaWorkers?: number;
-  /** Worker state per role (developer, tester, architect, or custom roles). */
+  /** Worker state per role (developer, tester, architect, or custom roles). Shared across all channels. */
+  workers: Record<string, WorkerState>;
+};
+
+/**
+ * Legacy Project format (groupId-keyed). Used only during migration.
+ */
+export type LegacyProject = {
+  name: string;
+  repo: string;
+  groupName: string;
+  deployUrl: string;
+  baseBranch: string;
+  deployBranch: string;
+  channel?: string;
+  provider?: "github" | "gitlab";
+  roleExecution?: ExecutionMode;
+  maxDevWorkers?: number;
+  maxQaWorkers?: number;
   workers: Record<string, WorkerState>;
 };
 
 export type ProjectsData = {
-  projects: Record<string, Project>;
+  projects: Record<string, Project>; // Keyed by slug (new schema)
 };
 
 /**
@@ -122,13 +175,23 @@ function projectsPath(workspaceDir: string): string {
 export async function readProjects(workspaceDir: string): Promise<ProjectsData> {
   await ensureWorkspaceMigrated(workspaceDir);
   const raw = await fs.readFile(projectsPath(workspaceDir), "utf-8");
-  const data = JSON.parse(raw) as ProjectsData;
+  let data = JSON.parse(raw) as any;
 
-  for (const project of Object.values(data.projects)) {
-    migrateProject(project);
+  // Auto-migrate legacy schema to new schema
+  if (isLegacySchema(data)) {
+    data = migrateLegacySchema(data);
+    // Write migrated schema back to disk
+    await writeProjects(workspaceDir, data as ProjectsData);
   }
 
-  return data;
+  const typedData = data as ProjectsData;
+
+  // Apply per-project migrations
+  for (const project of Object.values(typedData.projects)) {
+    migrateProject(project as any);
+  }
+
+  return typedData;
 }
 
 export async function writeProjects(
@@ -141,11 +204,38 @@ export async function writeProjects(
   await fs.rename(tmpPath, filePath);
 }
 
+/**
+ * Resolve a project by slug or groupId (for backward compatibility).
+ * Returns the slug of the found project.
+ */
+export function resolveProjectSlug(
+  data: ProjectsData,
+  slugOrGroupId: string,
+): string | undefined {
+  // Direct lookup by slug
+  if (data.projects[slugOrGroupId]) {
+    return slugOrGroupId;
+  }
+
+  // Reverse lookup by groupId in channels
+  for (const [slug, project] of Object.entries(data.projects)) {
+    if (project.channels.some(ch => ch.groupId === slugOrGroupId)) {
+      return slug;
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Get a project by slug or groupId (dual-mode resolution).
+ */
 export function getProject(
   data: ProjectsData,
-  groupId: string,
+  slugOrGroupId: string,
 ): Project | undefined {
-  return data.projects[groupId];
+  const slug = resolveProjectSlug(data, slugOrGroupId);
+  return slug ? data.projects[slug] : undefined;
 }
 
 export function getWorker(
@@ -156,22 +246,28 @@ export function getWorker(
 }
 
 /**
- * Update worker state for a project. Only provided fields are updated.
+ * Update worker state for a project. Accepts slug or groupId (dual-mode).
+ * Only provided fields are updated.
  * Sessions are merged (not replaced) when both existing and new sessions are present.
  * Uses file locking to prevent concurrent read-modify-write races.
  */
 export async function updateWorker(
   workspaceDir: string,
-  groupId: string,
+  slugOrGroupId: string,
   role: string,
   updates: Partial<WorkerState>,
 ): Promise<ProjectsData> {
   await acquireLock(workspaceDir);
   try {
     const data = await readProjects(workspaceDir);
-    const project = data.projects[groupId];
+    const slug = resolveProjectSlug(data, slugOrGroupId);
+    if (!slug) {
+      throw new Error(`Project not found for slug or groupId: ${slugOrGroupId}`);
+    }
+
+    const project = data.projects[slug];
     if (!project) {
-      throw new Error(`Project not found for groupId: ${groupId}`);
+      throw new Error(`Project not found for slug: ${slug}`);
     }
 
     const worker = project.workers[role] ?? emptyWorkerState([]);
@@ -192,10 +288,11 @@ export async function updateWorker(
 /**
  * Mark a worker as active with a new task.
  * Stores session key in sessions[level] when a new session is spawned.
+ * Accepts slug or groupId (dual-mode).
  */
 export async function activateWorker(
   workspaceDir: string,
-  groupId: string,
+  slugOrGroupId: string,
   role: string,
   params: {
     issueId: string;
@@ -215,20 +312,21 @@ export async function activateWorker(
   if (params.startTime !== undefined) {
     updates.startTime = params.startTime;
   }
-  return updateWorker(workspaceDir, groupId, role, updates);
+  return updateWorker(workspaceDir, slugOrGroupId, role, updates);
 }
 
 /**
  * Mark a worker as inactive after task completion.
  * Preserves sessions map and level for reuse via updateWorker's spread.
  * Clears startTime to prevent stale state on inactive workers.
+ * Accepts slug or groupId (dual-mode).
  */
 export async function deactivateWorker(
   workspaceDir: string,
-  groupId: string,
+  slugOrGroupId: string,
   role: string,
 ): Promise<ProjectsData> {
-  return updateWorker(workspaceDir, groupId, role, {
+  return updateWorker(workspaceDir, slugOrGroupId, role, {
     active: false,
     issueId: null,
     startTime: null,
