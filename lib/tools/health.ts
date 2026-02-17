@@ -8,7 +8,8 @@
  *   - stuck_label: inactive but issue has Doing/Testing label
  *   - orphan_issue_id: inactive but issueId set
  *   - issue_gone: active but issue deleted/closed
- *   - orphaned_label: active label but no worker tracking it (NEW)
+ *   - orphaned_label: active label but no worker tracking it
+ *   - orphaned_session: gateway subagent session not tracked in projects.json
  *
  * Read-only by default (surfaces issues). Pass fix=true to apply fixes.
  */
@@ -16,7 +17,7 @@ import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
 import { readProjects, getProject } from "../projects.js";
 import { log as auditLog } from "../audit.js";
-import { checkWorkerHealth, scanOrphanedLabels, fetchGatewaySessions, type HealthFix } from "../services/health.js";
+import { checkWorkerHealth, scanOrphanedLabels, scanOrphanedSessions, fetchGatewaySessions, type HealthFix } from "../services/health.js";
 import { requireWorkspaceDir, resolveProvider } from "../tool-helpers.js";
 
 export function createHealthTool() {
@@ -87,6 +88,14 @@ export function createHealthTool() {
           issues.push(...orphanFixes.map((f) => ({ ...f, project: project.name, role })));
         }
       }
+
+      // Orphaned session scan (subagent sessions not tracked by any project)
+      const orphanedSessionFixes = await scanOrphanedSessions({
+        workspaceDir,
+        sessions,
+        autoFix: fix,
+      });
+      issues.push(...orphanedSessionFixes.map((f) => ({ ...f, project: "global", role: "global" })));
 
       await auditLog(workspaceDir, "health", {
         projectCount: slugs.length,

@@ -16,7 +16,7 @@ import path from "node:path";
 import { readProjects, getProject } from "../projects.js";
 import { log as auditLog } from "../audit.js";
 import { DATA_DIR } from "../setup/migrate-layout.js";
-import { checkWorkerHealth, scanOrphanedLabels, fetchGatewaySessions, type SessionLookup } from "./health.js";
+import { checkWorkerHealth, scanOrphanedLabels, scanOrphanedSessions, fetchGatewaySessions, type SessionLookup } from "./health.js";
 import { projectTick } from "./tick.js";
 import { reviewPass } from "./review.js";
 import { createProvider } from "../providers/index.js";
@@ -352,6 +352,14 @@ export async function tick(opts: {
       result.totalSkipped++;
     }
   }
+
+  // Orphaned session scan: clean up subagent sessions not tracked by any project
+  const orphanedSessionFixes = await scanOrphanedSessions({
+    workspaceDir,
+    sessions,
+    autoFix: true,
+  });
+  result.totalHealthFixes += orphanedSessionFixes.filter((f) => f.fixed).length;
 
   await auditLog(workspaceDir, "heartbeat_tick", {
     projectsScanned: slugs.length,
