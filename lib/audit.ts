@@ -46,3 +46,4 @@ async function truncateIfNeeded(filePath: string): Promise<void> {
     // Silently ignore truncation errors — log remains intact
   }
 }
+// test
