@@ -314,9 +314,9 @@ export class GitHubProvider implements IssueProvider {
   private async hasConversationComments(prNumber: number): Promise<boolean> {
     try {
       const raw = await this.gh(["api", `repos/:owner/:repo/issues/${prNumber}/comments`]);
-      const comments = JSON.parse(raw) as Array<{ user: { login: string }; body: string }>;
+      const comments = JSON.parse(raw) as Array<{ user: { login: string }; body: string; reactions: { eyes: number } }>;
       return comments.some(
-        (c) => !c.user.login.endsWith("[bot]") && c.body.trim().length > 0,
+        (c) => !c.user.login.endsWith("[bot]") && c.body.trim().length > 0 && !(c.reactions?.eyes > 0),
       );
     } catch { return false; }
   }

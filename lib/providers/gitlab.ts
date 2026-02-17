@@ -192,10 +192,21 @@ export class GitLabProvider implements IssueProvider {
   private async hasConversationComments(mrIid: number): Promise<boolean> {
     try {
       const raw = await this.glab(["api", `projects/:id/merge_requests/${mrIid}/notes`]);
-      const notes = JSON.parse(raw) as Array<{ system: boolean; body: string }>;
-      return notes.some(
-        (n) => !n.system && n.body.trim().length > 0,
-      );
+      const notes = JSON.parse(raw) as Array<{ id: number; system: boolean; body: string }>;
+      const candidates = notes.filter((n) => !n.system && n.body.trim().length > 0);
+      for (const note of candidates) {
+        if (!(await this.noteHasEyesEmoji(mrIid, note.id))) return true;
+      }
+      return false;
+    } catch { return false; }
+  }
+
+  /** Check if a note already has an 👀 award emoji (marks it as processed). */
+  private async noteHasEyesEmoji(mrIid: number, noteId: number): Promise<boolean> {
+    try {
+      const raw = await this.glab(["api", `projects/:id/merge_requests/${mrIid}/notes/${noteId}/award_emoji`]);
+      const emojis = JSON.parse(raw) as Array<{ name: string }>;
+      return emojis.some((e) => e.name === "eyes");
     } catch { return false; }
   }
 

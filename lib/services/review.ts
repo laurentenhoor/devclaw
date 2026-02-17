@@ -220,7 +220,7 @@ export async function reviewPass(opts: {
 // ---------------------------------------------------------------------------
 
 /** Reaction emoji used to acknowledge PR feedback has been noticed. */
-const FEEDBACK_REACTION_EMOJI = "robot";
+const FEEDBACK_REACTION_EMOJI = "eyes";
 
 /**
  * Add a 🤖 reaction to all PR review comments on the issue's PR.
