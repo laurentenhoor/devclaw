@@ -16,8 +16,8 @@ import {
 import { resolveModel, getFallbackEmoji } from "./roles/index.js";
 import { notify, getNotificationConfig } from "./notify.js";
 import { loadConfig, type ResolvedRoleConfig } from "./config/index.js";
-import { ReviewPolicy, resolveReviewRouting, resolveNotifyChannel } from "./workflow.js";
-import { PrState } from "./providers/provider.js";
+import { ReviewPolicy, resolveReviewRouting, resolveNotifyChannel, isFeedbackState, hasReviewCheck, producesReviewableWork } from "./workflow.js";
+import { fetchPrFeedback, fetchPrContext, formatPrContext, formatPrFeedback, type PrFeedback, type PrContext } from "./pr-context.js";
 
 export type DispatchOpts = {
   workspaceDir: string;
@@ -71,14 +71,8 @@ export function buildTaskMessage(opts: {
   baseBranch: string;
   comments?: Array<{ author: string; body: string; created_at: string }>;
   resolvedRole?: ResolvedRoleConfig;
-  /** PR context for reviewer role (URL + diff) */
-  prContext?: { url: string; diff?: string };
-  /** PR review feedback for developer re-dispatch (from To Improve) */
-  prFeedback?: {
-    url: string;
-    reason?: "changes_requested" | "merge_conflict" | "rejected";
-    comments: Array<{ author: string; body: string; state: string; path?: string; line?: number }>;
-  };
+  prContext?: PrContext;
+  prFeedback?: PrFeedback;
 }): string {
   const {
     projectName, projectSlug, role, issueId, issueTitle,
@@ -106,39 +100,8 @@ export function buildTaskMessage(opts: {
     }
   }
 
-  // Include PR context for reviewer role
-  if (opts.prContext) {
-    parts.push(``, `## Pull Request`, `🔗 ${opts.prContext.url}`);
-    if (opts.prContext.diff) {
-      // Truncate large diffs to avoid bloating context
-      const maxDiffLen = 50_000;
-      const diff = opts.prContext.diff.length > maxDiffLen
-        ? opts.prContext.diff.slice(0, maxDiffLen) + "\n... (diff truncated, see PR for full changes)"
-        : opts.prContext.diff;
-      parts.push(``, `### Diff`, "```diff", diff, "```");
-    }
-  }
-
-  // Include PR review feedback for developer re-dispatch
-  if (opts.prFeedback && opts.prFeedback.comments.length > 0) {
-    const reasonLabel = opts.prFeedback.reason === "merge_conflict"
-      ? "⚠️ Merge conflicts detected"
-      : opts.prFeedback.reason === "changes_requested"
-        ? "⚠️ Changes were requested"
-        : "⚠️ PR was rejected";
-    parts.push(``, `## PR Review Feedback`, `${reasonLabel}. Address the feedback below.`, `🔗 ${opts.prFeedback.url}`);
-    for (const c of opts.prFeedback.comments) {
-      const location = c.path ? ` (${c.path}${c.line ? `:${c.line}` : ""})` : "";
-      parts.push(``, `**${c.author}** [${c.state}]${location}:`, c.body);
-    }
-    if (opts.prFeedback.reason === "merge_conflict") {
-      parts.push(``, `### Conflict Resolution Instructions`,
-        `1. Rebase your branch onto \`${baseBranch}\`: \`git rebase ${baseBranch}\``,
-        `2. Resolve any conflicts`,
-        `3. Force-push: \`git push --force-with-lease\``,
-        `Prefer rebase over merge commits.`);
-    }
-  }
+  if (opts.prContext) parts.push(...formatPrContext(opts.prContext));
+  if (opts.prFeedback) parts.push(...formatPrFeedback(opts.prFeedback, baseBranch));
 
   parts.push(
     ``,
@@ -202,49 +165,12 @@ export async function dispatchTask(
   // Fetch comments to include in task context
   const comments = await provider.listComments(issueId);
 
-  // Fetch PR review feedback for developer re-dispatch (from To Improve)
-  let prFeedback: {
-    url: string;
-    reason?: "changes_requested" | "merge_conflict" | "rejected";
-    comments: Array<{ author: string; body: string; state: string; path?: string; line?: number }>;
-  } | undefined;
-  if (role === "developer" && fromLabel === "To Improve") {
-    try {
-      const prStatus = await provider.getPrStatus(issueId);
-      if (prStatus.url && prStatus.state !== PrState.MERGED && prStatus.state !== PrState.CLOSED) {
-        const reviewComments = await provider.getPrReviewComments(issueId);
-        if (reviewComments.length > 0) {
-          const reason = prStatus.mergeable === false ? "merge_conflict" as const
-            : prStatus.state === PrState.CHANGES_REQUESTED ? "changes_requested" as const
-            : "rejected" as const;
-          prFeedback = {
-            url: prStatus.url,
-            reason,
-            comments: reviewComments.map((c) => ({
-              author: c.author, body: c.body, state: c.state,
-              path: c.path, line: c.line,
-            })),
-          };
-        }
-      }
-    } catch {
-      // Best-effort — developer can still work from issue context
-    }
-  }
-
-  // Fetch PR context for reviewer role
-  let prContext: { url: string; diff?: string } | undefined;
-  if (role === "reviewer") {
-    try {
-      const prStatus = await provider.getPrStatus(issueId);
-      if (prStatus.url) {
-        const diff = await provider.getPrDiff(issueId) ?? undefined;
-        prContext = { url: prStatus.url, diff };
-      }
-    } catch {
-      // Best-effort — reviewer can still work from issue context
-    }
-  }
+  // Fetch PR context based on workflow role semantics (no hardcoded role/label checks)
+  const { workflow } = resolvedConfig;
+  const prFeedback = isFeedbackState(workflow, fromLabel)
+    ? await fetchPrFeedback(provider, issueId) : undefined;
+  const prContext = hasReviewCheck(workflow, role)
+    ? await fetchPrContext(provider, issueId) : undefined;
 
   const taskMessage = buildTaskMessage({
     projectName: project.name, projectSlug: project.slug, role, issueId,
@@ -266,10 +192,10 @@ export async function dispatchTask(
     }
     await provider.addLabel(issueId, `${role}:${level}`);
 
-    // Step 1c: Apply review routing label when developer dispatched (best-effort)
-    if (role === "developer") {
+    // Step 1c: Apply review routing label when role produces reviewable work (best-effort)
+    if (producesReviewableWork(workflow, role)) {
       const reviewLabel = resolveReviewRouting(
-        resolvedConfig.workflow.reviewPolicy ?? ReviewPolicy.AUTO, level,
+        workflow.reviewPolicy ?? ReviewPolicy.AUTO, level,
       );
       const oldRouting = issue.labels.filter((l) => l.startsWith("review:"));
       if (oldRouting.length > 0) await provider.removeLabels(issueId, oldRouting);
