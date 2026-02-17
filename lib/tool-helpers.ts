@@ -20,16 +20,17 @@ export function requireWorkspaceDir(ctx: ToolContext): string {
 }
 
 /**
- * Resolve project by groupId, throw if not found.
+ * Resolve project by slug or groupId (dual-mode resolution).
+ * Throws if not found.
  */
 export async function resolveProject(
   workspaceDir: string,
-  groupId: string,
+  slugOrGroupId: string,
 ): Promise<{ data: ProjectsData; project: Project }> {
   const data = await readProjects(workspaceDir);
-  const project = getProject(data, groupId);
+  const project = getProject(data, slugOrGroupId);
   if (!project) {
-    throw new Error(`Project not found for groupId ${groupId}. Run project_register first.`);
+    throw new Error(`Project not found for slug or groupId "${slugOrGroupId}". Run project_register first.`);
   }
   return { data, project };
 }

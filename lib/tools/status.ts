@@ -27,7 +27,7 @@ export function createStatusTool(api: OpenClawPluginApi) {
 
     async execute(_id: string, params: Record<string, unknown>) {
       const workspaceDir = requireWorkspaceDir(ctx);
-      const groupId = params.projectGroupId as string | undefined;
+      const slugOrGroupId = params.projectGroupId as string | undefined;
 
       const pluginConfig = getPluginConfig(api);
       const projectExecution = (pluginConfig?.projectExecution as string) ?? ExecutionMode.PARALLEL;
@@ -36,12 +36,21 @@ export function createStatusTool(api: OpenClawPluginApi) {
       const workflow = await loadWorkflow(workspaceDir);
 
       const data = await readProjects(workspaceDir);
-      const projectIds = groupId ? [groupId] : Object.keys(data.projects);
+      
+      // If filter provided, resolve to slug
+      let slugs = Object.keys(data.projects);
+      if (slugOrGroupId) {
+        const slug = getProject(data, slugOrGroupId) ? 
+          (data.projects[slugOrGroupId] ? slugOrGroupId : 
+            Object.keys(data.projects).find(s => data.projects[s].channels.some(ch => ch.groupId === slugOrGroupId))) 
+          : undefined;
+        slugs = slug ? [slug] : [];
+      }
 
       // Build project summaries with queue counts
       const projects = await Promise.all(
-        projectIds.map(async (pid) => {
-          const project = getProject(data, pid);
+        slugs.map(async (slug) => {
+          const project = data.projects[slug];
           if (!project) return null;
 
           const queues = await fetchProjectQueues(project, workflow);
@@ -65,7 +74,8 @@ export function createStatusTool(api: OpenClawPluginApi) {
 
           return {
             name: project.name,
-            groupId: pid,
+            slug,
+            primaryGroupId: project.channels[0]?.groupId || slug,
             roleExecution: project.roleExecution ?? ExecutionMode.PARALLEL,
             workers,
             queue: queueCounts,

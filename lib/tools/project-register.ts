@@ -108,14 +108,22 @@ export function createProjectRegisterTool() {
         throw new Error("No workspace directory available in tool context");
       }
 
-      // 1. Check project not already registered (allow re-register if incomplete)
+      // Generate slug from project name
+      const slug = name.toLowerCase().replace(/\s+/g, "-");
+
+      // 1. Check project exists or can be created
       const data = await readProjects(workspaceDir);
-      const existing = data.projects[groupId];
-      const existingWorkers = existing?.workers ?? {};
-      if (existing && Object.values(existingWorkers).some(w => w.sessions && Object.keys(w.sessions).length > 0)) {
-        throw new Error(
-          `Project already registered for this group: "${existing.name}". Remove the existing entry first or use a different group.`,
-        );
+      const existing = data.projects[slug];
+      
+      // If project exists, check if this groupId is already registered
+      if (existing) {
+        const channelExists = existing.channels.some(ch => ch.groupId === groupId);
+        if (channelExists) {
+          throw new Error(
+            `Group ${groupId} is already registered for project "${name}". Each group can only register once per project.`,
+          );
+        }
+        // Adding a new channel to an existing project
       }
 
       // 2. Resolve repo path
@@ -149,54 +157,97 @@ export function createProjectRegisterTool() {
         await provider.ensureLabel(labelName, color);
       }
 
-      // 5. Add project to projects.json
-      // Build workers map from all registered roles
-      const workers: Record<string, import("../projects.js").WorkerState> = {};
-      for (const role of getAllRoleIds()) {
-        workers[role] = emptyWorkerState([...getLevelsForRole(role)]);
+      // 5. Auto-detect repoRemote from git
+      let repoRemote: string | undefined;
+      try {
+        const { execSync } = require("node:child_process");
+        repoRemote = execSync("git remote get-url origin", {
+          cwd: repoPath,
+          encoding: "utf-8",
+          stdio: ["pipe", "pipe", "ignore"],
+        }).trim();
+      } catch {
+        repoRemote = undefined;
       }
 
-      data.projects[groupId] = {
-        name,
-        repo,
-        groupName,
-        deployUrl,
-        baseBranch,
-        deployBranch,
-        channel,
-        provider: providerType,
-        roleExecution,
-        workers,
-      };
+      // 6. Add or update project in projects.json
+      if (existing) {
+        // Add channel to existing project
+        const newChannel: import("../projects.js").Channel = {
+          groupId,
+          channel: channel as "telegram" | "whatsapp" | "discord" | "slack",
+          name: `channel-${existing.channels.length + 1}`,
+          events: ["*"],
+        };
+        existing.channels.push(newChannel);
+        if (repoRemote && !existing.repoRemote) {
+          existing.repoRemote = repoRemote;
+        }
+      } else {
+        // Create new project
+        const workers: Record<string, import("../projects.js").WorkerState> = {};
+        for (const role of getAllRoleIds()) {
+          workers[role] = emptyWorkerState([...getLevelsForRole(role)]);
+        }
+
+        const newChannel: import("../projects.js").Channel = {
+          groupId,
+          channel: channel as "telegram" | "whatsapp" | "discord" | "slack",
+          name: "primary",
+          events: ["*"],
+        };
+
+        data.projects[slug] = {
+          slug,
+          name,
+          repo,
+          repoRemote,
+          groupName,
+          deployUrl,
+          baseBranch,
+          deployBranch,
+          channels: [newChannel],
+          provider: providerType,
+          roleExecution,
+          workers,
+        };
+      }
 
       await writeProjects(workspaceDir, data);
 
-      // 6. Scaffold prompt files
+      // 7. Scaffold prompt files
       const promptsCreated = await scaffoldPromptFiles(workspaceDir, name);
 
-      // 7. Audit log
+      // 8. Audit log
       await auditLog(workspaceDir, "project_register", {
         project: name,
+        projectSlug: slug,
         groupId,
         repo,
+        repoRemote: repoRemote || null,
         baseBranch,
         deployBranch,
         deployUrl: deployUrl || null,
+        isNewProject: !existing,
       });
 
-      // 8. Return announcement
+      // 9. Return announcement
       const promptsNote = promptsCreated ? " Prompt files scaffolded." : "";
-      const announcement = `Project "${name}" registered for group ${groupName}. Labels created.${promptsNote} Ready for tasks.`;
+      const action = existing ? `Channel added to existing project` : `Project "${name}" created`;
+      const announcement = `${action}. Labels ensured.${promptsNote} Ready for tasks.`;
 
       return jsonResult({
         success: true,
         project: name,
+        projectSlug: slug,
         groupId,
         repo,
+        repoRemote: repoRemote || null,
         baseBranch,
         deployBranch,
         labelsCreated: 10,
         promptsScaffolded: promptsCreated,
+        isNewProject: !existing,
         announcement,
       });
     },

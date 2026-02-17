@@ -65,6 +65,7 @@ export type DispatchResult = {
  */
 export function buildTaskMessage(opts: {
   projectName: string;
+  projectSlug?: string; // Added for new schema (Phase 5)
   role: string;
   issueId: number;
   issueTitle: string;
@@ -79,7 +80,7 @@ export function buildTaskMessage(opts: {
   prContext?: { url: string; diff?: string };
 }): string {
   const {
-    projectName, role, issueId, issueTitle,
+    projectName, projectSlug, role, issueId, issueTitle,
     issueDescription, issueUrl, repo, baseBranch, groupId,
   } = opts;
 
@@ -117,11 +118,16 @@ export function buildTaskMessage(opts: {
     }
   }
 
-  parts.push(
+  const footerLines = [
     ``,
     `Repo: ${repo} | Branch: ${baseBranch} | ${issueUrl}`,
-    `Project group ID: ${groupId}`,
-  );
+  ];
+  if (projectSlug) {
+    footerLines.push(`Project slug: ${projectSlug}`);
+  }
+  footerLines.push(`Project group ID: ${groupId}`);
+
+  parts.push(...footerLines);
 
   parts.push(
     ``, `---`, ``,
@@ -194,7 +200,7 @@ export async function dispatchTask(
   }
 
   const taskMessage = buildTaskMessage({
-    projectName: project.name, role, issueId,
+    projectName: project.name, projectSlug: project.slug, role, issueId,
     issueTitle, issueDescription, issueUrl,
     repo: project.repo, baseBranch: project.baseBranch, groupId,
     comments, resolvedRole, prContext,
