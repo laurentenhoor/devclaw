@@ -95,7 +95,7 @@ Examples:
       const hasBody = description && description.trim().length > 0;
       let announcement = `📋 Created #${issue.iid}: "${title}" (${label})`;
       if (hasBody) announcement += "\nWith detailed description.";
-      announcement += `\n🔗 ${issue.web_url}`;
+      announcement += `\n🔗 [Issue #${issue.iid}](${issue.web_url})`;
       announcement += pickup ? "\nPicking up for DEV..." : "\nReady for pickup when needed.";
 
       return jsonResult({

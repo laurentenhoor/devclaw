@@ -81,7 +81,7 @@ function buildMessage(event: NotifyEvent): string {
   switch (event.type) {
     case "workerStart": {
       const action = event.sessionAction === "spawn" ? "🚀 Started" : "▶️ Resumed";
-      return `${action} ${event.role.toUpperCase()} (${event.level}) on #${event.issueId}: ${event.issueTitle}\n🔗 ${event.issueUrl}`;
+      return `${action} ${event.role.toUpperCase()} (${event.level}) on #${event.issueId}: ${event.issueTitle}\n🔗 [Issue #${event.issueId}](${event.issueUrl})`;
     }
 
     case "workerComplete": {
@@ -108,8 +108,8 @@ function buildMessage(event: NotifyEvent): string {
       if (event.nextState) {
         msg += ` → ${event.nextState}`;
       }
-      if (event.prUrl) msg += `\n🔗 PR: ${event.prUrl}`;
-      msg += `\n📋 Issue: ${event.issueUrl}`;
+      if (event.prUrl) msg += `\n🔗 [PR](${event.prUrl})`;
+      msg += `\n📋 [Issue #${event.issueId}](${event.issueUrl})`;
       return msg;
     }
 
@@ -117,8 +117,8 @@ function buildMessage(event: NotifyEvent): string {
       const icon = event.routing === "human" ? "👀" : "🤖";
       const who = event.routing === "human" ? "Human review needed" : "Agent review queued";
       let msg = `${icon} ${who} for #${event.issueId}: ${event.issueTitle}`;
-      if (event.prUrl) msg += `\n🔗 PR: ${event.prUrl}`;
-      msg += `\n📋 Issue: ${event.issueUrl}`;
+      if (event.prUrl) msg += `\n🔗 [PR](${event.prUrl})`;
+      msg += `\n📋 [Issue #${event.issueId}](${event.issueUrl})`;
       return msg;
     }
 
@@ -132,23 +132,23 @@ function buildMessage(event: NotifyEvent): string {
       if (event.prTitle) msg += `\n📝 ${event.prTitle}`;
       if (event.sourceBranch) msg += `\n🌿 ${event.sourceBranch} → main`;
       msg += `\n⚡ ${via[event.mergedBy] ?? event.mergedBy}`;
-      if (event.prUrl) msg += `\n🔗 PR: ${event.prUrl}`;
-      msg += `\n📋 Issue: ${event.issueUrl}`;
+      if (event.prUrl) msg += `\n🔗 [PR](${event.prUrl})`;
+      msg += `\n📋 [Issue #${event.issueId}](${event.issueUrl})`;
       return msg;
     }
 
     case "changesRequested": {
       let msg = `⚠️ Changes requested on PR for #${event.issueId}: ${event.issueTitle}`;
-      if (event.prUrl) msg += `\n🔗 PR: ${event.prUrl}`;
-      msg += `\n📋 Issue: ${event.issueUrl}`;
+      if (event.prUrl) msg += `\n🔗 [PR](${event.prUrl})`;
+      msg += `\n📋 [Issue #${event.issueId}](${event.issueUrl})`;
       msg += `\n→ Moving to To Improve for developer re-dispatch`;
       return msg;
     }
 
     case "mergeConflict": {
       let msg = `⚠️ Merge conflicts detected on PR for #${event.issueId}: ${event.issueTitle}`;
-      if (event.prUrl) msg += `\n🔗 PR: ${event.prUrl}`;
-      msg += `\n📋 Issue: ${event.issueUrl}`;
+      if (event.prUrl) msg += `\n🔗 [PR](${event.prUrl})`;
+      msg += `\n📋 [Issue #${event.issueId}](${event.issueUrl})`;
       msg += `\n→ Moving to To Improve — developer will rebase and resolve`;
       return msg;
     }

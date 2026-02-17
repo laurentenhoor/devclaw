@@ -160,7 +160,7 @@ Example:
             status: "queued",
             reason: `${role.toUpperCase()} already active on #${worker.issueId}. Research ticket queued — architect will pick it up when current work completes.`,
           },
-          announcement: `📐 Created research ticket #${issue.iid}: ${title} (architect busy — queued)\n🔗 ${issue.web_url}`,
+          announcement: `📐 Created research ticket #${issue.iid}: ${title} (architect busy — queued)\n🔗 [Issue #${issue.iid}](${issue.web_url})`,
         });
       }
 

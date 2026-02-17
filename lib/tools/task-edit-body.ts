@@ -119,7 +119,7 @@ Examples:
           issueUrl: issue.web_url,
           project: project.name,
           changed: false,
-          announcement: `Issue #${issueId} already has the requested content — no changes made.\n🔗 ${issue.web_url}`,
+          announcement: `Issue #${issueId} already has the requested content — no changes made.\n🔗 [Issue #${issueId}](${issue.web_url})`,
         });
       }
 
@@ -169,7 +169,7 @@ Examples:
       const changedFields = Object.keys(changes).join(" and ");
       let announcement = `✏️ Updated ${changedFields} of #${issueId}: "${updatedIssue.title}"`;
       if (reason) announcement += ` — ${reason}`;
-      announcement += `\n🔗 ${updatedIssue.web_url}`;
+      announcement += `\n🔗 [Issue #${issueId}](${updatedIssue.web_url})`;
 
       return jsonResult({
         success: true,

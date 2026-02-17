@@ -225,8 +225,8 @@ export async function executeCompletion(opts: {
   const label = key.replace(":", " ").toUpperCase();
   let announcement = `${emoji} ${label} #${issueId}`;
   if (summary) announcement += ` — ${summary}`;
-  announcement += `\n📋 Issue: ${issue.web_url}`;
-  if (prUrl) announcement += `\n🔗 PR: ${prUrl}`;
+  announcement += `\n📋 [Issue #${issueId}](${issue.web_url})`;
+  if (prUrl) announcement += `\n🔗 [PR](${prUrl})`;
   announcement += `\n${nextState}.`;
 
   return {
