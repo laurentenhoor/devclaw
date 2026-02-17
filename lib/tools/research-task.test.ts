@@ -11,6 +11,7 @@ import {
   DEFAULT_WORKFLOW, getQueueLabels, getCompletionRule,
   getCompletionEmoji, getStateLabels, hasWorkflowStates,
 } from "../workflow.js";
+import { buildResearchTaskMessage } from "../dispatch.js";
 
 describe("architect tiers", () => {
   it("should recognize architect levels", () => {
@@ -100,5 +101,72 @@ describe("architect session key parsing", () => {
   it("should parse architect junior session key", () => {
     const result = parseDevClawSessionKey("agent:devclaw:subagent:webapp-architect-junior");
     assert.deepStrictEqual(result, { projectName: "webapp", role: "architect" });
+  });
+});
+
+describe("research dispatch — no pre-existing issue", () => {
+  it("should build research task message with title and description", () => {
+    const msg = buildResearchTaskMessage({
+      projectName: "my-project",
+      role: "architect",
+      researchTitle: "Research: Cache strategy",
+      researchDescription: "Currently using in-memory cache",
+      focusAreas: ["Redis", "Memcached"],
+      repo: "~/git/my-project",
+      baseBranch: "main",
+      groupId: "-123456",
+    });
+    assert.ok(msg.includes("Research: Cache strategy"), "should include title");
+    assert.ok(msg.includes("Currently using in-memory cache"), "should include description");
+    assert.ok(msg.includes("Redis"), "should include focus areas");
+    assert.ok(msg.includes("work_finish"), "should include work_finish instruction");
+    assert.ok(msg.includes('"done"'), "should include done result");
+    assert.ok(msg.includes("summary"), "should mention summary");
+    assert.ok(msg.includes("becomes the issue body"), "should explain summary becomes issue body");
+  });
+
+  it("should include project group ID in research message", () => {
+    const msg = buildResearchTaskMessage({
+      projectName: "webapp",
+      role: "architect",
+      researchTitle: "Research: Auth refactor",
+      researchDescription: "Session handling needs redesign",
+      focusAreas: [],
+      repo: "~/git/webapp",
+      baseBranch: "development",
+      groupId: "-999",
+    });
+    assert.ok(msg.includes("-999"), "should include project group ID");
+    assert.ok(msg.includes("webapp"), "should include project name");
+  });
+
+  it("should omit focus areas section when empty", () => {
+    const msg = buildResearchTaskMessage({
+      projectName: "proj",
+      role: "architect",
+      researchTitle: "Research: DB strategy",
+      researchDescription: "Need to pick a database",
+      focusAreas: [],
+      repo: "~/git/proj",
+      baseBranch: "main",
+      groupId: "-1",
+    });
+    assert.ok(!msg.includes("## Focus Areas"), "should not include Focus Areas section when empty");
+  });
+
+  it("should include focus areas section when present", () => {
+    const msg = buildResearchTaskMessage({
+      projectName: "proj",
+      role: "architect",
+      researchTitle: "Research: DB strategy",
+      researchDescription: "Need to pick a database",
+      focusAreas: ["SQLite", "PostgreSQL", "MySQL"],
+      repo: "~/git/proj",
+      baseBranch: "main",
+      groupId: "-1",
+    });
+    assert.ok(msg.includes("## Focus Areas"), "should include Focus Areas section");
+    assert.ok(msg.includes("- SQLite"), "should include individual focus areas");
+    assert.ok(msg.includes("- PostgreSQL"), "should include individual focus areas");
   });
 });

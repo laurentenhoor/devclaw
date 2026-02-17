@@ -379,3 +379,163 @@ function buildAnnouncement(
   const actionVerb = sessionAction === "spawn" ? "Spawning" : "Sending";
   return `${emoji} ${actionVerb} ${role.toUpperCase()} (${level}) for #${issueId}: ${issueTitle}\n🔗 ${issueUrl}`;
 }
+
+// ---------------------------------------------------------------------------
+// Research dispatch — dispatches architect without an existing issue.
+// The architect creates the issue (via work_finish summary) when done.
+// ---------------------------------------------------------------------------
+
+export type ResearchDispatchOpts = {
+  workspaceDir: string;
+  agentId?: string;
+  groupId: string;
+  project: Project;
+  role: string;
+  level: string;
+  researchTitle: string;
+  researchDescription: string;
+  focusAreas: string[];
+  pluginConfig?: Record<string, unknown>;
+  channel?: string;
+  /** Orchestrator's session key (used as spawnedBy for subagent tracking) */
+  sessionKey?: string;
+  runtime?: PluginRuntime;
+};
+
+/**
+ * Build a task message for a research dispatch (no existing issue).
+ *
+ * The architect is instructed to call work_finish(result="done", summary="<findings>").
+ * The summary will become the issue body when work_finish creates the Planning issue.
+ */
+export function buildResearchTaskMessage(opts: {
+  projectName: string;
+  role: string;
+  researchTitle: string;
+  researchDescription: string;
+  focusAreas: string[];
+  repo: string;
+  baseBranch: string;
+  groupId: string;
+  resolvedRole?: ResolvedRoleConfig;
+}): string {
+  const {
+    projectName, role, researchTitle, researchDescription,
+    focusAreas, repo, baseBranch, groupId,
+  } = opts;
+
+  const parts = [
+    `${role.toUpperCase()} task for project "${projectName}" — Research`,
+    ``,
+    researchTitle,
+    ``,
+    `## Background`,
+    ``,
+    researchDescription,
+  ];
+
+  if (focusAreas.length > 0) {
+    parts.push(``, `## Focus Areas`, ...focusAreas.map((a) => `- ${a}`));
+  }
+
+  parts.push(
+    ``,
+    `Repo: ${repo} | Branch: ${baseBranch}`,
+    `Project group ID: ${groupId}`,
+    ``,
+    `---`,
+    ``,
+    `## MANDATORY: Task Completion`,
+    ``,
+    `When you finish your research, you MUST call \`work_finish\` with:`,
+    `- \`role\`: "${role}"`,
+    `- \`projectGroupId\`: "${groupId}"`,
+    `- \`result\`: "done"`,
+    `- \`summary\`: **Your complete findings** — Include your recommendation, alternatives considered,`,
+    `  and implementation outline. This summary becomes the issue body for human review.`,
+    ``,
+    `⚠️ You MUST call work_finish even if you encounter errors or cannot finish.`,
+    `Use "blocked" with a summary explaining what you investigated and where you got stuck.`,
+    `Never end your session without calling work_finish.`,
+  );
+
+  return parts.join("\n");
+}
+
+/**
+ * Dispatch a research task to an architect session — no issue created yet.
+ *
+ * Flow:
+ *   1. Resolve model and session key
+ *   2. Build research task message (no issue ID)
+ *   3. Fire notification
+ *   4. Ensure session (fire-and-forget) + send to agent
+ *   5. Update worker state with research metadata (issueId = null)
+ *   6. Audit
+ *
+ * work_finish creates the Planning issue when the architect completes.
+ */
+export async function dispatchResearch(opts: ResearchDispatchOpts): Promise<DispatchResult> {
+  const {
+    workspaceDir, agentId, groupId, project, role, level,
+    researchTitle, researchDescription, focusAreas,
+    pluginConfig, runtime,
+  } = opts;
+
+  const resolvedConfig = await loadConfig(workspaceDir, project.name);
+  const resolvedRole = resolvedConfig.roles[role];
+  const { timeouts } = resolvedConfig;
+  const model = resolveModel(role, level, resolvedRole);
+  const worker = getWorker(project, role);
+  const existingSessionKey = getSessionForLevel(worker, level);
+  const sessionAction = existingSessionKey ? "send" : "spawn";
+
+  const sessionKey = `agent:${agentId ?? "unknown"}:subagent:${project.name}-${role}-${level}`;
+
+  const taskMessage = buildResearchTaskMessage({
+    projectName: project.name, role, researchTitle, researchDescription,
+    focusAreas, repo: project.repo, baseBranch: project.baseBranch, groupId,
+    resolvedRole,
+  });
+
+  const emoji = resolvedRole?.emoji[level] ?? getFallbackEmoji(role);
+
+  // Ensure session + send (fire-and-forget)
+  ensureSessionFireAndForget(sessionKey, model, workspaceDir, timeouts.sessionPatchMs);
+  sendToAgent(sessionKey, taskMessage, {
+    agentId, projectName: project.name, issueId: 0, role, level,
+    orchestratorSessionKey: opts.sessionKey, workspaceDir,
+    dispatchTimeoutMs: timeouts.dispatchMs,
+  });
+
+  // Record worker state with null issueId + research metadata
+  try {
+    await activateWorker(workspaceDir, groupId, role, {
+      issueId: null,
+      level,
+      sessionKey,
+      startTime: new Date().toISOString(),
+      metadata: { researchTitle, researchDescription, focusAreas },
+    });
+  } catch (err) {
+    await auditLog(workspaceDir, "dispatch_warning", {
+      step: "activateWorker", role,
+      error: (err as Error).message ?? String(err),
+    }).catch(() => {});
+  }
+
+  // Audit
+  await auditLog(workspaceDir, "work_start", {
+    project: project.name, groupId, issueId: null, issueTitle: researchTitle,
+    role, level, model, sessionAction, sessionKey,
+    labelTransition: "none (research — issue created on completion)",
+  });
+  await auditLog(workspaceDir, "model_selection", {
+    issueId: null, role, level, model,
+  });
+
+  const actionVerb = sessionAction === "spawn" ? "Dispatching" : "Sending to";
+  const announcement = `${emoji} ${actionVerb} ${role.toUpperCase()} (${level}) to research: ${researchTitle}`;
+
+  return { sessionAction, sessionKey, level, model, announcement };
+}

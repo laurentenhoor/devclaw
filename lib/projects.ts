@@ -63,6 +63,8 @@ export type WorkerState = {
   startTime: string | null;
   level: string | null;
   sessions: Record<string, string | null>;
+  /** Optional metadata for stateless workers (e.g. research context before issue creation). */
+  metadata?: Record<string, unknown>;
 };
 
 export type Project = {
@@ -192,16 +194,18 @@ export async function updateWorker(
 /**
  * Mark a worker as active with a new task.
  * Stores session key in sessions[level] when a new session is spawned.
+ * issueId may be null for research tasks dispatched before issue creation.
  */
 export async function activateWorker(
   workspaceDir: string,
   groupId: string,
   role: string,
   params: {
-    issueId: string;
+    issueId: string | null;
     level: string;
     sessionKey?: string;
     startTime?: string;
+    metadata?: Record<string, unknown>;
   },
 ): Promise<ProjectsData> {
   const updates: Partial<WorkerState> = {
@@ -215,13 +219,16 @@ export async function activateWorker(
   if (params.startTime !== undefined) {
     updates.startTime = params.startTime;
   }
+  if (params.metadata !== undefined) {
+    updates.metadata = params.metadata;
+  }
   return updateWorker(workspaceDir, groupId, role, updates);
 }
 
 /**
  * Mark a worker as inactive after task completion.
  * Preserves sessions map and level for reuse via updateWorker's spread.
- * Clears startTime to prevent stale timestamps on inactive workers.
+ * Clears startTime and metadata to prevent stale state on inactive workers.
  */
 export async function deactivateWorker(
   workspaceDir: string,
@@ -232,6 +239,7 @@ export async function deactivateWorker(
     active: false,
     issueId: null,
     startTime: null,
+    metadata: undefined,
   });
 }
 

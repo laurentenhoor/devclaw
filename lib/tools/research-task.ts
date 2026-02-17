@@ -1,26 +1,22 @@
 /**
  * research_task — Spawn an architect to research a design/architecture problem.
  *
- * Creates a Planning issue with rich context and dispatches an architect worker.
- * The architect researches the problem and produces detailed findings as issue comments.
- * The issue stays in Planning — ready for human review when the architect completes.
+ * Dispatches the architect directly (no issue created yet).
+ * The architect investigates, produces findings, and calls work_finish(result="done", summary="<findings>").
+ * work_finish then creates the Planning issue with the findings as the body for human review.
  *
- * No queue states — tool-triggered only.
+ * No issue appears until research is complete — Planning means "ready for human review".
  */
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
-import type { StateLabel } from "../providers/provider.js";
 import { getWorker } from "../projects.js";
-import { dispatchTask } from "../dispatch.js";
+import { dispatchResearch } from "../dispatch.js";
 import { log as auditLog } from "../audit.js";
-import { requireWorkspaceDir, resolveProject, resolveProvider, getPluginConfig } from "../tool-helpers.js";
+import { requireWorkspaceDir, resolveProject, getPluginConfig } from "../tool-helpers.js";
 import { loadConfig } from "../config/index.js";
 import { selectLevel } from "../model-selector.js";
 import { resolveModel } from "../roles/index.js";
-
-/** Planning label — architect issues go directly here. */
-const PLANNING_LABEL = "Planning";
 
 export function createResearchTaskTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
@@ -37,7 +33,7 @@ The architect will:
 1. Research the problem systematically (codebase, docs, web)
 2. Investigate >= 3 alternatives with tradeoffs
 3. Produce a recommendation with implementation outline
-4. Post findings as issue comments, then complete with work_finish
+4. Call work_finish(result="done", summary="<findings>") — this creates the Planning issue for human review
 
 Example:
   research_task({
@@ -94,27 +90,11 @@ Example:
       if (!description) throw new Error("description is required — provide detailed background context for the architect");
 
       const { project } = await resolveProject(workspaceDir, groupId);
-      const { provider } = await resolveProvider(project);
       const pluginConfig = getPluginConfig(api);
       const role = "architect";
 
-      // Build issue body with rich context
-      const bodyParts = [
-        "## Background",
-        "",
-        description,
-      ];
-      if (focusAreas.length > 0) {
-        bodyParts.push("", "## Focus Areas", ...focusAreas.map(a => `- ${a}`));
-      }
-      const issueBody = bodyParts.join("\n");
-
-      // Create issue directly in Planning state (no queue — tool-triggered only)
-      const issue = await provider.createIssue(title, issueBody, PLANNING_LABEL as StateLabel);
-
       await auditLog(workspaceDir, "research_task", {
-        project: project.name, groupId, issueId: issue.iid,
-        title, complexity, focusAreas, dryRun,
+        project: project.name, groupId, title, complexity, focusAreas, dryRun,
       });
 
       // Select level: use complexity hint to guide the heuristic
@@ -129,9 +109,8 @@ Example:
         return jsonResult({
           success: true,
           dryRun: true,
-          issue: { id: issue.iid, title: issue.title, url: issue.web_url, label: PLANNING_LABEL },
-          design: { level, model, status: "dry_run" },
-          announcement: `📐 [DRY RUN] Would spawn ${role} (${level}) for #${issue.iid}: ${title}\n🔗 ${issue.web_url}`,
+          research: { title, level, model, status: "dry_run" },
+          announcement: `📐 [DRY RUN] Would dispatch ${role} (${level}) to research: ${title}`,
         });
       }
 
@@ -139,33 +118,29 @@ Example:
       const worker = getWorker(project, role);
       if (worker.active) {
         return jsonResult({
-          success: true,
-          issue: { id: issue.iid, title: issue.title, url: issue.web_url, label: PLANNING_LABEL },
-          design: {
+          success: false,
+          research: {
             level,
-            status: "queued",
-            reason: `${role.toUpperCase()} already active on #${worker.issueId}. Issue created in Planning — dispatch manually when architect is free.`,
+            status: "busy",
+            reason: `${role.toUpperCase()} already active on #${worker.issueId ?? "pending"}. Try again when the current research completes.`,
           },
-          announcement: `📐 Created research task #${issue.iid}: ${title} (architect busy — issue in Planning)\n🔗 ${issue.web_url}`,
+          announcement: `📐 ${role.toUpperCase()} busy — cannot dispatch research for: ${title}`,
         });
       }
 
-      // Dispatch architect directly — issue stays in Planning (no state transition)
-      const dr = await dispatchTask({
+      // Dispatch architect directly — no issue created yet.
+      // The architect calls work_finish(result="done", summary="<findings>")
+      // which creates the Planning issue with findings as the body.
+      const dr = await dispatchResearch({
         workspaceDir,
         agentId: ctx.agentId,
         groupId,
         project,
-        issueId: issue.iid,
-        issueTitle: issue.title,
-        issueDescription: issueBody,
-        issueUrl: issue.web_url,
         role,
         level,
-        fromLabel: PLANNING_LABEL,
-        toLabel: PLANNING_LABEL,
-        transitionLabel: (id, from, to) => provider.transitionLabel(id, from as StateLabel, to as StateLabel),
-        provider,
+        researchTitle: title,
+        researchDescription: description,
+        focusAreas,
         pluginConfig,
         channel: project.channel,
         sessionKey: ctx.sessionKey,
@@ -174,13 +149,13 @@ Example:
 
       return jsonResult({
         success: true,
-        issue: { id: issue.iid, title: issue.title, url: issue.web_url, label: PLANNING_LABEL },
-        design: {
+        research: {
           sessionKey: dr.sessionKey,
           level: dr.level,
           model: dr.model,
           sessionAction: dr.sessionAction,
           status: "in_progress",
+          note: "Planning issue will be created when architect calls work_finish",
         },
         project: project.name,
         announcement: dr.announcement,

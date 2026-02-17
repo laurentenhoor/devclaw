@@ -56,19 +56,30 @@ export function createWorkFinishTool(api: OpenClawPluginApi) {
       if (!worker.active) throw new Error(`${role.toUpperCase()} worker not active on ${project.name}`);
 
       const issueId = worker.issueId ? Number(worker.issueId.split(",")[0]) : null;
-      if (!issueId) throw new Error(`No issueId for active ${role.toUpperCase()} on ${project.name}`);
 
       const { provider } = await resolveProvider(project);
       const workflow = await loadWorkflow(workspaceDir, project.name);
 
       // Roles without workflow states (e.g. architect) — handle inline
       if (!hasWorkflowStates(workflow, role)) {
+        // Research mode: architect dispatched without a pre-existing issue.
+        // work_finish creates the Planning issue with findings from summary.
+        if (!issueId) {
+          return handleResearchCompletion({
+            workspaceDir, groupId, role, result, summary,
+            metadata: worker.metadata,
+            provider, projectName: project.name, channel: project.channel,
+            pluginConfig: getPluginConfig(api), runtime: api.runtime,
+          });
+        }
         return handleStatelessCompletion({
           workspaceDir, groupId, role, result, issueId, summary,
           provider, projectName: project.name, channel: project.channel,
           pluginConfig: getPluginConfig(api), runtime: api.runtime,
         });
       }
+
+      if (!issueId) throw new Error(`No issueId for active ${role.toUpperCase()} on ${project.name}`);
 
       // Standard pipeline completion for roles with workflow states
       if (!getRule(role, result))
@@ -181,6 +192,118 @@ async function handleStatelessCompletion(opts: {
   return jsonResult({
     success: true, project: projectName, groupId, issueId, role, result,
     labelTransition,
+    announcement,
+    nextState,
+    issueUrl: issue.web_url,
+  });
+}
+
+/**
+ * Handle research completion — architect dispatched without a pre-existing issue.
+ *
+ * - done: create Planning issue with findings (summary) as body, deactivate worker
+ * - blocked: create Planning issue with partial findings, deactivate worker
+ *
+ * The summary becomes the issue body so findings are integrated, not scattered as comments.
+ */
+async function handleResearchCompletion(opts: {
+  workspaceDir: string;
+  groupId: string;
+  role: string;
+  result: string;
+  summary?: string;
+  metadata?: Record<string, unknown>;
+  provider: import("../providers/provider.js").IssueProvider;
+  projectName: string;
+  channel?: string;
+  pluginConfig?: Record<string, unknown>;
+  runtime?: import("openclaw/plugin-sdk").PluginRuntime;
+}): Promise<ReturnType<typeof jsonResult>> {
+  const {
+    workspaceDir, groupId, role, result, summary,
+    metadata, provider, projectName, channel, pluginConfig, runtime,
+  } = opts;
+
+  // Extract research context from worker metadata
+  const researchTitle = (metadata?.researchTitle as string | undefined) ?? "Research findings";
+  const researchDescription = (metadata?.researchDescription as string | undefined) ?? "";
+  const focusAreas = (metadata?.focusAreas as string[] | undefined) ?? [];
+
+  // Build issue body: findings first, original context below
+  const bodyParts: string[] = [];
+
+  if (result === "blocked") {
+    bodyParts.push("## Status", "", "⚠️ Research blocked — partial findings below. Human review needed.", "");
+  }
+
+  if (summary) {
+    bodyParts.push("## Findings", "", summary);
+  } else {
+    bodyParts.push("## Findings", "", "_No summary provided._");
+  }
+
+  if (researchDescription) {
+    bodyParts.push("", "---", "", "## Original Context", "", researchDescription);
+  }
+
+  if (focusAreas.length > 0) {
+    bodyParts.push("", "## Focus Areas", ...focusAreas.map((a) => `- ${a}`));
+  }
+
+  const issueBody = bodyParts.join("\n");
+
+  // Create Planning issue with findings as the body
+  const issue = await provider.createIssue(researchTitle, issueBody, "Planning" as StateLabel);
+
+  // Deactivate worker (clears metadata too)
+  await deactivateWorker(workspaceDir, groupId, role);
+
+  // Notification
+  const nextState = "awaiting human review";
+  const notifyConfig = getNotificationConfig(pluginConfig);
+  notify(
+    {
+      type: "workerComplete",
+      project: projectName,
+      groupId,
+      issueId: issue.iid,
+      issueUrl: issue.web_url,
+      role,
+      result: result as "done" | "blocked",
+      summary,
+      nextState,
+    },
+    {
+      workspaceDir,
+      config: notifyConfig,
+      groupId,
+      channel: channel ?? "telegram",
+      runtime,
+    },
+  ).catch((err) => {
+    auditLog(workspaceDir, "pipeline_warning", {
+      step: "notify", role,
+      error: (err as Error).message ?? String(err),
+    }).catch(() => {});
+  });
+
+  // Build announcement
+  const emoji = getCompletionEmoji(role, result);
+  const verb = result === "done" ? "Research complete" : "Research blocked";
+  let announcement = `${emoji} ${verb} — created Planning issue #${issue.iid}: ${researchTitle}`;
+  announcement += `\n🔗 ${issue.web_url}`;
+  if (result === "blocked") announcement += `\n⚠️ Needs human review.`;
+
+  // Audit
+  await auditLog(workspaceDir, "work_finish", {
+    project: projectName, groupId, issue: issue.iid, role, result,
+    summary: summary ?? null, labelTransition: "none → Planning (created)",
+    researchTitle,
+  });
+
+  return jsonResult({
+    success: true, project: projectName, groupId, issueId: issue.iid, role, result,
+    labelTransition: "none → Planning (created)",
     announcement,
     nextState,
     issueUrl: issue.web_url,
