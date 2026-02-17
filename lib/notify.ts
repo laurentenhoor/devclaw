@@ -75,6 +75,29 @@ export type NotifyEvent =
     };
 
 /**
+ * Extract a PR/MR number from a URL.
+ * GitHub: .../pull/123  GitLab: .../merge_requests/123
+ * Returns null if not parseable.
+ */
+function extractPrNumber(url: string): number | null {
+  const m = url.match(/\/(?:pull|merge_requests)\/(\d+)/);
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * Format a PR/MR link with a descriptive label including the PR number.
+ * Example: [Pull Request #253](url) or [Merge Request #253](url)
+ */
+function prLink(url: string): string {
+  const num = extractPrNumber(url);
+  const isGitLab = url.includes("merge_requests");
+  const label = isGitLab
+    ? `Merge Request${num != null ? ` #${num}` : ""}`
+    : `Pull Request${num != null ? ` #${num}` : ""}`;
+  return `[${label}](${url})`;
+}
+
+/**
  * Build a human-readable message for a notification event.
  */
 function buildMessage(event: NotifyEvent): string {
@@ -101,15 +124,19 @@ function buildMessage(event: NotifyEvent): string {
         blocked: "BLOCKED",
       };
       const text = resultText[event.result] ?? event.result;
+      // Header: status + issue reference
       let msg = `${icon} ${event.role.toUpperCase()} ${text} #${event.issueId}`;
+      // Summary: on its own line for readability
       if (event.summary) {
-        msg += ` — ${event.summary}`;
+        msg += `\n${event.summary}`;
       }
-      if (event.nextState) {
-        msg += ` → ${event.nextState}`;
-      }
-      if (event.prUrl) msg += `\n🔗 [PR](${event.prUrl})`;
+      // Links: PR and issue on separate lines
+      if (event.prUrl) msg += `\n🔗 ${prLink(event.prUrl)}`;
       msg += `\n📋 [Issue #${event.issueId}](${event.issueUrl})`;
+      // Workflow transition: at the end
+      if (event.nextState) {
+        msg += `\n→ ${event.nextState}`;
+      }
       return msg;
     }
 
@@ -117,7 +144,7 @@ function buildMessage(event: NotifyEvent): string {
       const icon = event.routing === "human" ? "👀" : "🤖";
       const who = event.routing === "human" ? "Human review needed" : "Agent review queued";
       let msg = `${icon} ${who} for #${event.issueId}: ${event.issueTitle}`;
-      if (event.prUrl) msg += `\n🔗 [PR](${event.prUrl})`;
+      if (event.prUrl) msg += `\n🔗 ${prLink(event.prUrl)}`;
       msg += `\n📋 [Issue #${event.issueId}](${event.issueUrl})`;
       return msg;
     }
@@ -132,14 +159,14 @@ function buildMessage(event: NotifyEvent): string {
       if (event.prTitle) msg += `\n📝 ${event.prTitle}`;
       if (event.sourceBranch) msg += `\n🌿 ${event.sourceBranch} → main`;
       msg += `\n⚡ ${via[event.mergedBy] ?? event.mergedBy}`;
-      if (event.prUrl) msg += `\n🔗 [PR](${event.prUrl})`;
+      if (event.prUrl) msg += `\n🔗 ${prLink(event.prUrl)}`;
       msg += `\n📋 [Issue #${event.issueId}](${event.issueUrl})`;
       return msg;
     }
 
     case "changesRequested": {
       let msg = `⚠️ Changes requested on PR for #${event.issueId}: ${event.issueTitle}`;
-      if (event.prUrl) msg += `\n🔗 [PR](${event.prUrl})`;
+      if (event.prUrl) msg += `\n🔗 ${prLink(event.prUrl)}`;
       msg += `\n📋 [Issue #${event.issueId}](${event.issueUrl})`;
       msg += `\n→ Moving to To Improve for developer re-dispatch`;
       return msg;
@@ -147,7 +174,7 @@ function buildMessage(event: NotifyEvent): string {
 
     case "mergeConflict": {
       let msg = `⚠️ Merge conflicts detected on PR for #${event.issueId}: ${event.issueTitle}`;
-      if (event.prUrl) msg += `\n🔗 [PR](${event.prUrl})`;
+      if (event.prUrl) msg += `\n🔗 ${prLink(event.prUrl)}`;
       msg += `\n📋 [Issue #${event.issueId}](${event.issueUrl})`;
       msg += `\n→ Moving to To Improve — developer will rebase and resolve`;
       return msg;

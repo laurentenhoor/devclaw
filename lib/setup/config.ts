@@ -38,6 +38,7 @@ export async function writePluginConfig(
   ensureInternalHooks(config);
   ensureHeartbeatDefaults(config);
   configureSubagentCleanup(config);
+  ensureTelegramLinkPreviewDisabled(config);
 
   if (agentId) {
     addToolRestrictions(config, agentId);
@@ -89,5 +90,20 @@ function ensureHeartbeatDefaults(config: Record<string, unknown>): void {
   const devclaw = (config as any).plugins.entries.devclaw.config;
   if (!devclaw.work_heartbeat) {
     devclaw.work_heartbeat = { ...HEARTBEAT_DEFAULTS };
+  }
+}
+
+/**
+ * Disable Telegram link previews so notifications don't show URL preview cards.
+ * Sets channels.telegram.linkPreview = false if the Telegram channel is configured.
+ * Only sets if not already explicitly configured (respects user overrides).
+ */
+function ensureTelegramLinkPreviewDisabled(config: Record<string, unknown>): void {
+  const channels = config.channels as Record<string, unknown> | undefined;
+  if (!channels) return;
+  const telegram = channels.telegram as Record<string, unknown> | undefined;
+  if (!telegram) return;
+  if (telegram.linkPreview === undefined) {
+    telegram.linkPreview = false;
   }
 }
