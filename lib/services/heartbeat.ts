@@ -13,7 +13,7 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import fs from "node:fs";
 import path from "node:path";
-import { readProjects } from "../projects.js";
+import { readProjects, getProject } from "../projects.js";
 import { log as auditLog } from "../audit.js";
 import { DATA_DIR } from "../setup/migrate-layout.js";
 import { checkWorkerHealth, scanOrphanedLabels, fetchGatewaySessions, type SessionLookup } from "./health.js";
@@ -404,15 +404,7 @@ async function performHealthPass(
  */
 async function checkProjectActive(workspaceDir: string, slugOrGroupId: string): Promise<boolean> {
   const data = await readProjects(workspaceDir);
-  const project = data.projects[slugOrGroupId];
-  if (!project) {
-    // Try to find by groupId in channels (backward compat)
-    for (const p of Object.values(data.projects)) {
-      if (p.channels.some(ch => ch.groupId === slugOrGroupId)) {
-        return Object.values(p.workers).some(w => w.active);
-      }
-    }
-    return false;
-  }
+  const project = getProject(data, slugOrGroupId);
+  if (!project) return false;
   return Object.values(project.workers).some(w => w.active);
 }
