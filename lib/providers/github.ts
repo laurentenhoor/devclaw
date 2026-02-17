@@ -200,6 +200,14 @@ export class GitHubProvider implements IssueProvider {
     await this.gh(["issue", "comment", String(issueId), "--body", body]);
   }
 
+  async editIssue(issueId: number, updates: { title?: string; body?: string }): Promise<Issue> {
+    const args = ["issue", "edit", String(issueId)];
+    if (updates.title !== undefined) args.push("--title", updates.title);
+    if (updates.body !== undefined) args.push("--body", updates.body);
+    await this.gh(args);
+    return this.getIssue(issueId);
+  }
+
   async healthCheck(): Promise<boolean> {
     try { await this.gh(["auth", "status"]); return true; } catch { return false; }
   }

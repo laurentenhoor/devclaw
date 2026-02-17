@@ -204,6 +204,14 @@ export class GitLabProvider implements IssueProvider {
     await this.glab(["issue", "note", String(issueId), "--message", body]);
   }
 
+  async editIssue(issueId: number, updates: { title?: string; body?: string }): Promise<Issue> {
+    const args = ["issue", "update", String(issueId)];
+    if (updates.title !== undefined) args.push("--title", updates.title);
+    if (updates.body !== undefined) args.push("--description", updates.body);
+    await this.glab(args);
+    return this.getIssue(issueId);
+  }
+
   async healthCheck(): Promise<boolean> {
     try { await this.glab(["auth", "status"]); return true; } catch { return false; }
   }

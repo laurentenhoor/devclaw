@@ -70,5 +70,6 @@ export interface IssueProvider {
   mergePr(issueId: number): Promise<void>;
   getPrDiff(issueId: number): Promise<string | null>;
   addComment(issueId: number, body: string): Promise<void>;
+  editIssue(issueId: number, updates: { title?: string; body?: string }): Promise<Issue>;
   healthCheck(): Promise<boolean>;
 }

@@ -233,6 +233,14 @@ export function getStateLabels(workflow: WorkflowConfig): string[] {
 }
 
 /**
+ * Get the initial state label (the first state in the workflow, e.g. "Planning").
+ * Used by task_edit_body to enforce edits only in the initial state.
+ */
+export function getInitialStateLabel(workflow: WorkflowConfig): string {
+  return workflow.states[workflow.initial].label;
+}
+
+/**
  * Get label → color mapping.
  */
 export function getLabelColors(workflow: WorkflowConfig): Record<string, string> {

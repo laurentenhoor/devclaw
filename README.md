@@ -441,6 +441,7 @@ DevClaw gives the orchestrator 11 tools. These aren't just convenience wrappers 
 | `task_create` | Create a new issue (used by workers to file bugs they discover) |
 | `task_update` | Manually change an issue's state label |
 | `task_comment` | Add a comment to an issue (with role attribution) |
+| `task_edit_body` | Edit issue title/description (initial state only; audit-logged) |
 | `status` | Dashboard: queue counts + who's working on what |
 | `health` | Detect zombie workers, stale sessions, state inconsistencies |
 | `work_heartbeat` | Manually trigger a health check + queue dispatch cycle |

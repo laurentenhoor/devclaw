@@ -4,6 +4,7 @@ import { createWorkFinishTool } from "./lib/tools/work-finish.js";
 import { createTaskCreateTool } from "./lib/tools/task-create.js";
 import { createTaskUpdateTool } from "./lib/tools/task-update.js";
 import { createTaskCommentTool } from "./lib/tools/task-comment.js";
+import { createTaskEditBodyTool } from "./lib/tools/task-edit-body.js";
 import { createStatusTool } from "./lib/tools/status.js";
 import { createHealthTool } from "./lib/tools/health.js";
 import { createProjectRegisterTool } from "./lib/tools/project-register.js";
@@ -76,6 +77,7 @@ const plugin = {
     api.registerTool(createTaskCreateTool(api), { names: ["task_create"] });
     api.registerTool(createTaskUpdateTool(api), { names: ["task_update"] });
     api.registerTool(createTaskCommentTool(api), { names: ["task_comment"] });
+    api.registerTool(createTaskEditBodyTool(api), { names: ["task_edit_body"] });
 
     // Architect
     api.registerTool(createResearchTaskTool(api), { names: ["research_task"] });

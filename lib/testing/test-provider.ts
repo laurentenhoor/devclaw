@@ -47,6 +47,7 @@ export type ProviderCall =
   | { method: "mergePr"; args: { issueId: number } }
   | { method: "getPrDiff"; args: { issueId: number } }
   | { method: "addComment"; args: { issueId: number; body: string } }
+  | { method: "editIssue"; args: { issueId: number; updates: { title?: string; body?: string } } }
   | { method: "healthCheck"; args: {} };
 
 // ---------------------------------------------------------------------------
@@ -277,6 +278,15 @@ export class TestProvider implements IssueProvider {
       created_at: new Date().toISOString(),
     });
     this.comments.set(issueId, existing);
+  }
+
+  async editIssue(issueId: number, updates: { title?: string; body?: string }): Promise<Issue> {
+    this.calls.push({ method: "editIssue", args: { issueId, updates } });
+    const issue = this.issues.get(issueId);
+    if (!issue) throw new Error(`Issue #${issueId} not found in TestProvider`);
+    if (updates.title !== undefined) issue.title = updates.title;
+    if (updates.body !== undefined) issue.description = updates.body;
+    return issue;
   }
 
   async healthCheck(): Promise<boolean> {
