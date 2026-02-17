@@ -5,6 +5,7 @@
  */
 import { getAllRoleIds, getLevelsForRole } from "../roles/index.js";
 import { ROLE_REGISTRY } from "../roles/index.js";
+import { runCommand } from "../run-command.js";
 
 /** Model assignment: role → level → model ID. Derived from registry structure. */
 export type ModelAssignment = Record<string, Record<string, string>>;
@@ -24,38 +25,34 @@ function singleModelAssignment(model: string): ModelAssignment {
 }
 
 /**
- * Intelligently assign available models to DevClaw roles using an LLM.
+ * Assign available models to DevClaw roles.
  *
  * Strategy:
  * 1. If 0 models → return null (setup should be blocked)
  * 2. If 1 model → assign it to all roles
- * 3. If multiple models → use LLM to intelligently assign
+ * 3. If multiple → LLM selection, falling back to registry defaults
  */
 export async function assignModels(
-  availableModels: Array<{ model: string; provider: string; authenticated: boolean }>,
+  availableModels: Array<{
+    model: string;
+    provider: string;
+    authenticated: boolean;
+  }>,
   sessionKey?: string,
 ): Promise<ModelAssignment | null> {
-  // Filter to only authenticated models
   const authenticated = availableModels.filter((m) => m.authenticated);
 
   if (authenticated.length === 0) {
-    return null; // No models available - setup should be blocked
+    return null;
   }
 
-  // If only one model, use it for everything
   if (authenticated.length === 1) {
     return singleModelAssignment(authenticated[0].model);
   }
 
-  // Multiple models: use LLM-based selection
+  // Multiple models: use LLM to intelligently assign
   const { selectModelsWithLLM } = await import("./llm-model-selector.js");
-  const llmResult = await selectModelsWithLLM(authenticated, sessionKey);
-
-  if (!llmResult) {
-    throw new Error("LLM-based model selection failed. Please try again or configure models manually.");
-  }
-
-  return llmResult;
+  return selectModelsWithLLM(authenticated, sessionKey, runCommand);
 }
 
 /**
@@ -69,10 +66,13 @@ export function formatAssignment(assignment: ModelAssignment): string {
   for (const roleId of getAllRoleIds()) {
     const roleModels = assignment[roleId];
     if (!roleModels) continue;
-    const displayName = ROLE_REGISTRY[roleId]?.displayName ?? roleId.toUpperCase();
+    const displayName =
+      ROLE_REGISTRY[roleId]?.displayName ?? roleId.toUpperCase();
     for (const level of getLevelsForRole(roleId)) {
       const model = roleModels[level] ?? "";
-      lines.push(`| ${displayName.padEnd(9)} | ${level.padEnd(8)} | ${model.padEnd(24)} |`);
+      lines.push(
+        `| ${displayName.padEnd(9)} | ${level.padEnd(8)} | ${model.padEnd(24)} |`,
+      );
     }
   }
   return lines.join("\n");

@@ -3,9 +3,11 @@
  *
  * Uses an LLM to understand model capabilities and assign optimal models to DevClaw roles.
  */
-import { runCommand } from "../run-command.js";
+import type { runCommand } from "../run-command.js";
 import { ROLE_REGISTRY } from "../roles/index.js";
 import type { ModelAssignment } from "./smart-model-selector.js";
+
+export type RunCommand = typeof runCommand;
 
 /**
  * Build a ModelAssignment where every role/level maps to the same model.
@@ -38,7 +40,10 @@ function buildJsonExample(): string {
 /**
  * Validate that a parsed assignment has all required roles and levels.
  */
-function validateAssignment(assignment: Record<string, unknown>, fallbackModel: string): ModelAssignment | null {
+function validateAssignment(
+  assignment: Record<string, unknown>,
+  fallbackModel: string,
+): ModelAssignment | null {
   const result: ModelAssignment = {};
   for (const [roleId, config] of Object.entries(ROLE_REGISTRY)) {
     const roleData = assignment[roleId] as Record<string, string> | undefined;
@@ -67,7 +72,8 @@ function validateAssignment(assignment: Record<string, unknown>, fallbackModel: 
  */
 export async function selectModelsWithLLM(
   availableModels: Array<{ model: string; provider: string }>,
-  sessionKey?: string,
+  _sessionKey?: string,
+  execCommand?: RunCommand,
 ): Promise<ModelAssignment | null> {
   if (availableModels.length === 0) {
     return null;
@@ -104,10 +110,22 @@ Return ONLY a JSON object in this exact format (no markdown, no explanation):
 ${jsonExample}`;
 
   try {
-    const sessionId = sessionKey ?? "devclaw-model-selection";
+    const sessionId = "devclaw-model-selection";
 
-    const result = await runCommand(
-      ["openclaw", "agent", "--local", "--session-id", sessionId, "--message", prompt, "--json"],
+    if (!execCommand) {
+      throw new Error("execCommand is required for LLM model selection");
+    }
+
+    const result = await execCommand(
+      [
+        "openclaw",
+        "agent",
+        "--session-id",
+        sessionId,
+        "--message",
+        prompt,
+        "--json",
+      ],
       { timeoutMs: 30_000 },
     );
 
@@ -115,7 +133,9 @@ ${jsonExample}`;
 
     // Parse the response from openclaw agent --json
     const lines = output.split("\n");
-    const jsonStartIndex = lines.findIndex((line) => line.trim().startsWith("{"));
+    const jsonStartIndex = lines.findIndex((line) =>
+      line.trim().startsWith("{"),
+    );
 
     if (jsonStartIndex === -1) {
       throw new Error("No JSON found in LLM response");
@@ -123,23 +143,25 @@ ${jsonExample}`;
 
     const jsonString = lines.slice(jsonStartIndex).join("\n");
 
-    // openclaw agent --json returns: { payloads: [{ text: "```json\n{...}\n```" }], meta: {...} }
+    // openclaw agent --json returns: { result: { payloads: [{ text: "..." }] }, ... }
     const response = JSON.parse(jsonString);
+    const payloads = response.result?.payloads ?? response.payloads;
 
-    if (!response.payloads || !Array.isArray(response.payloads) || response.payloads.length === 0) {
-      throw new Error("Invalid openclaw agent response structure - missing payloads");
+    if (!Array.isArray(payloads) || payloads.length === 0) {
+      throw new Error(
+        "Invalid openclaw agent response structure - missing payloads",
+      );
     }
 
-    // Extract text from first payload
-    const textContent = response.payloads[0].text;
+    const textContent = payloads[0].text;
     if (!textContent) {
       throw new Error("Empty text content in openclaw agent payload");
     }
 
     // Strip markdown code blocks (```json and ```)
     const cleanJson = textContent
-      .replace(/```json\n?/g, '')
-      .replace(/```\n?/g, '')
+      .replace(/```json\n?/g, "")
+      .replace(/```\n?/g, "")
       .trim();
 
     // Parse the actual model assignment JSON
@@ -152,7 +174,9 @@ ${jsonExample}`;
     const validated = validateAssignment(assignment, availableModels[0].model);
     if (!validated) {
       console.error("Invalid assignment structure. Got:", assignment);
-      throw new Error(`Invalid assignment structure from LLM. Missing fields in: ${JSON.stringify(Object.keys(assignment))}`);
+      throw new Error(
+        `Invalid assignment structure from LLM. Missing fields in: ${JSON.stringify(Object.keys(assignment))}`,
+      );
     }
 
     return validated;
