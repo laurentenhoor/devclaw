@@ -195,7 +195,7 @@ export async function dispatchTask(
     // Step 1c: Apply review routing label when role produces reviewable work (best-effort)
     if (producesReviewableWork(workflow, role)) {
       const reviewLabel = resolveReviewRouting(
-        workflow.reviewPolicy ?? ReviewPolicy.AUTO, level,
+        workflow.reviewPolicy ?? ReviewPolicy.HUMAN, level,
       );
       const oldRouting = issue.labels.filter((l) => l.startsWith("review:"));
       if (oldRouting.length > 0) await provider.removeLabels(issueId, oldRouting);

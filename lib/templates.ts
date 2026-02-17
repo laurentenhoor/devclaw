@@ -3,7 +3,6 @@
  * Used by setup and project_register.
  */
 import YAML from "yaml";
-import { DEFAULT_WORKFLOW } from "./workflow.js";
 import { ROLE_REGISTRY } from "./roles/registry.js";
 
 export const DEFAULT_DEV_INSTRUCTIONS = `# DEVELOPER Worker Instructions
@@ -25,7 +24,7 @@ Read the comments carefully — they often contain clarifications, decisions, or
 - Work in a git worktree (never switch branches in the main repo)
 - Run tests before completing
 - Create an MR/PR to the base branch
-- **IMPORTANT:** Do NOT use closing keywords in PR/MR descriptions (no "Closes #X", "Fixes #X", "Resolves #X"). Use "As described in issue #X" or "Addresses issue #X" instead. DevClaw manages issue state — auto-closing bypasses QA.
+- **IMPORTANT:** Do NOT use closing keywords in PR/MR descriptions (no "Closes #X", "Fixes #X", "Resolves #X"). Use "As described in issue #X" or "Addresses issue #X" instead. DevClaw manages issue state — auto-closing bypasses the review lifecycle.
 - **Do NOT merge the PR yourself** — leave it open for review. The system will auto-merge when approved.
 - If you discover unrelated bugs, call task_create to file them
 - Do NOT call work_start, status, health, or project_register
@@ -177,10 +176,10 @@ Skip the orchestrator section. Follow your task message and role instructions (a
 - Branch naming: \`feature/<id>-<slug>\` or \`fix/<id>-<slug>\`
 - **DEVELOPER always works in a git worktree** (never switch branches in the main repo)
 - **DEVELOPER must merge to base branch** before announcing completion
-- **Do NOT use closing keywords in PR/MR descriptions** (no "Closes #X", "Fixes #X", "Resolves #X"). Use "As described in issue #X" or "Addresses issue #X". DevClaw manages issue state — auto-closing bypasses testing.
-- **TESTER tests on the deployed version** and inspects code on the base branch
-- **TESTER always calls task_comment** with review findings before completing
-- Always run tests before completing
+- **Do NOT use closing keywords in PR/MR descriptions** (no "Closes #X", "Fixes #X", "Resolves #X"). Use "As described in issue #X" or "Addresses issue #X". DevClaw manages issue state — auto-closing bypasses the review lifecycle.
+- If the test phase is enabled: **TESTER tests on the deployed version** and inspects code on the base branch
+- If the test phase is enabled: **TESTER always calls task_comment** with review findings before completing
+- Run tests before completing when applicable
 
 ### Completing Your Task
 
@@ -312,7 +311,7 @@ All roles (Developer, Tester, Architect) use the same level scheme. Levels descr
 ### Picking Up Work
 
 1. Use \`status\` to see what's available
-2. Priority: \`To Improve\` (fix failures) > \`To Test\` (QA) > \`To Do\` (new work)
+2. Priority: \`To Improve\` (fix failures) > \`To Do\` (new work). If test phase enabled: \`To Improve\` > \`To Test\` > \`To Do\`
 3. Evaluate complexity, choose developer level
 4. Call \`work_start\` with \`issueId\`, \`role\`, \`projectSlug\`, \`level\`
 5. Include the \`announcement\` from the tool response verbatim — it already has the issue URL embedded
@@ -351,7 +350,7 @@ Workers receive role-specific instructions appended to their task message. These
 - **Never write code yourself** — always dispatch a Developer worker
 - Don't push to main directly
 - Don't force-push
-- Don't close issues without Tester pass
+- Don't close issues manually — let the workflow handle it (review merge or tester pass)
 - Ask before architectural decisions affecting multiple projects
 `;
 
@@ -408,7 +407,6 @@ You are a **development orchestrator** — you plan, prioritize, and dispatch. Y
 
 Each session starts fresh. AGENTS.md defines your operational procedures. This file defines who you are. USER.md tells you about the humans you work with. Update these files as you learn.
 `;
-
 
 /**
  * Generate WORKFLOW_YAML_TEMPLATE from the runtime objects (single source of truth).
@@ -511,10 +509,6 @@ function buildWorkflowYaml(): string {
             - closeIssue  # remove when using test phase (tester closes)
         REJECT: toImprove
         BLOCKED: refining
-    done:
-      type: terminal
-      label: Done
-      color: "#5cb85c"
     # --- Test phase (uncomment to enable) ------------------------------------
     # Adds automated QA after review. To enable:
     #   1. Uncomment toTest and testing below
@@ -546,6 +540,10 @@ function buildWorkflowYaml(): string {
     #         - reopenIssue
     #     REFINE: refining
     #     BLOCKED: refining
+    done:
+      type: terminal
+      label: Done
+      color: "#5cb85c"
     toImprove:
       type: queue
       role: developer

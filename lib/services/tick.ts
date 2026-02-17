@@ -111,7 +111,7 @@ export async function projectTick(opts: {
 
     // Review policy gate: fallback for issues dispatched before step routing labels existed
     if (role === "reviewer") {
-      const policy = workflow.reviewPolicy ?? ReviewPolicy.AUTO;
+      const policy = workflow.reviewPolicy ?? ReviewPolicy.HUMAN;
       if (policy === ReviewPolicy.HUMAN) {
         skipped.push({ role, reason: "Review policy: human (heartbeat handles via PR polling)" });
         continue;
