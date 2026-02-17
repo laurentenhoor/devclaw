@@ -152,29 +152,34 @@ function getDefaultWorkspacePath(api: OpenClawPluginApi): string | undefined {
 
 /**
  * Write model configuration to workflow.yaml (single source of truth).
- * Reads the existing workflow.yaml, merges model overrides into the roles section, and writes back.
+ * Uses YAML Document API to preserve comments and formatting.
  */
 async function writeModelsToWorkflow(workspacePath: string, models: ModelConfig): Promise<void> {
   const workflowPath = path.join(workspacePath, DATA_DIR, "workflow.yaml");
 
-  let doc: Record<string, unknown> = {};
+  let content = "";
   try {
-    const content = await fs.readFile(workflowPath, "utf-8");
-    doc = (YAML.parse(content) as Record<string, unknown>) ?? {};
-  } catch { /* file doesn't exist yet — start fresh */ }
+    content = await fs.readFile(workflowPath, "utf-8");
+  } catch { /* file doesn't exist yet */ }
+
+  // Parse as Document to preserve comments
+  const doc = content ? YAML.parseDocument(content) : new YAML.Document({});
+
+  // Ensure roles section exists
+  if (!doc.has("roles")) {
+    doc.set("roles", {});
+  }
+  const roles = doc.getIn(["roles"], true) as unknown as YAML.YAMLMap;
 
   // Merge models into roles section
-  if (!doc.roles) doc.roles = {};
-  const roles = doc.roles as Record<string, unknown>;
-
   for (const [role, levels] of Object.entries(models)) {
-    if (!roles[role] || roles[role] === false) {
-      roles[role] = { models: levels };
+    if (!roles.has(role)) {
+      roles.set(role, doc.createNode({ models: levels }));
     } else {
-      const roleObj = roles[role] as Record<string, unknown>;
-      roleObj.models = levels;
+      const roleNode = roles.get(role, true) as unknown as YAML.YAMLMap;
+      roleNode.set("models", doc.createNode(levels));
     }
   }
 
-  await fs.writeFile(workflowPath, YAML.stringify(doc, { lineWidth: 120 }), "utf-8");
+  await fs.writeFile(workflowPath, doc.toString({ lineWidth: 120 }), "utf-8");
 }

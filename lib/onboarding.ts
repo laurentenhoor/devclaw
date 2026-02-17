@@ -166,14 +166,17 @@ Ask: "Do you understand the group-per-project model, or do you want single-proje
 - Only force single-project if they insist
 
 **Step 5: Project Registration**
-Ask: "Would you like to register a project now?"
-If yes, collect: project name, repo path, Telegram group ID, group name, base branch.
-Then call \`project_register\`.
+Explain that projects should be registered **from within their Telegram group**:
 
-💡 **Tip**: For the Telegram group ID:
-- Add the bot to your group
-- Send any message with the bot mentioned
-- Bot can tell you the group ID
+📌 **How to register a project:**
+1. Create a Telegram group for the project
+2. Add the bot to the group
+3. In that group, tell the bot: "Register this project" (or use \`project_register\`)
+4. The bot will auto-detect the group ID from the conversation context
+
+This keeps each project's registration tied to its group from the start.
+
+You can also register a project from this admin session if you want, but it's better to keep this session free for general admin tasks. If they want to register here anyway, collect: project name, repo path, Telegram group ID, group name, base branch, then call \`project_register\`.
 
 **Step 6: Workflow Overview**
 After project registration, briefly tell the user about their active workflow:
