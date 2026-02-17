@@ -119,7 +119,7 @@ export async function projectTick(opts: {
       }
     }
 
-    const next = await findNextIssueForRole(provider, role, workflow);
+    const next = await findNextIssueForRole(provider, role, workflow, groupId);
     if (!next) continue;
 
     const { issue, label: currentLabel } = next;

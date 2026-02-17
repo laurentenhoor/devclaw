@@ -272,6 +272,46 @@ export const STEP_ROUTING_LABELS: readonly string[] = [
 /** Step routing label color. */
 const STEP_ROUTING_COLOR = "#d93f0b";
 
+// ---------------------------------------------------------------------------
+// Group isolation — notify:{groupId} labels
+// ---------------------------------------------------------------------------
+
+/**
+ * Prefix for group-isolation labels.
+ * Format: "notify:{groupId}" (e.g., "notify:-5176490302").
+ * Purpose: ensures each issue is only processed by the group that created/owns it.
+ * Style: light grey — low visual weight, informational only.
+ */
+export const NOTIFY_LABEL_PREFIX = "notify:";
+
+/** Light grey color for notify labels — low prominence. */
+export const NOTIFY_LABEL_COLOR = "#e4e4e4";
+
+/** Build the notify label for a given group ID. */
+export function getNotifyLabel(groupId: string): string {
+  return `${NOTIFY_LABEL_PREFIX}${groupId}`;
+}
+
+/**
+ * Filter issues by group ownership using notify labels.
+ *
+ * - Issues tagged `notify:{groupId}` → included for that group
+ * - Issues tagged `notify:{otherGroupId}` → excluded
+ * - Issues with NO notify label (orphans, pre-fix) → included for ALL groups
+ *   (first group in sequential tick processing wins via atomic label transition)
+ */
+export function filterIssuesByGroup<T extends { labels: string[] }>(
+  issues: T[],
+  groupId: string,
+): T[] {
+  const notifyLabel = getNotifyLabel(groupId);
+  return issues.filter((issue) => {
+    const hasAnyNotify = issue.labels.some((l) => l.startsWith(NOTIFY_LABEL_PREFIX));
+    if (!hasAnyNotify) return true; // orphan: backward compat, all groups can see it
+    return issue.labels.includes(notifyLabel);
+  });
+}
+
 /**
  * Determine review routing label for an issue based on project policy and developer level.
  * Called during developer dispatch to persist the routing decision as a label.

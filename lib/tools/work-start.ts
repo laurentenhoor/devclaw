@@ -15,7 +15,7 @@ import { dispatchTask } from "../dispatch.js";
 import { findNextIssue, detectRoleFromLabel, detectRoleLevelFromLabels } from "../services/queue-scan.js";
 import { getAllRoleIds, getLevelsForRole } from "../roles/index.js";
 import { requireWorkspaceDir, resolveProject, resolveProvider, getPluginConfig } from "../tool-helpers.js";
-import { loadWorkflow, getActiveLabel, ExecutionMode } from "../workflow.js";
+import { loadWorkflow, getActiveLabel, getNotifyLabel, NOTIFY_LABEL_COLOR, NOTIFY_LABEL_PREFIX, ExecutionMode } from "../workflow.js";
 
 export function createWorkStartTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
@@ -55,7 +55,7 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
         if (!label) throw new Error(`Issue #${issueIdParam} has no recognized state label`);
         currentLabel = label;
       } else {
-        const next = await findNextIssue(provider, roleParam, workflow);
+        const next = await findNextIssue(provider, roleParam, workflow, groupId);
         if (!next) return jsonResult({ success: false, error: `No issues available. Queue is empty.` });
         issue = next.issue;
         currentLabel = next.label;
@@ -95,6 +95,16 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
           const s = selectLevel(issue.title, issue.description ?? "", role);
           selectedLevel = s.level; levelReason = s.reason; levelSource = "heuristic";
         }
+      }
+
+      // Ensure notify:{groupId} label is on the issue (best-effort — failure must not abort dispatch).
+      // This covers issues created via external tools or before this feature was added.
+      const notifyLabel = getNotifyLabel(groupId);
+      const hasNotify = issue.labels.some(l => l.startsWith(NOTIFY_LABEL_PREFIX));
+      if (!hasNotify) {
+        provider.ensureLabel(notifyLabel, NOTIFY_LABEL_COLOR)
+          .then(() => provider.addLabel(issue.iid, notifyLabel))
+          .catch(() => {}); // best-effort
       }
 
       // Dispatch (pass runtime for direct API access)

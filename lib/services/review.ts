@@ -11,6 +11,7 @@ import {
   Action,
   ReviewCheck,
   WorkflowEvent,
+  filterIssuesByGroup,
   type WorkflowConfig,
   type StateConfig,
 } from "../workflow.js";
@@ -42,7 +43,8 @@ export async function reviewPass(opts: {
   for (const [stateKey, state] of reviewStates) {
     if (!state.on || !state.check) continue;
 
-    const issues = await provider.listIssuesByLabel(state.label);
+    const allIssues = await provider.listIssuesByLabel(state.label);
+    const issues = filterIssuesByGroup(allIssues, groupId);
     for (const issue of issues) {
       // Only process issues explicitly marked for human review.
       // review:agent → agent reviewer pipeline handles merge.

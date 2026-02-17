@@ -14,7 +14,7 @@ import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
 import { log as auditLog } from "../audit.js";
 import type { StateLabel } from "../providers/provider.js";
-import { DEFAULT_WORKFLOW, getStateLabels } from "../workflow.js";
+import { DEFAULT_WORKFLOW, getStateLabels, getNotifyLabel, NOTIFY_LABEL_COLOR } from "../workflow.js";
 import { requireWorkspaceDir, resolveProject, resolveProvider } from "../tool-helpers.js";
 
 /** Derive the initial state label from the workflow config. */
@@ -77,6 +77,13 @@ Examples:
       const { provider, type: providerType } = await resolveProvider(project);
 
       const issue = await provider.createIssue(title, description, label, assignees);
+
+      // Apply notify:{groupId} label for multi-group isolation (best-effort).
+      // Ensures this issue is only processed by the group that created it.
+      const notifyLabel = getNotifyLabel(groupId);
+      provider.ensureLabel(notifyLabel, NOTIFY_LABEL_COLOR)
+        .then(() => provider.addLabel(issue.iid, notifyLabel))
+        .catch(() => {}); // best-effort — must not fail the whole task_create
 
       await auditLog(workspaceDir, "task_create", {
         project: project.name, groupId, issueId: issue.iid,

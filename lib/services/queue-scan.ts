@@ -10,6 +10,7 @@ import { getLevelsForRole, getAllLevels } from "../roles/index.js";
 import {
   getQueueLabels,
   getAllQueueLabels,
+  filterIssuesByGroup,
   detectRoleFromLabel as workflowDetectRole,
   type WorkflowConfig,
   type Role,
@@ -94,12 +95,15 @@ export async function findNextIssueForRole(
   provider: Pick<IssueProvider, "listIssuesByLabel">,
   role: Role,
   workflow: WorkflowConfig,
+  /** If provided, filter issues by notify:{groupId} label for multi-group isolation. */
+  groupId?: string,
 ): Promise<{ issue: Issue; label: StateLabel } | null> {
   const labels = getQueueLabels(workflow, role);
   for (const label of labels) {
     try {
       const issues = await provider.listIssuesByLabel(label);
-      if (issues.length > 0) return { issue: issues[issues.length - 1], label };
+      const filtered = groupId ? filterIssuesByGroup(issues, groupId) : issues;
+      if (filtered.length > 0) return { issue: filtered[filtered.length - 1], label };
     } catch { /* continue */ }
   }
   return null;
@@ -112,6 +116,8 @@ export async function findNextIssue(
   provider: Pick<IssueProvider, "listIssuesByLabel">,
   role: Role | undefined,
   workflow: WorkflowConfig,
+  /** If provided, filter issues by notify:{groupId} label for multi-group isolation. */
+  groupId?: string,
 ): Promise<{ issue: Issue; label: StateLabel } | null> {
   const labels = role
     ? getQueueLabels(workflow, role)
@@ -120,7 +126,8 @@ export async function findNextIssue(
   for (const label of labels) {
     try {
       const issues = await provider.listIssuesByLabel(label);
-      if (issues.length > 0) return { issue: issues[issues.length - 1], label };
+      const filtered = groupId ? filterIssuesByGroup(issues, groupId) : issues;
+      if (filtered.length > 0) return { issue: filtered[filtered.length - 1], label };
     } catch { /* continue */ }
   }
   return null;
