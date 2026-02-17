@@ -386,8 +386,8 @@ describe("E2E pipeline", () => {
       h = await createTestHarness();
     });
 
-    it("should auto-merge and transition To Review → To Test when PR is approved", async () => {
-      h.provider.seedIssue({ iid: 60, title: "Feature Y", labels: ["To Review"] });
+    it("should auto-merge and transition To Review → To Test when PR is approved (review:human)", async () => {
+      h.provider.seedIssue({ iid: 60, title: "Feature Y", labels: ["To Review", "review:human"] });
       h.provider.setPrStatus(60, { state: "approved", url: "https://example.com/pr/10" });
 
       const transitions = await reviewPass({
@@ -412,8 +412,8 @@ describe("E2E pipeline", () => {
       assert.ok(gitCmds.length > 0, "Should have run git pull");
     });
 
-    it("should NOT transition when PR is still open", async () => {
-      h.provider.seedIssue({ iid: 61, title: "Feature Z", labels: ["To Review"] });
+    it("should NOT transition when PR is still open (review:human)", async () => {
+      h.provider.seedIssue({ iid: 61, title: "Feature Z", labels: ["To Review", "review:human"] });
       h.provider.setPrStatus(61, { state: "open", url: "https://example.com/pr/11" });
 
       const transitions = await reviewPass({
@@ -430,9 +430,9 @@ describe("E2E pipeline", () => {
       assert.ok(issue.labels.includes("To Review"));
     });
 
-    it("should handle multiple review issues in one pass", async () => {
-      h.provider.seedIssue({ iid: 70, title: "PR A", labels: ["To Review"] });
-      h.provider.seedIssue({ iid: 71, title: "PR B", labels: ["To Review"] });
+    it("should handle multiple review:human issues in one pass", async () => {
+      h.provider.seedIssue({ iid: 70, title: "PR A", labels: ["To Review", "review:human"] });
+      h.provider.seedIssue({ iid: 71, title: "PR B", labels: ["To Review", "review:human"] });
       h.provider.setPrStatus(70, { state: "approved", url: "https://example.com/pr/20" });
       h.provider.setPrStatus(71, { state: "approved", url: "https://example.com/pr/21" });
 
@@ -456,7 +456,7 @@ describe("E2E pipeline", () => {
     });
 
     it("should transition To Review → To Improve when merge fails (conflicts)", async () => {
-      h.provider.seedIssue({ iid: 65, title: "Conflicting PR", labels: ["To Review"] });
+      h.provider.seedIssue({ iid: 65, title: "Conflicting PR", labels: ["To Review", "review:human"] });
       h.provider.setPrStatus(65, { state: "approved", url: "https://example.com/pr/15" });
       h.provider.mergePrFailures.add(65);
 
@@ -497,6 +497,29 @@ describe("E2E pipeline", () => {
       assert.strictEqual(transitions, 0, "Should not auto-merge agent-routed issues");
 
       const issue = await h.provider.getIssue(62);
+      assert.ok(issue.labels.includes("To Review"), "Should remain in To Review");
+
+      const mergeCalls = h.provider.callsTo("mergePr");
+      assert.strictEqual(mergeCalls.length, 0, "Should not have called mergePr");
+    });
+
+    it("should skip issues with no routing label — safe default, never auto-merge without explicit review:human", async () => {
+      // This is the key regression guard: issues without any routing label must NOT be auto-merged.
+      // Previously, the check was `routing === "agent"` which would NOT skip no-label issues.
+      h.provider.seedIssue({ iid: 64, title: "No routing label", labels: ["To Review"] });
+      h.provider.setPrStatus(64, { state: "approved", url: "https://example.com/pr/14" });
+
+      const transitions = await reviewPass({
+        workspaceDir: h.workspaceDir,
+        groupId: h.groupId,
+        workflow: DEFAULT_WORKFLOW,
+        provider: h.provider,
+        repoPath: "/tmp/test-repo",
+      });
+
+      assert.strictEqual(transitions, 0, "Should not auto-merge issues with no routing label");
+
+      const issue = await h.provider.getIssue(64);
       assert.ok(issue.labels.includes("To Review"), "Should remain in To Review");
 
       const mergeCalls = h.provider.callsTo("mergePr");

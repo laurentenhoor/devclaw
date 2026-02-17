@@ -44,10 +44,12 @@ export async function reviewPass(opts: {
 
     const issues = await provider.listIssuesByLabel(state.label);
     for (const issue of issues) {
-      // Skip agent-routed issues — the agent reviewer pipeline handles merge for those.
-      // reviewPass only handles externally-approved MRs (human review path).
+      // Only process issues explicitly marked for human review.
+      // review:agent → agent reviewer pipeline handles merge.
+      // No routing label → treat as agent by default (safe: never auto-merge without explicit human approval).
+      // review:human → human approved on provider; heartbeat handles merge transition.
       const routing = detectStepRouting(issue.labels, "review");
-      if (routing === "agent") continue;
+      if (routing !== "human") continue;
 
       const status = await provider.getPrStatus(issue.iid);
 
