@@ -50,23 +50,115 @@ export class GitHubProvider implements IssueProvider {
     });
   }
 
+  /** Cached repo owner/name for GraphQL queries. */
+  private repoInfo: { owner: string; name: string } | null | undefined = undefined;
+
+  /**
+   * Get repo owner and name via gh CLI. Cached per instance.
+   * Returns null if unavailable (no git remote, etc.).
+   */
+  private async getRepoInfo(): Promise<{ owner: string; name: string } | null> {
+    if (this.repoInfo !== undefined) return this.repoInfo;
+    try {
+      const raw = await this.gh(["repo", "view", "--json", "owner,name"]);
+      const data = JSON.parse(raw);
+      this.repoInfo = { owner: data.owner.login, name: data.name };
+    } catch {
+      this.repoInfo = null;
+    }
+    return this.repoInfo;
+  }
+
+  /**
+   * Find PRs linked to an issue via GitHub's timeline API (GraphQL).
+   * This catches PRs regardless of branch naming convention.
+   * Returns null if GraphQL query fails (caller should fall back).
+   */
+  private async findPrsViaTimeline(
+    issueId: number,
+    state: "open" | "merged" | "all",
+  ): Promise<Array<{ number: number; title: string; body: string; headRefName: string; url: string; mergedAt: string | null; reviewDecision: string | null }> | null> {
+    const repo = await this.getRepoInfo();
+    if (!repo) return null;
+
+    try {
+      const query = `{
+        repository(owner: "${repo.owner}", name: "${repo.name}") {
+          issue(number: ${issueId}) {
+            timelineItems(itemTypes: [CONNECTED_EVENT, CROSS_REFERENCED_EVENT], first: 20) {
+              nodes {
+                __typename
+                ... on ConnectedEvent {
+                  subject { ... on PullRequest { number title body headRefName state url mergedAt reviewDecision } }
+                }
+                ... on CrossReferencedEvent {
+                  source { ... on PullRequest { number title body headRefName state url mergedAt reviewDecision } }
+                }
+              }
+            }
+          }
+        }
+      }`;
+
+      const raw = await this.gh(["api", "graphql", "-f", `query=${query}`]);
+      const data = JSON.parse(raw);
+      const nodes = data?.data?.repository?.issue?.timelineItems?.nodes ?? [];
+
+      // Extract PR data from both event types
+      const seen = new Set<number>();
+      const prs: Array<{ number: number; title: string; body: string; headRefName: string; url: string; mergedAt: string | null; reviewDecision: string | null; state: string }> = [];
+
+      for (const node of nodes) {
+        const pr = node.subject ?? node.source;
+        if (!pr?.number || !pr?.url) continue; // Not a PR or empty source
+        if (seen.has(pr.number)) continue;
+        seen.add(pr.number);
+        prs.push({
+          number: pr.number,
+          title: pr.title ?? "",
+          body: pr.body ?? "",
+          headRefName: pr.headRefName ?? "",
+          url: pr.url,
+          mergedAt: pr.mergedAt ?? null,
+          reviewDecision: pr.reviewDecision ?? null,
+          state: pr.state ?? "",
+        });
+      }
+
+      // Filter by state
+      if (state === "open") return prs.filter((pr) => pr.state === "OPEN");
+      if (state === "merged") return prs.filter((pr) => pr.state === "MERGED");
+      return prs;
+    } catch {
+      return null; // GraphQL failed — caller should fall back
+    }
+  }
+
   /**
    * Find PRs associated with an issue.
-   * Primary: match by head branch pattern (fix/123-, feature/123-, etc.)
-   * Fallback: word-boundary match on #123 in title/body.
+   * Primary: GitHub timeline API (convention-free, catches all linked PRs).
+   * Fallback: regex matching on branch name / title / body.
    */
   private async findPrsForIssue<T extends { title: string; body: string; headRefName?: string }>(
     issueId: number,
     state: "open" | "merged" | "all",
     fields: string,
   ): Promise<T[]> {
+    // Try timeline API first (returns all linked PRs regardless of naming convention)
+    const timelinePrs = await this.findPrsViaTimeline(issueId, state);
+    if (timelinePrs && timelinePrs.length > 0) {
+      // Map timeline results to the expected shape (T includes the requested fields)
+      return timelinePrs as unknown as T[];
+    }
+
+    // Fallback: regex-based matching on branch name / title / body
     try {
       const args = ["pr", "list", "--json", fields, "--limit", "50"];
       if (state !== "all") args.push("--state", state);
       const raw = await this.gh(args);
       if (!raw) return [];
       const prs = JSON.parse(raw) as T[];
-      const branchPat = new RegExp(`^(?:fix|feature|chore|bugfix|hotfix)/${issueId}-`);
+      const branchPat = new RegExp(`^(?:fix|feat|feature|chore|bugfix|hotfix|refactor|docs|test)/${issueId}-`);
       const titlePat = new RegExp(`\\b#${issueId}\\b`);
 
       // Primary: match by branch name
