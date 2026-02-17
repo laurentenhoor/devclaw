@@ -319,6 +319,21 @@ export async function tick(opts: {
             ).catch(() => {});
           }).catch(() => {});
         },
+        onFeedback: (issueId, reason, prUrl, issueTitle, issueUrl) => {
+          const type = reason === "changes_requested" ? "changesRequested" as const : "mergeConflict" as const;
+          notify(
+            {
+              type,
+              project: project.name,
+              groupId: primaryGroupId,
+              issueId,
+              issueUrl,
+              issueTitle,
+              prUrl: prUrl ?? undefined,
+            },
+            { workspaceDir, config: notifyConfig, groupId: primaryGroupId, channel: project.channels[0]?.channel ?? "telegram" },
+          ).catch(() => {});
+        },
       });
 
       // Budget check: stop if we've hit the limit

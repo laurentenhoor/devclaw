@@ -46,6 +46,8 @@ export type ProviderCall =
   | { method: "getPrStatus"; args: { issueId: number } }
   | { method: "mergePr"; args: { issueId: number } }
   | { method: "getPrDiff"; args: { issueId: number } }
+  | { method: "getPrReviewComments"; args: { issueId: number } }
+  | { method: "reactToPrComment"; args: { issueId: number; commentId: number; emoji: string } }
   | { method: "addComment"; args: { issueId: number; body: string } }
   | { method: "editIssue"; args: { issueId: number; updates: { title?: string; body?: string } } }
   | { method: "healthCheck"; args: {} };
@@ -267,6 +269,14 @@ export class TestProvider implements IssueProvider {
   async getPrDiff(issueId: number): Promise<string | null> {
     this.calls.push({ method: "getPrDiff", args: { issueId } });
     return this.prDiffs.get(issueId) ?? null;
+  }
+
+  async getPrReviewComments(_issueId: number): Promise<import("../providers/provider.js").PrReviewComment[]> {
+    return [];
+  }
+
+  async reactToPrComment(_issueId: number, _commentId: number, _emoji: string): Promise<void> {
+    // no-op in tests
   }
 
   async addComment(issueId: number, body: string): Promise<void> {

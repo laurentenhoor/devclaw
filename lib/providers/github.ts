@@ -7,6 +7,7 @@ import {
   type StateLabel,
   type IssueComment,
   type PrStatus,
+  type PrReviewComment,
   PrState,
 } from "./provider.js";
 import { runCommand } from "../run-command.js";
@@ -257,26 +258,50 @@ export class GitHubProvider implements IssueProvider {
   }
 
   async getPrStatus(issueId: number): Promise<PrStatus> {
-    // Check open PRs first
-    type OpenPr = { title: string; body: string; headRefName: string; url: string; reviewDecision: string };
-    const open = await this.findPrsForIssue<OpenPr>(issueId, "open", "title,body,headRefName,url,reviewDecision");
+    // Check open PRs first — include mergeable for conflict detection
+    type OpenPr = { title: string; body: string; headRefName: string; url: string; number: number; reviewDecision: string; mergeable: string };
+    const open = await this.findPrsForIssue<OpenPr>(issueId, "open", "title,body,headRefName,url,number,reviewDecision,mergeable");
     if (open.length > 0) {
       const pr = open[0];
-      const state = pr.reviewDecision === "APPROVED" ? PrState.APPROVED : PrState.OPEN;
-      return { state, url: pr.url, title: pr.title, sourceBranch: pr.headRefName };
+      let state: PrState;
+      if (pr.reviewDecision === "APPROVED") {
+        state = PrState.APPROVED;
+      } else if (pr.reviewDecision === "CHANGES_REQUESTED") {
+        state = PrState.CHANGES_REQUESTED;
+      } else {
+        // No branch protection → reviewDecision may be empty. Check individual reviews.
+        const hasChangesRequested = await this.hasChangesRequestedReview(pr.number);
+        state = hasChangesRequested ? PrState.CHANGES_REQUESTED : PrState.OPEN;
+      }
+
+      // Conflict detection: "CONFLICTING" means merge conflicts, "UNKNOWN" means still computing
+      const mergeable = pr.mergeable === "CONFLICTING" ? false
+        : pr.mergeable === "MERGEABLE" ? true
+        : undefined; // UNKNOWN or missing — don't assume
+
+      return { state, url: pr.url, title: pr.title, sourceBranch: pr.headRefName, mergeable };
     }
     // Check merged PRs — also fetch reviewDecision to detect approved-then-merged vs self-merged.
-    // A PR merged without any approvals (e.g. developer self-merge) returns PrState.MERGED but
-    // reviewDecision will be null/"" (not "APPROVED"), so callers cannot treat it as approved.
     type MergedPr = { title: string; body: string; headRefName: string; url: string; reviewDecision: string | null };
     const merged = await this.findPrsForIssue<MergedPr>(issueId, "merged", "title,body,headRefName,url,reviewDecision");
     if (merged.length > 0) {
       const pr = merged[0];
-      // If the PR was approved before merge, reflect that — heartbeat can distinguish approve+merge from self-merge.
       const state = pr.reviewDecision === "APPROVED" ? PrState.APPROVED : PrState.MERGED;
       return { state, url: pr.url, title: pr.title, sourceBranch: pr.headRefName };
     }
     return { state: PrState.CLOSED, url: null };
+  }
+
+  /**
+   * Check individual reviews for CHANGES_REQUESTED state.
+   * Used when branch protection is disabled (reviewDecision is empty).
+   */
+  private async hasChangesRequestedReview(prNumber: number): Promise<boolean> {
+    try {
+      const raw = await this.gh(["api", `repos/:owner/:repo/pulls/${prNumber}/reviews`, "--jq",
+        "[.[] | select(.state == \"CHANGES_REQUESTED\" or .state == \"APPROVED\") | {user: .user.login, state}] | group_by(.user) | map(sort_by(.state) | last) | .[] | select(.state == \"CHANGES_REQUESTED\") | .user"]);
+      return raw.trim().length > 0;
+    } catch { return false; }
   }
 
   async mergePr(issueId: number): Promise<void> {
@@ -293,6 +318,71 @@ export class GitHubProvider implements IssueProvider {
     try {
       return await this.gh(["pr", "diff", String(prs[0].number)]);
     } catch { return null; }
+  }
+
+  async getPrReviewComments(issueId: number): Promise<PrReviewComment[]> {
+    type OpenPr = { title: string; body: string; headRefName: string; number: number; author: { login: string } };
+    const prs = await this.findPrsForIssue<OpenPr>(issueId, "open", "title,body,headRefName,number,author");
+    if (prs.length === 0) return [];
+    const prNumber = prs[0].number;
+    const prAuthor = (prs[0] as any).author?.login ?? "";
+    const comments: PrReviewComment[] = [];
+
+    try {
+      // Review-level comments (top-level reviews: APPROVED, CHANGES_REQUESTED, COMMENTED)
+      const reviewsRaw = await this.gh(["api", `repos/:owner/:repo/pulls/${prNumber}/reviews`]);
+      const reviews = JSON.parse(reviewsRaw) as Array<{
+        id: number; user: { login: string }; body: string; state: string; submitted_at: string;
+      }>;
+      for (const r of reviews) {
+        if (r.user.login === prAuthor) continue; // Skip self-reviews
+        if (r.state === "DISMISSED") continue; // Skip dismissed
+        if (!r.body && r.state === "COMMENTED") continue; // Skip empty COMMENTED reviews
+        comments.push({
+          id: r.id,
+          author: r.user.login,
+          body: r.body ?? "",
+          state: r.state,
+          created_at: r.submitted_at,
+        });
+      }
+    } catch { /* best-effort */ }
+
+    try {
+      // Inline (file-level) comments
+      const inlineRaw = await this.gh(["api", `repos/:owner/:repo/pulls/${prNumber}/comments`]);
+      const inlines = JSON.parse(inlineRaw) as Array<{
+        id: number; user: { login: string }; body: string; path: string; line: number | null; created_at: string;
+      }>;
+      for (const c of inlines) {
+        if (c.user.login === prAuthor) continue;
+        comments.push({
+          id: c.id,
+          author: c.user.login,
+          body: c.body,
+          state: "INLINE",
+          created_at: c.created_at,
+          path: c.path,
+          line: c.line ?? undefined,
+        });
+      }
+    } catch { /* best-effort */ }
+
+    // Sort by date
+    comments.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    return comments;
+  }
+
+  async reactToPrComment(issueId: number, commentId: number, emoji: string): Promise<void> {
+    try {
+      // Try PR review comment first (inline comments)
+      await this.gh(["api", `repos/:owner/:repo/pulls/comments/${commentId}/reactions`, "-f", `content=${emoji}`, "-X", "POST"]);
+    } catch {
+      try {
+        // Fall back to issue comment reaction
+        await this.gh(["api", `repos/:owner/:repo/issues/comments/${commentId}/reactions`, "-f", `content=${emoji}`, "-X", "POST"]);
+      } catch { /* best-effort */ }
+    }
   }
 
   async addComment(issueId: number, body: string): Promise<void> {

@@ -65,6 +65,8 @@ export const WorkflowEvent = {
   REVIEW: "REVIEW",
   APPROVED: "APPROVED",
   MERGE_FAILED: "MERGE_FAILED",
+  CHANGES_REQUESTED: "CHANGES_REQUESTED",
+  MERGE_CONFLICT: "MERGE_CONFLICT",
   PASS: "PASS",
   FAIL: "FAIL",
   REFINE: "REFINE",
@@ -146,6 +148,8 @@ export const DEFAULT_WORKFLOW: WorkflowConfig = {
         [WorkflowEvent.PICKUP]: "reviewing",
         [WorkflowEvent.APPROVED]: { target: "toTest", actions: [Action.MERGE_PR, Action.GIT_PULL] },
         [WorkflowEvent.MERGE_FAILED]: "toImprove",
+        [WorkflowEvent.CHANGES_REQUESTED]: "toImprove",
+        [WorkflowEvent.MERGE_CONFLICT]: "toImprove",
       },
     },
     reviewing: {

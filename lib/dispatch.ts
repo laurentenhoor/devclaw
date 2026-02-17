@@ -17,6 +17,7 @@ import { resolveModel, getFallbackEmoji } from "./roles/index.js";
 import { notify, getNotificationConfig } from "./notify.js";
 import { loadConfig, type ResolvedRoleConfig } from "./config/index.js";
 import { ReviewPolicy, resolveReviewRouting } from "./workflow.js";
+import { PrState } from "./providers/provider.js";
 
 export type DispatchOpts = {
   workspaceDir: string;
@@ -78,6 +79,12 @@ export function buildTaskMessage(opts: {
   resolvedRole?: ResolvedRoleConfig;
   /** PR context for reviewer role (URL + diff) */
   prContext?: { url: string; diff?: string };
+  /** PR review feedback for developer re-dispatch (from To Improve) */
+  prFeedback?: {
+    url: string;
+    reason?: "changes_requested" | "merge_conflict" | "rejected";
+    comments: Array<{ author: string; body: string; state: string; path?: string; line?: number }>;
+  };
 }): string {
   const {
     projectName, projectSlug, role, issueId, issueTitle,
@@ -115,6 +122,27 @@ export function buildTaskMessage(opts: {
         ? opts.prContext.diff.slice(0, maxDiffLen) + "\n... (diff truncated, see PR for full changes)"
         : opts.prContext.diff;
       parts.push(``, `### Diff`, "```diff", diff, "```");
+    }
+  }
+
+  // Include PR review feedback for developer re-dispatch
+  if (opts.prFeedback && opts.prFeedback.comments.length > 0) {
+    const reasonLabel = opts.prFeedback.reason === "merge_conflict"
+      ? "⚠️ Merge conflicts detected"
+      : opts.prFeedback.reason === "changes_requested"
+        ? "⚠️ Changes were requested"
+        : "⚠️ PR was rejected";
+    parts.push(``, `## PR Review Feedback`, `${reasonLabel}. Address the feedback below.`, `🔗 ${opts.prFeedback.url}`);
+    for (const c of opts.prFeedback.comments) {
+      const location = c.path ? ` (${c.path}${c.line ? `:${c.line}` : ""})` : "";
+      parts.push(``, `**${c.author}** [${c.state}]${location}:`, c.body);
+    }
+    if (opts.prFeedback.reason === "merge_conflict") {
+      parts.push(``, `### Conflict Resolution Instructions`,
+        `1. Rebase your branch onto \`${baseBranch}\`: \`git rebase ${baseBranch}\``,
+        `2. Resolve any conflicts`,
+        `3. Force-push: \`git push --force-with-lease\``,
+        `Prefer rebase over merge commits.`);
     }
   }
 
@@ -185,6 +213,36 @@ export async function dispatchTask(
   // Fetch comments to include in task context
   const comments = await provider.listComments(issueId);
 
+  // Fetch PR review feedback for developer re-dispatch (from To Improve)
+  let prFeedback: {
+    url: string;
+    reason?: "changes_requested" | "merge_conflict" | "rejected";
+    comments: Array<{ author: string; body: string; state: string; path?: string; line?: number }>;
+  } | undefined;
+  if (role === "developer" && fromLabel === "To Improve") {
+    try {
+      const prStatus = await provider.getPrStatus(issueId);
+      if (prStatus.url && prStatus.state !== PrState.MERGED && prStatus.state !== PrState.CLOSED) {
+        const reviewComments = await provider.getPrReviewComments(issueId);
+        if (reviewComments.length > 0) {
+          const reason = prStatus.mergeable === false ? "merge_conflict" as const
+            : prStatus.state === PrState.CHANGES_REQUESTED ? "changes_requested" as const
+            : "rejected" as const;
+          prFeedback = {
+            url: prStatus.url,
+            reason,
+            comments: reviewComments.map((c) => ({
+              author: c.author, body: c.body, state: c.state,
+              path: c.path, line: c.line,
+            })),
+          };
+        }
+      }
+    } catch {
+      // Best-effort — developer can still work from issue context
+    }
+  }
+
   // Fetch PR context for reviewer role
   let prContext: { url: string; diff?: string } | undefined;
   if (role === "reviewer") {
@@ -203,7 +261,7 @@ export async function dispatchTask(
     projectName: project.name, projectSlug: project.slug, role, issueId,
     issueTitle, issueDescription, issueUrl,
     repo: project.repo, baseBranch: project.baseBranch, groupId,
-    comments, resolvedRole, prContext,
+    comments, resolvedRole, prContext, prFeedback,
   });
 
   // Step 1: Transition label (this is the commitment point)

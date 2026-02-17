@@ -60,6 +60,24 @@ export type NotifyEvent =
       prTitle?: string;
       sourceBranch?: string;
       mergedBy: "heartbeat" | "agent" | "pipeline";
+    }
+  | {
+      type: "changesRequested";
+      project: string;
+      groupId: string;
+      issueId: number;
+      issueUrl: string;
+      issueTitle: string;
+      prUrl?: string;
+    }
+  | {
+      type: "mergeConflict";
+      project: string;
+      groupId: string;
+      issueId: number;
+      issueUrl: string;
+      issueTitle: string;
+      prUrl?: string;
     };
 
 /**
@@ -122,6 +140,22 @@ function buildMessage(event: NotifyEvent): string {
       msg += `\n⚡ ${via[event.mergedBy] ?? event.mergedBy}`;
       if (event.prUrl) msg += `\n🔗 PR: ${event.prUrl}`;
       msg += `\n📋 Issue: ${event.issueUrl}`;
+      return msg;
+    }
+
+    case "changesRequested": {
+      let msg = `⚠️ Changes requested on PR for #${event.issueId}: ${event.issueTitle}`;
+      if (event.prUrl) msg += `\n🔗 PR: ${event.prUrl}`;
+      msg += `\n📋 Issue: ${event.issueUrl}`;
+      msg += `\n→ Moving to To Improve for developer re-dispatch`;
+      return msg;
+    }
+
+    case "mergeConflict": {
+      let msg = `⚠️ Merge conflicts detected on PR for #${event.issueId}: ${event.issueTitle}`;
+      if (event.prUrl) msg += `\n🔗 PR: ${event.prUrl}`;
+      msg += `\n📋 Issue: ${event.issueUrl}`;
+      msg += `\n→ Moving to To Improve — developer will rebase and resolve`;
       return msg;
     }
   }

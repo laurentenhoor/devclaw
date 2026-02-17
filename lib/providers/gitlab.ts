@@ -7,6 +7,7 @@ import {
   type StateLabel,
   type IssueComment,
   type PrStatus,
+  type PrReviewComment,
   PrState,
 } from "./provider.js";
 import { runCommand } from "../run-command.js";
@@ -155,14 +156,49 @@ export class GitLabProvider implements IssueProvider {
     // Check open MRs first
     const open = mrs.find((mr) => mr.state === "opened");
     if (open) {
-      // related_merge_requests doesn't populate approved_by — use dedicated approvals endpoint
       const approved = await this.isMrApproved(open.iid);
-      return { state: approved ? PrState.APPROVED : PrState.OPEN, url: open.web_url, title: open.title, sourceBranch: open.source_branch };
+
+      // Detect changes requested via unresolved discussion threads
+      let state: PrState;
+      if (approved) {
+        state = PrState.APPROVED;
+      } else {
+        const hasUnresolved = await this.hasUnresolvedDiscussions(open.iid);
+        state = hasUnresolved ? PrState.CHANGES_REQUESTED : PrState.OPEN;
+      }
+
+      // Detect merge conflicts
+      const mergeable = await this.isMrMergeable(open.iid);
+
+      return { state, url: open.web_url, title: open.title, sourceBranch: open.source_branch, mergeable };
     }
     // Check merged MRs
     const merged = mrs.find((mr) => mr.state === "merged");
     if (merged) return { state: PrState.MERGED, url: merged.web_url, title: merged.title, sourceBranch: merged.source_branch };
     return { state: PrState.CLOSED, url: null };
+  }
+
+  /** Check if an MR has unresolved discussion threads (proxy for changes requested). */
+  private async hasUnresolvedDiscussions(mrIid: number): Promise<boolean> {
+    try {
+      const raw = await this.glab(["api", `projects/:id/merge_requests/${mrIid}/discussions`]);
+      const discussions = JSON.parse(raw) as Array<{ notes: Array<{ resolvable: boolean; resolved: boolean; system: boolean }> }>;
+      return discussions.some((d) =>
+        d.notes.some((n) => n.resolvable && !n.resolved && !n.system),
+      );
+    } catch { return false; }
+  }
+
+  /** Check MR merge status for conflicts. */
+  private async isMrMergeable(mrIid: number): Promise<boolean | undefined> {
+    try {
+      const raw = await this.glab(["api", `projects/:id/merge_requests/${mrIid}?include_rebase_in_progress=true`]);
+      const mr = JSON.parse(raw) as { has_conflicts?: boolean; detailed_merge_status?: string };
+      if (mr.has_conflicts === true) return false;
+      if (mr.detailed_merge_status === "conflict") return false;
+      if (mr.detailed_merge_status === "mergeable" || mr.detailed_merge_status === "ci_must_pass") return true;
+      return undefined; // Unknown
+    } catch { return undefined; }
   }
 
   /** Check if an MR is approved via the dedicated approvals endpoint. */
@@ -197,6 +233,55 @@ export class GitLabProvider implements IssueProvider {
     try {
       return await this.glab(["mr", "diff", String(open.iid)]);
     } catch { return null; }
+  }
+
+  async getPrReviewComments(issueId: number): Promise<PrReviewComment[]> {
+    const mrs = await this.getRelatedMRs(issueId);
+    const open = mrs.find((mr) => mr.state === "opened");
+    if (!open) return [];
+    const comments: PrReviewComment[] = [];
+
+    try {
+      const raw = await this.glab(["api", `projects/:id/merge_requests/${open.iid}/discussions`]);
+      const discussions = JSON.parse(raw) as Array<{
+        notes: Array<{
+          id: number; author: { username: string }; body: string;
+          resolvable: boolean; resolved: boolean; system: boolean;
+          created_at: string; position?: { new_path?: string; new_line?: number };
+        }>;
+      }>;
+
+      for (const disc of discussions) {
+        for (const note of disc.notes) {
+          if (note.system) continue;
+          comments.push({
+            id: note.id,
+            author: note.author.username,
+            body: note.body,
+            state: note.resolvable ? (note.resolved ? "RESOLVED" : "UNRESOLVED") : "COMMENTED",
+            created_at: note.created_at,
+            path: note.position?.new_path,
+            line: note.position?.new_line ?? undefined,
+          });
+        }
+      }
+    } catch { /* best-effort */ }
+
+    comments.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    return comments;
+  }
+
+  async reactToPrComment(_issueId: number, commentId: number, emoji: string): Promise<void> {
+    // GitLab uses award emoji on MR notes. We need the MR iid though.
+    // Since we have the commentId (note id), use the notes API directly.
+    try {
+      // Find the MR for this issue
+      const mrs = await this.getRelatedMRs(_issueId);
+      const open = mrs.find((mr) => mr.state === "opened");
+      if (!open) return;
+      const glEmoji = emoji === "+1" ? "thumbsup" : emoji === "-1" ? "thumbsdown" : emoji;
+      await this.glab(["api", `projects/:id/merge_requests/${open.iid}/notes/${commentId}/award_emoji`, "-f", `name=${glEmoji}`, "-X", "POST"]);
+    } catch { /* best-effort */ }
   }
 
   async addComment(issueId: number, body: string): Promise<void> {

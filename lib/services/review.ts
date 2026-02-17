@@ -32,8 +32,10 @@ export async function reviewPass(opts: {
   gitPullTimeoutMs?: number;
   /** Called after a successful PR merge (for notifications). */
   onMerge?: (issueId: number, prUrl: string | null, prTitle?: string, sourceBranch?: string) => void;
+  /** Called when changes are requested or conflicts detected (for notifications). */
+  onFeedback?: (issueId: number, reason: "changes_requested" | "merge_conflict", prUrl: string | null, issueTitle: string, issueUrl: string) => void;
 }): Promise<number> {
-  const { workspaceDir, groupId, workflow, provider, repoPath, gitPullTimeoutMs = 30_000, onMerge } = opts;
+  const { workspaceDir, groupId, workflow, provider, repoPath, gitPullTimeoutMs = 30_000, onMerge, onFeedback } = opts;
   let transitions = 0;
 
   // Find all states with a review check (e.g. toReview with check: prApproved)
@@ -61,6 +63,48 @@ export async function reviewPass(opts: {
       const conditionMet =
         (state.check === ReviewCheck.PR_MERGED && status.state === PrState.MERGED) ||
         (state.check === ReviewCheck.PR_APPROVED && (status.state === PrState.APPROVED || status.state === PrState.MERGED));
+
+      // Changes requested → transition to toImprove
+      if (status.state === PrState.CHANGES_REQUESTED) {
+        const changesTransition = state.on[WorkflowEvent.CHANGES_REQUESTED];
+        if (changesTransition) {
+          const targetKey = typeof changesTransition === "string" ? changesTransition : changesTransition.target;
+          const targetState = workflow.states[targetKey];
+          if (targetState) {
+            await provider.transitionLabel(issue.iid, state.label, targetState.label);
+            await auditLog(workspaceDir, "review_transition", {
+              groupId, issueId: issue.iid,
+              from: state.label, to: targetState.label,
+              reason: "changes_requested",
+              prUrl: status.url,
+            });
+            onFeedback?.(issue.iid, "changes_requested", status.url, issue.title, issue.web_url);
+            transitions++;
+            continue;
+          }
+        }
+      }
+
+      // Merge conflict → transition to toImprove
+      if (status.mergeable === false) {
+        const conflictTransition = state.on[WorkflowEvent.MERGE_CONFLICT];
+        if (conflictTransition) {
+          const targetKey = typeof conflictTransition === "string" ? conflictTransition : conflictTransition.target;
+          const targetState = workflow.states[targetKey];
+          if (targetState) {
+            await provider.transitionLabel(issue.iid, state.label, targetState.label);
+            await auditLog(workspaceDir, "review_transition", {
+              groupId, issueId: issue.iid,
+              from: state.label, to: targetState.label,
+              reason: "merge_conflict",
+              prUrl: status.url,
+            });
+            onFeedback?.(issue.iid, "merge_conflict", status.url, issue.title, issue.web_url);
+            transitions++;
+            continue;
+          }
+        }
+      }
 
       if (!conditionMet) continue;
 
