@@ -50,9 +50,31 @@ export async function assignModels(
     return singleModelAssignment(authenticated[0].model);
   }
 
-  // Multiple models: use LLM to intelligently assign
-  const { selectModelsWithLLM } = await import("./llm-model-selector.js");
-  return selectModelsWithLLM(authenticated, sessionKey, runCommand);
+  // Multiple models: try LLM, fall back to registry defaults
+  try {
+    const { selectModelsWithLLM } = await import("./llm-model-selector.js");
+    const llmResult = await selectModelsWithLLM(authenticated, sessionKey, runCommand);
+    if (llmResult) return llmResult;
+  } catch (err) {
+    console.warn("LLM model selection failed, using registry defaults:", (err as Error).message);
+  }
+
+  // Heuristic fallback: use registry defaults if they're in the authenticated set
+  const modelSet = new Set(authenticated.map((m) => m.model));
+  const result: ModelAssignment = {};
+  const fallback = authenticated[0].model;
+
+  for (const [roleId, config] of Object.entries(ROLE_REGISTRY)) {
+    result[roleId] = {};
+    for (const level of config.levels) {
+      const registryDefault = config.models[level];
+      result[roleId][level] = registryDefault && modelSet.has(registryDefault)
+        ? registryDefault
+        : fallback;
+    }
+  }
+
+  return result;
 }
 
 /**
