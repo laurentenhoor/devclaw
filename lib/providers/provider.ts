@@ -33,6 +33,8 @@ export const PrState = {
   OPEN: "open",
   APPROVED: "approved",
   CHANGES_REQUESTED: "changes_requested",
+  /** PR/MR is open with no formal review state, but has top-level comments from non-authors. */
+  HAS_COMMENTS: "has_comments",
   MERGED: "merged",
   CLOSED: "closed",
 } as const;

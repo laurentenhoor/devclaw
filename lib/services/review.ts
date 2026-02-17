@@ -62,8 +62,8 @@ export async function reviewPass(opts: {
         (state.check === ReviewCheck.PR_MERGED && status.state === PrState.MERGED) ||
         (state.check === ReviewCheck.PR_APPROVED && (status.state === PrState.APPROVED || status.state === PrState.MERGED));
 
-      // Changes requested → transition to toImprove
-      if (status.state === PrState.CHANGES_REQUESTED) {
+      // Changes requested or PR has comment feedback → transition to toImprove
+      if (status.state === PrState.CHANGES_REQUESTED || status.state === PrState.HAS_COMMENTS) {
         const changesTransition = state.on[WorkflowEvent.CHANGES_REQUESTED];
         if (changesTransition) {
           const targetKey = typeof changesTransition === "string" ? changesTransition : changesTransition.target;
@@ -73,7 +73,7 @@ export async function reviewPass(opts: {
             await auditLog(workspaceDir, "review_transition", {
               project: projectName, issueId: issue.iid,
               from: state.label, to: targetState.label,
-              reason: "changes_requested",
+              reason: status.state === PrState.HAS_COMMENTS ? "pr_comments" : "changes_requested",
               prUrl: status.url,
             });
             onFeedback?.(issue.iid, "changes_requested", status.url, issue.title, issue.web_url);

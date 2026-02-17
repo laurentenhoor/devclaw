@@ -46,7 +46,7 @@ export async function fetchPrFeedback(
     if (reviewComments.length === 0) return undefined;
 
     const reason = prStatus.mergeable === false ? "merge_conflict" as const
-      : prStatus.state === PrState.CHANGES_REQUESTED ? "changes_requested" as const
+      : (prStatus.state === PrState.CHANGES_REQUESTED || prStatus.state === PrState.HAS_COMMENTS) ? "changes_requested" as const
       : "rejected" as const;
 
     return {

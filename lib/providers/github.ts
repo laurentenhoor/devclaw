@@ -259,7 +259,14 @@ export class GitHubProvider implements IssueProvider {
       } else {
         // No branch protection → reviewDecision may be empty. Check individual reviews.
         const hasChangesRequested = await this.hasChangesRequestedReview(pr.number);
-        state = hasChangesRequested ? PrState.CHANGES_REQUESTED : PrState.OPEN;
+        if (hasChangesRequested) {
+          state = PrState.CHANGES_REQUESTED;
+        } else {
+          // Fall through to conversation comment detection
+          const prAuthor = await this.getPrAuthor(pr.number);
+          const hasComments = await this.hasConversationComments(pr.number, prAuthor);
+          state = hasComments ? PrState.HAS_COMMENTS : PrState.OPEN;
+        }
       }
 
       // Conflict detection: "CONFLICTING" means merge conflicts, "UNKNOWN" means still computing
@@ -290,6 +297,45 @@ export class GitHubProvider implements IssueProvider {
         "[.[] | select(.state == \"CHANGES_REQUESTED\" or .state == \"APPROVED\") | {user: .user.login, state}] | group_by(.user) | map(sort_by(.state) | last) | .[] | select(.state == \"CHANGES_REQUESTED\") | .user"]);
       return raw.trim().length > 0;
     } catch { return false; }
+  }
+
+  /** Fetch the login of the PR author. Returns empty string on error. */
+  private async getPrAuthor(prNumber: number): Promise<string> {
+    try {
+      const raw = await this.gh(["api", `repos/:owner/:repo/pulls/${prNumber}`, "--jq", ".user.login"]);
+      return raw.trim();
+    } catch { return ""; }
+  }
+
+  /**
+   * Check if a PR has top-level conversation comments from non-author users.
+   * Uses the Issues Comments API (PRs are also issues in GitHub).
+   */
+  private async hasConversationComments(prNumber: number, prAuthor: string): Promise<boolean> {
+    try {
+      const raw = await this.gh(["api", `repos/:owner/:repo/issues/${prNumber}/comments`]);
+      const comments = JSON.parse(raw) as Array<{ user: { login: string }; body: string }>;
+      return comments.some(
+        (c) => c.user.login !== prAuthor && !c.user.login.endsWith("[bot]") && c.body.trim().length > 0,
+      );
+    } catch { return false; }
+  }
+
+  /**
+   * Fetch top-level conversation comments on a PR from non-author users.
+   * These are comments on the PR timeline (not inline review comments).
+   */
+  private async fetchConversationComments(
+    prNumber: number,
+    prAuthor: string,
+  ): Promise<Array<{ id: number; user: { login: string }; body: string; created_at: string }>> {
+    try {
+      const raw = await this.gh(["api", `repos/:owner/:repo/issues/${prNumber}/comments`]);
+      const all = JSON.parse(raw) as Array<{ id: number; user: { login: string }; body: string; created_at: string }>;
+      return all.filter(
+        (c) => c.user.login !== prAuthor && !c.user.login.endsWith("[bot]") && c.body.trim().length > 0,
+      );
+    } catch { return []; }
   }
 
   async mergePr(issueId: number): Promise<void> {
@@ -337,7 +383,7 @@ export class GitHubProvider implements IssueProvider {
     } catch { /* best-effort */ }
 
     try {
-      // Inline (file-level) comments
+      // Inline (file-level) review comments
       const inlineRaw = await this.gh(["api", `repos/:owner/:repo/pulls/${prNumber}/comments`]);
       const inlines = JSON.parse(inlineRaw) as Array<{
         id: number; user: { login: string }; body: string; path: string; line: number | null; created_at: string;
@@ -355,6 +401,18 @@ export class GitHubProvider implements IssueProvider {
         });
       }
     } catch { /* best-effort */ }
+
+    // Top-level conversation comments (regular PR comments via Issues API)
+    const conversationComments = await this.fetchConversationComments(prNumber, prAuthor);
+    for (const c of conversationComments) {
+      comments.push({
+        id: c.id,
+        author: c.user.login,
+        body: c.body,
+        state: "COMMENTED",
+        created_at: c.created_at,
+      });
+    }
 
     // Sort by date
     comments.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
