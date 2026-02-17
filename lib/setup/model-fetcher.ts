@@ -67,8 +67,64 @@ export async function fetchModels(allModels = true): Promise<OpenClawModelRow[]>
 }
 
 /**
- * Fetch only authenticated models (available: true).
+ * Parse JSON from CLI output, skipping any log/plugin lines.
+ */
+function parseJsonFromOutput(output: string): unknown {
+  const lines = output.split("\n");
+  const jsonStartIndex = lines.findIndex((line: string) => {
+    const trimmed = line.trim();
+    return trimmed.startsWith("{");
+  });
+  if (jsonStartIndex === -1) return null;
+  return JSON.parse(lines.slice(jsonStartIndex).join("\n"));
+}
+
+/**
+ * Get the set of provider names that have auth configured,
+ * using `openclaw models status --json` which correctly reads auth profiles.
+ */
+async function getAuthenticatedProviders(): Promise<Set<string>> {
+  try {
+    const result = await runCommand(
+      ["openclaw", "models", "status", "--json"],
+      { timeoutMs: 10_000 },
+    );
+    const data = parseJsonFromOutput(result.stdout.trim()) as {
+      auth?: {
+        providers?: Array<{ provider: string }>;
+      };
+    } | null;
+
+    const providers = new Set<string>();
+    if (data?.auth?.providers) {
+      for (const p of data.auth.providers) {
+        providers.add(p.provider);
+      }
+    }
+    return providers;
+  } catch {
+    return new Set();
+  }
+}
+
+/**
+ * Fetch only authenticated models.
+ *
+ * Uses `openclaw models status --json` to discover which providers have
+ * auth configured, then returns all models from those providers.
  */
 export async function fetchAuthenticatedModels(): Promise<OpenClawModelRow[]> {
-  return (await fetchModels(true)).filter((m) => m.available === true);
+  const [allModels, authProviders] = await Promise.all([
+    fetchModels(true),
+    getAuthenticatedProviders(),
+  ]);
+
+  if (authProviders.size === 0) {
+    return [];
+  }
+
+  return allModels.filter((m) => {
+    const provider = m.key.split("/")[0];
+    return provider && authProviders.has(provider);
+  });
 }
