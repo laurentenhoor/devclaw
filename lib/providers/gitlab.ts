@@ -57,8 +57,20 @@ export class GitLabProvider implements IssueProvider {
   }
 
   async ensureLabel(name: string, color: string): Promise<void> {
-    try { await this.glab(["label", "create", "--name", name, "--color", color]); }
-    catch (err) { const msg = (err as Error).message ?? ""; if (!msg.includes("already exists") && !msg.includes("409")) throw err; }
+    try {
+      // Use GitLab API directly to create labels with color support.
+      // The glab label create command may not properly pass color to the API,
+      // so we use glab api to POST directly to /projects/:id/labels
+      await this.glab([
+        "api", "projects/:id/labels",
+        "--field", `name=${name}`,
+        "--field", `color=${color}`,
+      ]);
+    } catch (err) {
+      const msg = (err as Error).message ?? "";
+      // Ignore "already exists" and 409 Conflict errors
+      if (!msg.includes("already exists") && !msg.includes("409")) throw err;
+    }
   }
 
   async ensureAllStateLabels(): Promise<void> {
