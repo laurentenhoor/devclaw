@@ -24,8 +24,10 @@ Read the comments carefully — they often contain clarifications, decisions, or
 - Work in a git worktree (never switch branches in the main repo)
 - Run tests before completing
 - Create an MR/PR to the base branch
+- **CRITICAL: Do NOT merge the PR/MR yourself** — leave it open for review. The system handles all merges after human approval.
+  - Do NOT run \`git push --force\`, \`git merge\`, \`glab mr merge\`, \`gh pr merge\`, etc.
+  - Exception: If you need to force-push your own branch for rebasing, that's OK. But never merge to base.
 - **IMPORTANT:** Do NOT use closing keywords in PR/MR descriptions (no "Closes #X", "Fixes #X", "Resolves #X"). Use "As described in issue #X" or "Addresses issue #X" instead. DevClaw manages issue state — auto-closing bypasses the review lifecycle.
-- **Do NOT merge the PR yourself** — leave it open for review. The system will auto-merge when approved.
 - If you discover unrelated bugs, call task_create to file them
 - Do NOT call work_start, status, health, or project_register
 `;
