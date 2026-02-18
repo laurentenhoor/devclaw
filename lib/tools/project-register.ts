@@ -23,7 +23,17 @@ import { DATA_DIR } from "../setup/migrate-layout.js";
 
 /**
  * Scaffold project-specific prompt files for all registered roles.
- * Returns true if files were created, false if they already existed.
+ *
+ * Idempotent: existing files are never overwritten, allowing customization
+ * to persist across re-registration.
+ *
+ * Resolution order for worker instructions at dispatch time:
+ *   1. devclaw/projects/<project>/prompts/<role>.md  ← project-specific (this dir)
+ *   2. devclaw/prompts/<role>.md                      ← workspace default (fallback)
+ *
+ * See PROMPT_CUSTOMIZATION.md for the full guide and per-stack examples.
+ *
+ * @returns true if any files were created, false if all already existed.
  */
 async function scaffoldPromptFiles(workspaceDir: string, projectName: string): Promise<boolean> {
   const promptsDir = path.join(workspaceDir, DATA_DIR, "projects", projectName, "prompts");
@@ -34,7 +44,9 @@ async function scaffoldPromptFiles(workspaceDir: string, projectName: string): P
     const filePath = path.join(promptsDir, `${role}.md`);
     try {
       await fs.access(filePath);
+      // File already exists — skip (preserves any customizations)
     } catch {
+      // File doesn't exist — scaffold from default template
       const content = DEFAULT_ROLE_INSTRUCTIONS[role] ?? `# ${role.toUpperCase()} Worker Instructions\n\nAdd role-specific instructions here.\n`;
       await fs.writeFile(filePath, content, "utf-8");
       created = true;

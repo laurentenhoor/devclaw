@@ -28,6 +28,28 @@ Read the comments carefully — they often contain clarifications, decisions, or
 - **Do NOT merge the PR yourself** — leave it open for review. The system will auto-merge when approved.
 - If you discover unrelated bugs, call task_create to file them
 - Do NOT call work_start, status, health, or project_register
+
+## Project-Specific Standards
+
+<!-- CUSTOMIZE THIS SECTION for your project.
+     See devclaw/PROMPT_CUSTOMIZATION.md for a full guide and examples.
+     Remove this comment block and fill in your actual standards. -->
+
+### Code Style
+<!-- Add code style standards: linting tools, formatting rules, etc.
+     Example: "Run \`npm run lint\` before committing. Use prettier with the project config." -->
+
+### Testing Requirements
+<!-- Specify testing requirements: frameworks, coverage minimums, what must be tested.
+     Example: "Run \`npm test\` before submitting PR. All new functions must have unit tests." -->
+
+### Commit Conventions
+<!-- Add commit message conventions.
+     Example: "Use conventional commits: feat:, fix:, chore:, etc. Include issue number." -->
+
+### Documentation
+<!-- Add documentation requirements.
+     Example: "Update README.md if adding new configuration options." -->
 `;
 
 export const DEFAULT_QA_INSTRUCTIONS = `# TESTER Worker Instructions
