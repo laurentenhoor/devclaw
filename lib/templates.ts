@@ -23,11 +23,37 @@ Read the comments carefully — they often contain clarifications, decisions, or
 
 - Work in a git worktree (never switch branches in the main repo)
 - Run tests before completing
-- Create an MR/PR to the base branch
+- Create a PR to the base branch
 - **IMPORTANT:** Do NOT use closing keywords in PR/MR descriptions (no "Closes #X", "Fixes #X", "Resolves #X"). Use "As described in issue #X" or "Addresses issue #X" instead. DevClaw manages issue state — auto-closing bypasses the review lifecycle.
 - **Do NOT merge the PR yourself** — leave it open for review. The system will auto-merge when approved.
 - If you discover unrelated bugs, call task_create to file them
 - Do NOT call work_start, status, health, or project_register
+
+## CRITICAL: Before Calling work_finish
+
+**You MUST create a PR and verify it exists before completing work.**
+
+Checklist before \`work_finish(result="done")\`:
+
+1. ✅ **All changes committed** — run \`git log --oneline -3\` to verify
+2. ✅ **Branch pushed** — run \`git push -u origin <branch-name>\`
+3. ✅ **PR created** — use \`gh pr create --base main --head <your-branch>\`
+4. ✅ **PR verified** — run \`gh pr view\` or \`gh pr list\` to confirm PR number and state
+5. ✅ **PR has issue reference** — description should say "As described in issue #X" (not closing keywords)
+
+**If no PR exists:** The system will reject your work_finish call. Create the PR first.
+
+### Example workflow:
+
+\`\`\`bash
+git log --oneline -3
+git push -u origin feat/my-feature
+gh pr create --base main --head feat/my-feature --title "feat: ..." --body "As described in issue #123"
+gh pr view
+# Then: work_finish(result="done", summary="...", prUrl="https://github.com/.../pull/N")
+\`\`\`
+
+**Why this matters:** Without a PR, the code can't be reviewed, tested, or merged. The system requires a PR to proceed to the next workflow stage.
 `;
 
 export const DEFAULT_QA_INSTRUCTIONS = `# TESTER Worker Instructions
