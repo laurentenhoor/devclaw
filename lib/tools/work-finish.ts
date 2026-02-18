@@ -16,6 +16,64 @@ import { log as auditLog } from "../audit.js";
 import { requireWorkspaceDir, resolveProject, resolveProvider, getPluginConfig } from "../tool-helpers.js";
 import { getAllRoleIds, isValidResult, getCompletionResults } from "../roles/index.js";
 import { loadWorkflow } from "../workflow.js";
+import { runCommand } from "../run-command.js";
+import { PrState } from "../providers/provider.js";
+
+/**
+ * Get the current git branch name.
+ */
+async function getCurrentBranch(repoPath: string): Promise<string> {
+  const result = await runCommand(["git", "branch", "--show-current"], {
+    timeoutMs: 5_000,
+    cwd: repoPath,
+  });
+  return result.stdout.trim();
+}
+
+/**
+ * Validate that a developer has created a PR for their work.
+ * Throws an error if no open PR is found for the issue.
+ */
+async function validatePrExistsForDeveloper(
+  issueId: number,
+  repoPath: string,
+  provider: Awaited<ReturnType<typeof resolveProvider>>["provider"],
+): Promise<void> {
+  try {
+    const prStatus = await provider.getPrStatus(issueId);
+    
+    // Check if there's an open PR
+    if (prStatus.state === PrState.CLOSED) {
+      // Get current branch for helpful error message
+      let branchName = "current-branch";
+      try {
+        branchName = await getCurrentBranch(repoPath);
+      } catch {
+        // Fall back to generic branch name
+      }
+
+      throw new Error(
+        `Cannot mark work_finish(done) without an open PR.\n\n` +
+        `✗ No PR found for issue #${issueId}\n\n` +
+        `Please create a PR first:\n` +
+        `  gh pr create --base main --head ${branchName} --title "..." --body "..."\n\n` +
+        `Then call work_finish again.`,
+      );
+    }
+
+    // If PR exists, validate that it references the issue
+    // (getPrStatus already validates this by looking for linked PRs)
+    // If prStatus is not CLOSED, the PR exists and is linked to the issue
+  } catch (err) {
+    // If the error is our validation error, rethrow it
+    if (err instanceof Error && err.message.includes("Cannot mark work_finish(done)")) {
+      throw err;
+    }
+    // For other errors (e.g., API connectivity), log but don't block
+    // This is defensive: we don't want to prevent work_finish due to API issues
+    console.warn(`PR validation warning for issue #${issueId}:`, err);
+  }
+}
 
 export function createWorkFinishTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
@@ -64,6 +122,11 @@ export function createWorkFinishTool(api: OpenClawPluginApi) {
 
       const repoPath = resolveRepoPath(project.repo);
       const pluginConfig = getPluginConfig(api);
+
+      // For developers marking work as done, validate that a PR exists
+      if (role === "developer" && result === "done") {
+        await validatePrExistsForDeveloper(issueId, repoPath, provider);
+      }
 
       const completion = await executeCompletion({
         workspaceDir, projectSlug: project.slug, role, result, issueId, summary, prUrl, provider, repoPath,
