@@ -219,7 +219,7 @@ Ask the agent in the Telegram group:
 
 > "Check the queue status"
 
-The agent should call `status` and report the "To Do" issue. Then:
+The agent should call `tasks_status` and report the "To Do" issue. Then:
 
 > "Pick up issue #1 for developer"
 
@@ -285,4 +285,4 @@ Change which model powers each level in `workflow.yaml` — see [Configuration](
 | Config validation | Plugin | Zod schemas validate `workflow.yaml` at load time |
 | Audit logging | Plugin | Automatic NDJSON append per tool call |
 | Zombie detection | Plugin | `health` checks active vs alive |
-| Queue scanning | Plugin | `status` queries issue tracker per project |
+| Queue scanning | Plugin | `tasks_status` queries issue tracker per project |

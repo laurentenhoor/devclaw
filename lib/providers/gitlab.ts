@@ -100,6 +100,18 @@ export class GitLabProvider implements IssueProvider {
     } catch { return []; }
   }
 
+  async listIssues(opts?: { label?: string; state?: "open" | "closed" | "all" }): Promise<Issue[]> {
+    try {
+      const args = ["issue", "list", "--output", "json"];
+      if (opts?.label) args.push("--label", opts.label);
+      if (opts?.state === "closed") args.push("--closed");
+      else if (opts?.state === "all") args.push("--all");
+      else args.push("--opened");
+      const raw = await this.glab(args);
+      return JSON.parse(raw) as Issue[];
+    } catch { return []; }
+  }
+
   async getIssue(issueId: number): Promise<Issue> {
     const raw = await this.glab(["issue", "view", String(issueId), "--output", "json"]);
     return JSON.parse(raw) as Issue;

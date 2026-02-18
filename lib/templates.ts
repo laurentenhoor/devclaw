@@ -28,7 +28,7 @@ Read the comments carefully — they often contain clarifications, decisions, or
 - **Do NOT merge the PR yourself** — leave it open for review. The system will auto-merge when approved.
 - If you're blocked and need human input, call work_finish with result "blocked"
 - If you discover unrelated bugs, call task_create to file them
-- Do NOT call work_start, status, health, or project_register
+- Do NOT call work_start, tasks_status, health, or project_register
 `;
 
 export const DEFAULT_QA_INSTRUCTIONS = `# TESTER Worker Instructions
@@ -44,7 +44,7 @@ export const DEFAULT_QA_INSTRUCTIONS = `# TESTER Worker Instructions
   - result "refine" if you need human input to decide
   - result "blocked" if you can't proceed and need human input
 - If you discover unrelated bugs, call task_create to file them
-- Do NOT call work_start, status, health, or project_register
+- Do NOT call work_start, tasks_status, health, or project_register
 `;
 
 export const DEFAULT_ARCHITECT_INSTRUCTIONS = `# Architect Worker Instructions
@@ -116,7 +116,7 @@ When done, call work_finish with:
 - summary: Brief summary of your recommendation
 
 Your session is persistent — you may be called back for refinements.
-Do NOT call work_start, status, health, or project_register.
+Do NOT call work_start, tasks_status, health, or project_register.
 `;
 
 export const DEFAULT_REVIEWER_INSTRUCTIONS = `# REVIEWER Worker Instructions
@@ -154,7 +154,7 @@ You are a code reviewer. Your job is to review the PR diff for quality, correctn
 - Be specific about issues: file, line, what's wrong, how to fix
 - If you approve, briefly note what you checked
 - If you reject, list actionable items the developer must fix
-- Do NOT call work_start, status, health, or project_register
+- Do NOT call work_start, tasks_status, health, or project_register
 `;
 
 /** Default role instructions indexed by role ID. Used by project scaffolding. */
@@ -210,7 +210,7 @@ If you discover unrelated bugs or needed improvements during your work, call \`t
 ### Tools You Should NOT Use
 
 These are orchestrator-only tools. Do not call them:
-- \`work_start\`, \`status\`, \`health\`, \`project_register\`
+- \`work_start\`, \`tasks_status\`, \`health\`, \`project_register\`
 
 ---
 
@@ -263,7 +263,8 @@ All orchestration goes through these tools. You do NOT manually manage sessions,
 | \`project_register\` | One-time project setup: creates labels, scaffolds role files, adds to projects.json |
 | \`task_create\` | Create issues from chat (bugs, features, tasks) |
 | \`task_update\` | Update issue title, description, or labels |
-| \`status\` | Task queue and worker state per project (lightweight dashboard) |
+| \`task_list\` | Browse/search issues by workflow state (queue, active, hold, terminal) |
+| \`tasks_status\` | Full dashboard: waiting for input (hold), work in progress (active), queued for work (queue) |
 | \`health\` | Scan worker health: zombies, stale workers, orphaned state. Pass fix=true to auto-fix |
 | \`work_start\` | End-to-end: label transition, level assignment, session create/reuse, dispatch with role instructions |
 | \`work_finish\` | End-to-end: label transition, state update, issue close/reopen |
@@ -272,7 +273,7 @@ All orchestration goes through these tools. You do NOT manually manage sessions,
 
 ### First Thing on Session Start
 
-**Always call \`status\` first** when you start a new session. This tells you which projects you manage, what's in the queue, and which workers are active. Don't guess — check.
+**Always call \`tasks_status\` first** when you start a new session. This tells you which projects you manage, what's in the queue, and which workers are active. Don't guess — check.
 
 ### Pipeline Flow
 
@@ -319,7 +320,7 @@ All roles (Developer, Tester, Architect) use the same level scheme. Levels descr
 
 ### Picking Up Work
 
-1. Use \`status\` to see what's available
+1. Use \`tasks_status\` to see what's available
 2. Priority: \`To Improve\` (fix failures) > \`To Do\` (new work). If test phase enabled: \`To Improve\` > \`To Test\` > \`To Do\`
 3. Evaluate complexity, choose developer level
 4. Call \`work_start\` with \`issueId\`, \`role\`, \`projectSlug\`, \`level\`
@@ -499,13 +500,25 @@ Update issue title and/or description. Only allowed in the initial workflow stat
 
 ## Operations
 
-### status
+### tasks_status
 
-Show task queue and worker state per project.
+Full project dashboard: issues waiting for input (hold), work in progress (active), and queued for work (queue) — all with issue details.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | projectSlug | string | no | Project slug. Omit for all projects |
+
+### task_list
+
+Browse issues for a project by workflow state. Use for detailed issue browsing and search.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| projectSlug | string | yes | Project slug |
+| stateType | string | no | Filter: queue, active, hold, terminal, or all (default: all non-terminal) |
+| label | string | no | Specific state label (e.g. "Planning", "Done"). Overrides stateType |
+| search | string | no | Text search in issue titles (case-insensitive) |
+| limit | number | no | Max issues per state (default: 20) |
 
 ### health
 

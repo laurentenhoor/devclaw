@@ -1,6 +1,6 @@
 # DevClaw — Tools Reference
 
-Complete reference for all 14 tools registered by DevClaw. See [`index.ts`](../index.ts) for registration.
+Complete reference for all 15 tools registered by DevClaw. See [`index.ts`](../index.ts) for registration.
 
 ## Worker Lifecycle
 
@@ -200,11 +200,11 @@ At least one of `title` or `body` must be provided.
 
 ## Operations
 
-### `status`
+### `tasks_status`
 
-Lightweight queue + worker state dashboard.
+Full project dashboard showing all non-terminal state types with issue details.
 
-**Source:** [`lib/tools/status.ts`](../lib/tools/status.ts)
+**Source:** [`lib/tools/tasks-status.ts`](../lib/tools/tasks-status.ts)
 
 **Context:** Auto-filters to project in group chats. Shows all projects in DMs.
 
@@ -212,14 +212,49 @@ Lightweight queue + worker state dashboard.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `projectGroupId` | string | No | Filter to specific project. Omit for all. |
+| `projectSlug` | string | No | Filter to specific project. Omit for all. |
 
 **Returns per project:**
 
+- **hold** — Waiting for input (Planning, Refining): issue IDs, titles, URLs
+- **active** — Work in progress (Doing, Reviewing, etc.): issue IDs, titles, URLs
+- **queue** — Queued for work (To Do, To Improve, To Review): issue IDs, titles, URLs
 - Worker state per role: active/idle, current issue, level, start time
-- Queue counts: To Do, To Review, To Improve (and To Test if test phase enabled)
 - Active workflow summary: review policy, test phase status, state flow
-- Role execution mode
+- Summary totals: `totalHold`, `totalActive`, `totalQueued`
+
+---
+
+### `task_list`
+
+Browse and search issues by workflow state. Returns individual issues grouped by state label.
+
+**Source:** [`lib/tools/task-list.ts`](../lib/tools/task-list.ts)
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `projectSlug` | string | Yes | Project slug |
+| `stateType` | `"queue"` \| `"active"` \| `"hold"` \| `"terminal"` \| `"all"` | No | Filter by state type. Default: all non-terminal. |
+| `label` | string | No | Specific state label (e.g. `"Planning"`, `"Done"`). Overrides `stateType`. |
+| `search` | string | No | Text search in issue titles (case-insensitive). |
+| `limit` | number | No | Max issues per state. Default: 20. |
+
+**Returns per matching state:**
+
+- State label, type, and role
+- Issue list: ID, title, URL
+- Total count (before limit)
+
+**Use cases:**
+
+- Browse all issues in Planning: `{ projectSlug: "my-app", label: "Planning" }`
+- Find blocked work: `{ projectSlug: "my-app", stateType: "hold" }`
+- Search across queues: `{ projectSlug: "my-app", stateType: "queue", search: "auth" }`
+- View completed work: `{ projectSlug: "my-app", stateType: "terminal" }`
+
+**Note:** When browsing terminal states (Done), the tool queries closed issues from the provider.
 
 ---
 
@@ -282,7 +317,7 @@ Manual trigger for heartbeat: health fix + review polling + queue dispatch. Same
 
 ### `project_register`
 
-One-time project setup. Creates state labels, scaffolds prompt files, adds project to state.
+One-time project setup. Creates state labels, scaffolds project directory with override instructions, adds project to state.
 
 **Source:** [`lib/tools/project-register.ts`](../lib/tools/project-register.ts)
 
@@ -308,7 +343,7 @@ One-time project setup. Creates state labels, scaffolds prompt files, adds proje
 3. Verifies provider health (CLI installed and authenticated)
 4. Creates all 11 state labels (idempotent — safe to run again)
 5. Adds project entry to `projects.json` with empty worker state for all registered roles
-6. Scaffolds prompt files: `devclaw/projects/<project>/prompts/<role>.md` for each role
+6. Scaffolds project directory with `prompts/` folder and `README.md` explaining prompt and workflow overrides
 7. Writes audit log
 
 ---
@@ -334,7 +369,7 @@ Agent + workspace initialization.
 1. Creates a new agent or configures existing workspace
 2. Optionally binds messaging channel (Telegram/WhatsApp)
 3. Optionally migrates channel binding from another agent
-4. Writes workspace files: AGENTS.md, HEARTBEAT.md, `devclaw/projects.json`, `devclaw/workflow.yaml`
+4. Writes workspace files: AGENTS.md, HEARTBEAT.md, IDENTITY.md, TOOLS.md, SOUL.md, `devclaw/projects.json`, `devclaw/workflow.yaml`
 5. Scaffolds default prompt files for all roles
 
 ---

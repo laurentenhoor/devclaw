@@ -1,11 +1,11 @@
 /**
- * Tests for status tool execution-aware sequencing logic
+ * Tests for tasks_status tool execution-aware sequencing logic
  * Run with: node --test lib/tools/queue-status.test.ts
  */
 import { describe, it } from "node:test";
 import assert from "node:assert";
 
-describe("status execution-aware sequencing", () => {
+describe("tasks_status execution-aware sequencing", () => {
   describe("priority ordering", () => {
     it("should prioritize To Improve > To Test > To Do", () => {
       // To Improve has priority 3, To Test has 2, To Do has 1

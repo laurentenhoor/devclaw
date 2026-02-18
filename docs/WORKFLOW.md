@@ -381,5 +381,5 @@ Call the `workflow_guide` tool for interactive documentation. It returns compreh
 ## Related
 
 - [Configuration](CONFIGURATION.md) — Config file format, roles, timeouts, `openclaw.json`
-- [Tools Reference](TOOLS.md) — All 14 tools including `work_start`, `work_finish`, `workflow_guide`
+- [Tools Reference](TOOLS.md) — All 15 tools including `work_start`, `work_finish`, `task_list`, `workflow_guide`
 - [Architecture](ARCHITECTURE.md) — System design, session model, heartbeat internals

@@ -200,6 +200,15 @@ export class GitHubProvider implements IssueProvider {
     } catch { return []; }
   }
 
+  async listIssues(opts?: { label?: string; state?: "open" | "closed" | "all" }): Promise<Issue[]> {
+    try {
+      const args = ["issue", "list", "--state", opts?.state ?? "open", "--json", "number,title,body,labels,state,url"];
+      if (opts?.label) args.push("--label", opts.label);
+      const raw = await this.gh(args);
+      return (JSON.parse(raw) as GhIssue[]).map(toIssue);
+    } catch { return []; }
+  }
+
   async getIssue(issueId: number): Promise<Issue> {
     const raw = await this.gh(["issue", "view", String(issueId), "--json", "number,title,body,labels,state,url"]);
     return toIssue(JSON.parse(raw) as GhIssue);

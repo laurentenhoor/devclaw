@@ -12,6 +12,7 @@ import { createSetupTool } from "./lib/tools/setup.js";
 import { createOnboardTool } from "./lib/tools/onboard.js";
 import { createAutoConfigureModelsTool } from "./lib/tools/autoconfigure-models.js";
 import { createResearchTaskTool } from "./lib/tools/research-task.js";
+import { createTaskListTool } from "./lib/tools/task-list.js";
 import { createWorkflowGuideTool } from "./lib/tools/workflow-guide.js";
 import { registerCli } from "./lib/cli.js";
 import { registerHeartbeatService } from "./lib/services/heartbeat.js";
@@ -85,6 +86,7 @@ const plugin = {
 
     // Operations
     api.registerTool(createStatusTool(api), { names: ["status"] });
+    api.registerTool(createTaskListTool(api), { names: ["task_list"] });
     api.registerTool(createHealthTool(), { names: ["health"] });
     // Setup & config
     api.registerTool(createProjectRegisterTool(), {
@@ -111,7 +113,7 @@ const plugin = {
     registerBootstrapHook(api);
 
     api.logger.info(
-      "DevClaw plugin registered (14 tools, 1 CLI command group, 1 service, 1 hook)",
+      "DevClaw plugin registered (15 tools, 1 CLI command group, 1 service, 1 hook)",
     );
   },
 };

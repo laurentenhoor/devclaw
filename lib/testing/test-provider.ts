@@ -31,6 +31,7 @@ export type ProviderCall =
       };
     }
   | { method: "listIssuesByLabel"; args: { label: StateLabel } }
+  | { method: "listIssues"; args: { label?: string; state?: string } }
   | { method: "getIssue"; args: { issueId: number } }
   | { method: "listComments"; args: { issueId: number } }
   | {
@@ -172,6 +173,15 @@ export class TestProvider implements IssueProvider {
   async listIssuesByLabel(label: StateLabel): Promise<Issue[]> {
     this.calls.push({ method: "listIssuesByLabel", args: { label } });
     return [...this.issues.values()].filter((i) => i.labels.includes(label));
+  }
+
+  async listIssues(opts?: { label?: string; state?: "open" | "closed" | "all" }): Promise<Issue[]> {
+    this.calls.push({ method: "listIssues", args: { label: opts?.label, state: opts?.state } });
+    let issues = [...this.issues.values()];
+    if (opts?.label) issues = issues.filter((i) => i.labels.includes(opts.label!));
+    if (opts?.state === "open") issues = issues.filter((i) => i.state === "opened" || i.state === "OPEN");
+    else if (opts?.state === "closed") issues = issues.filter((i) => i.state === "closed" || i.state === "CLOSED");
+    return issues;
   }
 
   async getIssue(issueId: number): Promise<Issue> {

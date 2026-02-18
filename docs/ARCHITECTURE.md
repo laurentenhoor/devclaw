@@ -152,7 +152,7 @@ graph TB
         WS[work_start]
         WF[work_finish]
         TCR[task_create]
-        ST[status]
+        ST[tasks_status]
         SH[health]
         PR[project_register]
         DS[setup]
@@ -239,7 +239,7 @@ sequenceDiagram
 
     H->>TG: "check status" (or heartbeat triggers)
     TG->>MS: delivers message
-    MS->>DC: status()
+    MS->>DC: tasks_status()
     DC->>GL: list issues by label "To Do"
     DC-->>MS: { toDo: [#42], developer: idle }
 
@@ -307,18 +307,18 @@ Orchestrator Agent → Issue Tracker: creates issue #42 with label "Planning"
 ### Phase 2: Heartbeat detects work
 
 ```
-Heartbeat triggers → Orchestrator calls status()
+Heartbeat triggers → Orchestrator calls tasks_status()
 ```
 
 ```mermaid
 sequenceDiagram
     participant A as Orchestrator
-    participant QS as status
+    participant QS as tasks_status
     participant GL as Issue Tracker
     participant PJ as projects.json
     participant AL as audit.log
 
-    A->>QS: status({ projectGroupId: "-123" })
+    A->>QS: tasks_status({ projectGroupId: "-123" })
     QS->>PJ: readProjects()
     PJ-->>QS: { developer: idle, tester: idle }
     QS->>GL: list issues by label "To Do"
@@ -327,7 +327,7 @@ sequenceDiagram
     GL-->>QS: []
     QS->>GL: list issues by label "To Improve"
     GL-->>QS: []
-    QS->>AL: append { event: "status", ... }
+    QS->>AL: append { event: "tasks_status", ... }
     QS-->>A: { developer: idle, queue: { toDo: [#42] } }
 ```
 
@@ -569,7 +569,7 @@ Every piece of data and where it lives:
 │  task_create    → create issue in tracker                       │
 │  task_update    → manual label state change                     │
 │  task_comment   → add comment to issue                          │
-│  status         → read labels + read state                      │
+│  tasks_status   → read labels + read state                      │
 │  health         → check sessions + fix zombies                  │
 │  project_register → labels + prompts + state init (one-time)    │
 │  research_task  → architect dispatch                            │
@@ -608,7 +608,7 @@ Every piece of data and where it lives:
 │                                                                 │
 │  NDJSON, one line per event:                                    │
 │  work_start, work_finish, model_selection,                      │
-│  status, health, task_create, task_update,                      │
+│  tasks_status, task_list, health, task_create, task_update,      │
 │  task_comment, project_register, setup, heartbeat_tick          │
 │                                                                 │
 │  Query: cat audit.log | jq 'select(.event=="work_start")'      │

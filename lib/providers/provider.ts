@@ -74,6 +74,8 @@ export interface IssueProvider {
   ensureAllStateLabels(): Promise<void>;
   createIssue(title: string, description: string, label: StateLabel, assignees?: string[]): Promise<Issue>;
   listIssuesByLabel(label: StateLabel): Promise<Issue[]>;
+  /** List issues with optional filters. Provider-agnostic — future Jira/Linear/Trello can map to native queries. */
+  listIssues(opts?: { label?: string; state?: "open" | "closed" | "all" }): Promise<Issue[]>;
   getIssue(issueId: number): Promise<Issue>;
   listComments(issueId: number): Promise<IssueComment[]>;
   transitionLabel(issueId: number, from: StateLabel, to: StateLabel): Promise<void>;
