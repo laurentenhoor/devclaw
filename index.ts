@@ -18,6 +18,7 @@ import { registerCli } from "./lib/cli.js";
 import { registerHeartbeatService } from "./lib/services/heartbeat.js";
 import { registerBootstrapHook } from "./lib/bootstrap-hook.js";
 import { initRunCommand } from "./lib/run-command.js";
+import { createUiHandler } from "./lib/ui/handler.js";
 
 const plugin = {
   id: "devclaw",
@@ -111,6 +112,9 @@ const plugin = {
 
     // Bootstrap hook for worker instruction injection
     registerBootstrapHook(api);
+
+    // Web UI dashboard at /devclaw-ui/*
+    api.registerHttpHandler(createUiHandler(api));
 
     api.logger.info(
       "DevClaw plugin registered (15 tools, 1 CLI command group, 1 service, 1 hook)",
