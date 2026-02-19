@@ -73,6 +73,14 @@ export type NotifyEvent =
       issueUrl: string;
       issueTitle: string;
       prUrl?: string;
+    }
+  | {
+      type: "prClosed";
+      project: string;
+      issueId: number;
+      issueUrl: string;
+      issueTitle: string;
+      prUrl?: string;
     };
 
 /**
@@ -186,6 +194,14 @@ function buildMessage(event: NotifyEvent): string {
       if (event.prUrl) msg += `\n🔗 ${prLink(event.prUrl)}`;
       msg += `\n📋 [Issue #${event.issueId}](${event.issueUrl})`;
       msg += `\n→ Moving to To Improve — developer will rebase and resolve`;
+      return msg;
+    }
+
+    case "prClosed": {
+      let msg = `🚫 PR closed without merging for #${event.issueId}: ${event.issueTitle}`;
+      if (event.prUrl) msg += `\n🔗 ${prLink(event.prUrl)}`;
+      msg += `\n📋 [Issue #${event.issueId}](${event.issueUrl})`;
+      msg += `\n→ Moving to To Improve for developer attention`;
       return msg;
     }
   }

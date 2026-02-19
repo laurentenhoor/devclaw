@@ -544,6 +544,98 @@ describe("E2E pipeline", () => {
       const issue = await h.provider.getIssue(63);
       assert.ok(issue.labels.includes("To Test"), `Labels: ${issue.labels}`);
     });
+
+    it("should transition To Review → To Improve when PR is closed without merging (url non-null)", async () => {
+      // After #315: PrState.CLOSED + url non-null = PR was explicitly closed without merging
+      h.provider.seedIssue({ iid: 80, title: "Closed PR feature", labels: ["To Review", "review:human"] });
+      h.provider.setPrStatus(80, { state: "closed", url: "https://example.com/pr/80" });
+
+      let prClosedFiredIssueId: number | undefined;
+      let prClosedFiredUrl: string | null | undefined;
+
+      const transitions = await reviewPass({
+        workspaceDir: h.workspaceDir,
+        projectName: h.project.name,
+        workflow: DEFAULT_WORKFLOW,
+        provider: h.provider,
+        repoPath: "/tmp/test-repo",
+        onPrClosed: (issueId, prUrl) => {
+          prClosedFiredIssueId = issueId;
+          prClosedFiredUrl = prUrl;
+        },
+      });
+
+      assert.strictEqual(transitions, 1, "Should have made 1 transition");
+
+      const issue = await h.provider.getIssue(80);
+      assert.ok(issue.labels.includes("To Improve"), `Labels: ${issue.labels}`);
+      assert.ok(!issue.labels.includes("To Review"), "Should not have To Review");
+      assert.ok(!issue.labels.includes("To Test"), "Should NOT have To Test");
+
+      // Merge should not have been called
+      const mergeCalls = h.provider.callsTo("mergePr");
+      assert.strictEqual(mergeCalls.length, 0, "Should not have called mergePr for a closed PR");
+
+      // onPrClosed callback should have fired
+      assert.strictEqual(prClosedFiredIssueId, 80, "onPrClosed should fire with correct issue id");
+      assert.strictEqual(prClosedFiredUrl, "https://example.com/pr/80", "onPrClosed should pass the closed PR url");
+    });
+
+    it("should NOT transition when PR state is CLOSED with url:null (no PR has ever been created)", async () => {
+      // After #315: PrState.CLOSED + url:null = no PR exists — do nothing, preserve existing behavior
+      h.provider.seedIssue({ iid: 81, title: "No PR yet", labels: ["To Review", "review:human"] });
+      h.provider.setPrStatus(81, { state: "closed", url: null });
+
+      let prClosedCalled = false;
+      const transitions = await reviewPass({
+        workspaceDir: h.workspaceDir,
+        projectName: h.project.name,
+        workflow: DEFAULT_WORKFLOW,
+        provider: h.provider,
+        repoPath: "/tmp/test-repo",
+        onPrClosed: () => { prClosedCalled = true; },
+      });
+
+      assert.strictEqual(transitions, 0, "Should make no transition when no PR exists");
+
+      const issue = await h.provider.getIssue(81);
+      assert.ok(issue.labels.includes("To Review"), "Should remain in To Review");
+      assert.ok(!issue.labels.includes("To Improve"), "Should NOT move to To Improve");
+      assert.strictEqual(prClosedCalled, false, "onPrClosed should NOT fire when url is null");
+    });
+
+    it("should not fire PR_CLOSED if workflow has no PR_CLOSED transition configured", async () => {
+      // Graceful no-op: workflow without PR_CLOSED in toReview.on → issue stays in To Review
+      const workflowWithoutPrClosed = {
+        ...DEFAULT_WORKFLOW,
+        states: {
+          ...DEFAULT_WORKFLOW.states,
+          toReview: {
+            ...DEFAULT_WORKFLOW.states.toReview,
+            on: {
+              ...DEFAULT_WORKFLOW.states.toReview.on,
+              PR_CLOSED: undefined, // explicitly remove the transition
+            },
+          },
+        },
+      } as typeof DEFAULT_WORKFLOW;
+
+      h.provider.seedIssue({ iid: 82, title: "No PR_CLOSED config", labels: ["To Review", "review:human"] });
+      h.provider.setPrStatus(82, { state: "closed", url: "https://example.com/pr/82" });
+
+      const transitions = await reviewPass({
+        workspaceDir: h.workspaceDir,
+        projectName: h.project.name,
+        workflow: workflowWithoutPrClosed,
+        provider: h.provider,
+        repoPath: "/tmp/test-repo",
+      });
+
+      assert.strictEqual(transitions, 0, "No transition when PR_CLOSED not in workflow");
+
+      const issue = await h.provider.getIssue(82);
+      assert.ok(issue.labels.includes("To Review"), "Should remain in To Review");
+    });
   });
 
   // =========================================================================

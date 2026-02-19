@@ -73,6 +73,7 @@ export const WorkflowEvent = {
   BLOCKED: "BLOCKED",
   APPROVE: "APPROVE",
   REJECT: "REJECT",
+  PR_CLOSED: "PR_CLOSED",
 } as const;
 
 export type TransitionTarget = string | {
@@ -150,6 +151,7 @@ export const DEFAULT_WORKFLOW: WorkflowConfig = {
         [WorkflowEvent.MERGE_FAILED]: "toImprove",
         [WorkflowEvent.CHANGES_REQUESTED]: "toImprove",
         [WorkflowEvent.MERGE_CONFLICT]: "toImprove",
+        [WorkflowEvent.PR_CLOSED]: "toImprove",
       },
     },
     reviewing: {
@@ -496,6 +498,7 @@ const FEEDBACK_EVENTS: Set<string> = new Set([
   WorkflowEvent.MERGE_FAILED,
   WorkflowEvent.REJECT,
   WorkflowEvent.FAIL,
+  WorkflowEvent.PR_CLOSED,
 ]);
 
 /**

@@ -377,6 +377,26 @@ export async function tick(opts: {
             },
           ).catch(() => {});
         },
+        onPrClosed: (issueId, prUrl, issueTitle, issueUrl) => {
+          // No issue labels available in this callback — fall back to primary channel
+          const target = project.channels[0];
+          notify(
+            {
+              type: "prClosed",
+              project: project.name,
+              issueId,
+              issueUrl,
+              issueTitle,
+              prUrl: prUrl ?? undefined,
+            },
+            {
+              workspaceDir,
+              config: notifyConfig,
+              groupId: target?.groupId,
+              channel: target?.channel ?? "telegram",
+            },
+          ).catch(() => {});
+        },
       });
 
       // Budget check: stop if we've hit the limit

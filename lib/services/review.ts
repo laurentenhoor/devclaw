@@ -35,8 +35,10 @@ export async function reviewPass(opts: {
   onMerge?: (issueId: number, prUrl: string | null, prTitle?: string, sourceBranch?: string) => void;
   /** Called when changes are requested or conflicts detected (for notifications). */
   onFeedback?: (issueId: number, reason: "changes_requested" | "merge_conflict", prUrl: string | null, issueTitle: string, issueUrl: string) => void;
+  /** Called when a PR is closed without merging (for notifications). */
+  onPrClosed?: (issueId: number, prUrl: string | null, issueTitle: string, issueUrl: string) => void;
 }): Promise<number> {
-  const { workspaceDir, projectName, workflow, provider, repoPath, gitPullTimeoutMs = 30_000, baseBranch, onMerge, onFeedback } = opts;
+  const { workspaceDir, projectName, workflow, provider, repoPath, gitPullTimeoutMs = 30_000, baseBranch, onMerge, onFeedback, onPrClosed } = opts;
   let transitions = 0;
 
   // Find all states with a review check (e.g. toReview with check: prApproved)
@@ -124,6 +126,28 @@ export async function reviewPass(opts: {
               prUrl: status.url,
             });
             onFeedback?.(issue.iid, "merge_conflict", status.url, issue.title, issue.web_url);
+            transitions++;
+            continue;
+          }
+        }
+      }
+
+      // PR closed without merging → transition to toImprove
+      // status.url non-null distinguishes "PR was explicitly closed" from "no PR exists"
+      if (status.state === PrState.CLOSED && status.url !== null) {
+        const closedTransition = state.on[WorkflowEvent.PR_CLOSED];
+        if (closedTransition) {
+          const targetKey = typeof closedTransition === "string" ? closedTransition : closedTransition.target;
+          const targetState = workflow.states[targetKey];
+          if (targetState) {
+            await provider.transitionLabel(issue.iid, state.label, targetState.label);
+            await auditLog(workspaceDir, "review_transition", {
+              project: projectName, issueId: issue.iid,
+              from: state.label, to: targetState.label,
+              reason: "pr_closed",
+              prUrl: status.url,
+            });
+            onPrClosed?.(issue.iid, status.url, issue.title, issue.web_url);
             transitions++;
             continue;
           }

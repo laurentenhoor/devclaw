@@ -297,6 +297,18 @@ export class TestProvider implements IssueProvider {
     // no-op in test provider
   }
 
+  async issueCommentHasReaction(_issueId: number, _commentId: number, _emoji: string): Promise<boolean> {
+    return false; // test provider: no existing reactions
+  }
+
+  async prCommentHasReaction(_issueId: number, _commentId: number, _emoji: string): Promise<boolean> {
+    return false; // test provider: no existing reactions
+  }
+
+  async prReviewHasReaction(_issueId: number, _reviewId: number, _emoji: string): Promise<boolean> {
+    return false; // test provider: no existing reactions
+  }
+
   async isCommitOnBaseBranch(_issueId: number, _baseBranch: string): Promise<boolean> {
     return false; // no-op in test provider
   }
