@@ -374,6 +374,11 @@ export class GitLabProvider implements IssueProvider {
     } catch { /* best-effort */ }
   }
 
+  async reactToPrReview(issueId: number, reviewId: number, emoji: string): Promise<void> {
+    // GitLab doesn't distinguish reviews from comments — use the same note reaction API
+    await this.reactToPrComment(issueId, reviewId, emoji);
+  }
+
   async editIssue(issueId: number, updates: { title?: string; body?: string }): Promise<Issue> {
     const args = ["issue", "update", String(issueId)];
     if (updates.title !== undefined) args.push("--title", updates.title);

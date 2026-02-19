@@ -232,6 +232,12 @@ async function reactToFeedbackComments(
 ): Promise<void> {
   const comments = await provider.getPrReviewComments(issueId);
   for (const comment of comments) {
-    await provider.reactToPrComment(issueId, comment.id, FEEDBACK_REACTION_EMOJI);
+    // Reviews (APPROVED, CHANGES_REQUESTED, COMMENTED) use a different reaction API
+    // than issue/inline comments. Route accordingly.
+    if (comment.state === "APPROVED" || comment.state === "CHANGES_REQUESTED" || comment.state === "COMMENTED") {
+      await provider.reactToPrReview(issueId, comment.id, FEEDBACK_REACTION_EMOJI);
+    } else {
+      await provider.reactToPrComment(issueId, comment.id, FEEDBACK_REACTION_EMOJI);
+    }
   }
 }
