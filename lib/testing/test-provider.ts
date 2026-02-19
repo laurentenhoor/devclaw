@@ -301,16 +301,18 @@ export class TestProvider implements IssueProvider {
     return false; // no-op in test provider
   }
 
-  async addComment(issueId: number, body: string): Promise<void> {
+  async addComment(issueId: number, body: string): Promise<number> {
     this.calls.push({ method: "addComment", args: { issueId, body } });
+    const commentId = Date.now();
     const existing = this.comments.get(issueId) ?? [];
     existing.push({
-      id: Date.now(),
+      id: commentId,
       author: "test",
       body,
       created_at: new Date().toISOString(),
     });
     this.comments.set(issueId, existing);
+    return commentId;
   }
 
   async editIssue(issueId: number, updates: { title?: string; body?: string }): Promise<Issue> {

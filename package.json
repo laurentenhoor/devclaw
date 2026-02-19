@@ -34,6 +34,7 @@
   "types": "./dist/index.d.ts",
   "files": [
     "dist/",
+    "defaults/",
     "roles/",
     "docs/",
     "openclaw.plugin.json"

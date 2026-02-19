@@ -67,11 +67,14 @@ export async function executeCompletion(opts: {
   runtime?: PluginRuntime;
   /** Workflow config (defaults to DEFAULT_WORKFLOW) */
   workflow?: WorkflowConfig;
+  /** Tasks created during this work session (e.g. architect implementation tasks) */
+  createdTasks?: Array<{ id: number; title: string; url: string }>;
 }): Promise<CompletionOutput> {
   const {
     workspaceDir, projectSlug, role, result, issueId, summary, provider,
     repoPath, projectName, channels, pluginConfig, runtime,
     workflow = DEFAULT_WORKFLOW,
+    createdTasks,
   } = opts;
 
   const key = `${role}:${result}`;
@@ -143,6 +146,7 @@ export async function executeCompletion(opts: {
       summary,
       nextState,
       prUrl,
+      createdTasks,
     },
     {
       workspaceDir,
@@ -232,6 +236,12 @@ export async function executeCompletion(opts: {
   if (summary) announcement += ` — ${summary}`;
   announcement += `\n📋 [Issue #${issueId}](${issue.web_url})`;
   if (prUrl) announcement += `\n🔗 [PR](${prUrl})`;
+  if (createdTasks && createdTasks.length > 0) {
+    announcement += `\n📌 Created tasks:`;
+    for (const t of createdTasks) {
+      announcement += `\n  - [#${t.id}: ${t.title}](${t.url})`;
+    }
+  }
   announcement += `\n${nextState}.`;
 
   return {

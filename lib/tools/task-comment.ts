@@ -77,7 +77,10 @@ Examples:
         ? `${getRoleEmoji(authorRole)} **${authorRole.toUpperCase()}**: ${body}`
         : body;
 
-      await provider.addComment(issueId, commentBody);
+      const commentId = await provider.addComment(issueId, commentBody);
+
+      // Mark as system-managed (best-effort).
+      provider.reactToIssueComment(issueId, commentId, "eyes").catch(() => {});
 
       await auditLog(workspaceDir, "task_comment", {
         project: project.name, issueId,

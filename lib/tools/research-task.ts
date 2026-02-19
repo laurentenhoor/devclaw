@@ -1,16 +1,16 @@
 /**
  * research_task — Start a research ticket in "To Research" state and dispatch the architect.
  *
- * The architect picks up the issue, refines the ticket description iteratively via
- * task_edit_body and task_comment, then calls work_finish(result="done") to land
- * it in Planning for operator review.
+ * The architect picks up the issue, researches, posts findings, and creates
+ * implementation tasks via task_create. Then calls work_finish(result="done")
+ * which closes the research issue (findings preserved in comments).
  *
  * Flow:
  *   research_task() → issue created in "To Research" → architect dispatched
- *   → architect researches, refines ticket with task_edit_body
- *   → architect calls work_finish(result="done") → "Researching" → "Planning"
- *   → operator reviews, optionally sends back to "To Research" via task_update
- *   → when satisfied, transitions to "To Do" → developer picks up
+ *   → architect researches, posts findings with task_comment
+ *   → architect creates implementation tasks with task_create (land in Planning)
+ *   → architect calls work_finish(result="done") → "Researching" → "Done" (issue closed)
+ *   → operator reviews created tasks in Planning, moves to "To Do" when ready
  */
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
@@ -41,9 +41,9 @@ enough for a developer to start implementation immediately.
 
 The architect will:
 1. Research the problem systematically (codebase, docs, web)
-2. Refine the ticket description with task_edit_body as they learn
-3. Post findings as comments via task_comment
-4. Call work_finish(result="done", summary="<findings>") — transitions to Planning for human review
+2. Post findings as comments via task_comment
+3. Create implementation tasks via task_create (land in Planning for operator review)
+4. Call work_finish(result="done", summary="<recommendation + task numbers>") — closes the research issue
 
 Example:
   research_task({
@@ -135,6 +135,9 @@ Example:
 
       // Create issue in "To Research" (the architect queue state)
       const issue = await provider.createIssue(title, issueBody, TO_RESEARCH_LABEL as StateLabel);
+
+      // Mark as system-managed (best-effort).
+      provider.reactToIssue(issue.iid, "eyes").catch(() => {});
 
       // Apply notify:{groupId} label for notification routing (best-effort)
       const primaryGroupId = project.channels[0]?.groupId;

@@ -145,7 +145,9 @@ Examples:
           ...(reason ? [`- **Reason:** ${reason}`] : []),
         ].join("\n");
 
-        provider.addComment(issueId, commentBody).catch((err) => {
+        provider.addComment(issueId, commentBody).then((commentId) => {
+          provider.reactToIssueComment(issueId, commentId, "eyes").catch(() => {});
+        }).catch((err) => {
           auditLog(workspaceDir, "task_edit_body_warning", {
             step: "addComment", issueId, error: (err as Error).message ?? String(err),
           }).catch(() => {});

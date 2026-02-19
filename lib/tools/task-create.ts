@@ -78,6 +78,9 @@ Examples:
 
       const issue = await provider.createIssue(title, description, label, assignees);
 
+      // Mark as system-managed (best-effort).
+      provider.reactToIssue(issue.iid, "eyes").catch(() => {});
+
       // Apply notify label for channel routing (best-effort).
       const primaryGroupId = project.channels[0]?.groupId;
       if (primaryGroupId) {

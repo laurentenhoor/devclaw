@@ -109,10 +109,10 @@ export async function scaffoldWorkspace(workspacePath: string, defaultWorkspaceP
 }
 
 // ---------------------------------------------------------------------------
-// Private helpers
+// Helpers (shared with reset-defaults tool)
 // ---------------------------------------------------------------------------
 
-async function backupAndWrite(filePath: string, content: string): Promise<void> {
+export async function backupAndWrite(filePath: string, content: string): Promise<void> {
   try {
     await fs.access(filePath);
     await fs.copyFile(filePath, filePath + ".bak");
@@ -122,7 +122,7 @@ async function backupAndWrite(filePath: string, content: string): Promise<void> 
   await fs.writeFile(filePath, content, "utf-8");
 }
 
-async function fileExists(filePath: string): Promise<boolean> {
+export async function fileExists(filePath: string): Promise<boolean> {
   try {
     await fs.access(filePath);
     return true;

@@ -76,12 +76,12 @@ describe("architect workflow — To Research / Researching states", () => {
     assert.strictEqual(active, "Researching");
   });
 
-  it("should have completion rule for architect:done → Planning", () => {
+  it("should have completion rule for architect:done → Done", () => {
     const rule = getCompletionRule(DEFAULT_WORKFLOW, "architect", "done");
     assert.ok(rule !== null, "architect:done rule should exist");
     assert.strictEqual(rule.from, "Researching");
-    assert.strictEqual(rule.to, "Planning");
-    assert.deepStrictEqual(rule.actions, [], "no actions — human reviews before dev pickup");
+    assert.strictEqual(rule.to, "Done");
+    assert.deepStrictEqual(rule.actions, ["closeIssue"], "closes research issue on completion");
   });
 
   it("should have completion rule for architect:blocked → Refining", () => {

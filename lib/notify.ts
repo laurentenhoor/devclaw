@@ -36,6 +36,7 @@ export type NotifyEvent =
       summary?: string;
       nextState?: string;
       prUrl?: string;
+      createdTasks?: Array<{ id: number; title: string; url: string }>;
     }
   | {
       type: "reviewNeeded";
@@ -133,6 +134,14 @@ function buildMessage(event: NotifyEvent): string {
       // Links: PR and issue on separate lines
       if (event.prUrl) msg += `\n🔗 ${prLink(event.prUrl)}`;
       msg += `\n📋 [Issue #${event.issueId}](${event.issueUrl})`;
+      // Created tasks (e.g. architect implementation tasks)
+      if (event.createdTasks && event.createdTasks.length > 0) {
+        msg += `\n📌 Created tasks:`;
+        for (const t of event.createdTasks) {
+          msg += `\n  · [#${t.id}: ${t.title}](${t.url})`;
+        }
+        msg += `\nReply to start working on them.`;
+      }
       // Workflow transition: at the end
       if (event.nextState) {
         msg += `\n→ ${event.nextState}`;

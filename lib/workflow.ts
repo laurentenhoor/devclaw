@@ -200,8 +200,8 @@ export const DEFAULT_WORKFLOW: WorkflowConfig = {
       label: "Researching",
       color: "#4a90e2",
       on: {
-        // Architect completes → Planning for operator review (no auto-actions: human decides next step)
-        [WorkflowEvent.COMPLETE]: { target: "planning", actions: [] },
+        // Architect completes → Done (architect creates implementation tasks before finishing)
+        [WorkflowEvent.COMPLETE]: { target: "done", actions: [Action.CLOSE_ISSUE] },
         [WorkflowEvent.BLOCKED]: "refining",
       },
     },

@@ -477,8 +477,14 @@ export class GitHubProvider implements IssueProvider {
     return comments;
   }
 
-  async addComment(issueId: number, body: string): Promise<void> {
-    await this.gh(["issue", "comment", String(issueId), "--body", body]);
+  async addComment(issueId: number, body: string): Promise<number> {
+    const raw = await this.gh([
+      "api", `repos/:owner/:repo/issues/${issueId}/comments`,
+      "--method", "POST",
+      "--field", `body=${body}`,
+    ]);
+    const parsed = JSON.parse(raw) as { id: number };
+    return parsed.id;
   }
 
   async reactToIssue(issueId: number, emoji: string): Promise<void> {

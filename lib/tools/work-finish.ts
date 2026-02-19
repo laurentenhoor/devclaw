@@ -5,7 +5,7 @@
  * issue close/reopen, notifications, and audit logging.
  *
  * All roles (including architect) use the standard pipeline via executeCompletion.
- * Architect workflow: Researching → Planning (done), Researching → Refining (blocked).
+ * Architect workflow: Researching → Done (done, closes issue), Researching → Refining (blocked).
  */
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
@@ -94,6 +94,19 @@ export function createWorkFinishTool(api: OpenClawPluginApi) {
         projectSlug: { type: "string", description: "Project slug (e.g. 'my-webapp')" },
         summary: { type: "string", description: "Brief summary" },
         prUrl: { type: "string", description: "PR/MR URL (auto-detected if omitted)" },
+        createdTasks: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["id", "title", "url"],
+            properties: {
+              id: { type: "number", description: "Issue ID" },
+              title: { type: "string", description: "Issue title" },
+              url: { type: "string", description: "Issue URL" },
+            },
+          },
+          description: "Tasks created during this work session (architect creates implementation tasks).",
+        },
       },
     },
 
@@ -103,6 +116,7 @@ export function createWorkFinishTool(api: OpenClawPluginApi) {
       const slug = (params.projectSlug ?? params.projectGroupId) as string;
       const summary = params.summary as string | undefined;
       const prUrl = params.prUrl as string | undefined;
+      const createdTasks = params.createdTasks as Array<{ id: number; title: string; url: string }> | undefined;
       const workspaceDir = requireWorkspaceDir(ctx);
 
       // Validate role:result using registry
@@ -140,6 +154,7 @@ export function createWorkFinishTool(api: OpenClawPluginApi) {
         pluginConfig,
         runtime: api.runtime,
         workflow,
+        createdTasks,
       });
 
       await auditLog(workspaceDir, "work_finish", {

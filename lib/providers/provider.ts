@@ -138,7 +138,8 @@ export interface IssueProvider {
    * Best-effort — implementations should not throw.
    */
   reactToPrReview(issueId: number, reviewId: number, emoji: string): Promise<void>;
-  addComment(issueId: number, body: string): Promise<void>;
+  /** Add a comment to an issue. Returns the new comment's ID. */
+  addComment(issueId: number, body: string): Promise<number>;
   editIssue(issueId: number, updates: { title?: string; body?: string }): Promise<Issue>;
   healthCheck(): Promise<boolean>;
 }

@@ -126,6 +126,8 @@ export function buildTaskMessage(opts: {
     `Never end your session without calling work_finish.`,
   );
 
+
+
   return parts.join("\n");
 }
 

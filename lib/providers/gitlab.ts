@@ -356,9 +356,14 @@ export class GitLabProvider implements IssueProvider {
     return comments;
   }
 
-  async addComment(issueId: number, body: string): Promise<void> {
-    // Pass message directly as argv — no shell escaping needed with spawn
-    await this.glab(["issue", "note", String(issueId), "--message", body]);
+  async addComment(issueId: number, body: string): Promise<number> {
+    const raw = await this.glab([
+      "api", `projects/:id/issues/${issueId}/notes`,
+      "--method", "POST",
+      "--field", `body=${body}`,
+    ]);
+    const parsed = JSON.parse(raw) as { id: number };
+    return parsed.id;
   }
 
   /**
