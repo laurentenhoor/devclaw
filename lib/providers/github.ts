@@ -416,11 +416,10 @@ export class GitHubProvider implements IssueProvider {
   }
 
   async getPrReviewComments(issueId: number): Promise<PrReviewComment[]> {
-    type OpenPr = { title: string; body: string; headRefName: string; number: number; author: { login: string } };
-    const prs = await this.findPrsForIssue<OpenPr>(issueId, "open", "title,body,headRefName,number,author");
+    type OpenPr = { title: string; body: string; headRefName: string; number: number };
+    const prs = await this.findPrsForIssue<OpenPr>(issueId, "open", "title,body,headRefName,number");
     if (prs.length === 0) return [];
     const prNumber = prs[0].number;
-    const prAuthor = (prs[0] as any).author?.login ?? "";
     const comments: PrReviewComment[] = [];
 
     try {
@@ -430,7 +429,6 @@ export class GitHubProvider implements IssueProvider {
         id: number; user: { login: string }; body: string; state: string; submitted_at: string;
       }>;
       for (const r of reviews) {
-        if (r.user.login === prAuthor) continue; // Skip self-reviews
         if (r.state === "DISMISSED") continue; // Skip dismissed
         if (!r.body && r.state === "COMMENTED") continue; // Skip empty COMMENTED reviews
         comments.push({
@@ -450,7 +448,6 @@ export class GitHubProvider implements IssueProvider {
         id: number; user: { login: string }; body: string; path: string; line: number | null; created_at: string;
       }>;
       for (const c of inlines) {
-        if (c.user.login === prAuthor) continue;
         comments.push({
           id: c.id,
           author: c.user.login,
