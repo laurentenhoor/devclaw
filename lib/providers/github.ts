@@ -271,9 +271,16 @@ export class GitHubProvider implements IssueProvider {
         if (hasChangesRequested) {
           state = PrState.CHANGES_REQUESTED;
         } else {
-          // Fall through to conversation comment detection
-          const hasComments = await this.hasConversationComments(pr.number);
-          state = hasComments ? PrState.HAS_COMMENTS : PrState.OPEN;
+          // Check for unacknowledged COMMENTED reviews (feedback without formal "Request changes")
+          const prAuthor = await this.getPrAuthor(pr.number);
+          const hasReviewFeedback = await this.hasUnacknowledgedReviews(pr.number, prAuthor);
+          if (hasReviewFeedback) {
+            state = PrState.HAS_COMMENTS;
+          } else {
+            // Fall through to conversation comment detection
+            const hasComments = await this.hasConversationComments(pr.number);
+            state = hasComments ? PrState.HAS_COMMENTS : PrState.OPEN;
+          }
         }
       }
 
@@ -304,6 +311,46 @@ export class GitHubProvider implements IssueProvider {
       const raw = await this.gh(["api", `repos/:owner/:repo/pulls/${prNumber}/reviews`, "--jq",
         "[.[] | select(.state == \"CHANGES_REQUESTED\" or .state == \"APPROVED\") | {user: .user.login, state}] | group_by(.user) | map(sort_by(.state) | last) | .[] | select(.state == \"CHANGES_REQUESTED\") | .user"]);
       return raw.trim().length > 0;
+    } catch { return false; }
+  }
+
+  /**
+   * Check if a PR has unacknowledged COMMENTED reviews from non-author, non-bot users.
+   * A review is "acknowledged" if it has an 👀 (eyes) reaction.
+   * This catches the common case where reviewers submit feedback as "Comment"
+   * rather than "Request changes".
+   */
+  private async hasUnacknowledgedReviews(prNumber: number, prAuthor: string): Promise<boolean> {
+    try {
+      const raw = await this.gh(["api", `repos/:owner/:repo/pulls/${prNumber}/reviews`]);
+      const reviews = JSON.parse(raw) as Array<{
+        id: number; user: { login: string }; body: string; state: string;
+      }>;
+
+      // Filter to COMMENTED reviews with non-empty body from non-author, non-bot users
+      const commentedReviews = reviews.filter(
+        (r) => r.state === "COMMENTED" && r.body?.trim().length > 0 &&
+          r.user.login !== prAuthor && !r.user.login.endsWith("[bot]"),
+      );
+
+      if (commentedReviews.length === 0) return false;
+
+      // Check if any are unacknowledged (no 👀 reaction)
+      for (const review of commentedReviews) {
+        try {
+          const reactionsRaw = await this.gh([
+            "api", `repos/:owner/:repo/pulls/${prNumber}/reviews/${review.id}/reactions`,
+          ]);
+          const reactions = JSON.parse(reactionsRaw) as Array<{ content: string }>;
+          const hasEyes = reactions.some((r) => r.content === "eyes");
+          if (!hasEyes) return true; // Found unacknowledged review
+        } catch {
+          // Can't check reactions — treat as unacknowledged to be safe
+          return true;
+        }
+      }
+
+      return false;
     } catch { return false; }
   }
 
@@ -441,6 +488,24 @@ export class GitHubProvider implements IssueProvider {
     try {
       await this.gh([
         "api", `repos/:owner/:repo/issues/comments/${commentId}/reactions`,
+        "--method", "POST",
+        "--field", `content=${emoji}`,
+      ]);
+    } catch { /* best-effort */ }
+  }
+
+  /**
+   * Add an emoji reaction to a PR review by its review ID.
+   * Uses the GitHub Pull Request Review Reactions API.
+   */
+  async reactToPrReview(issueId: number, reviewId: number, emoji: string): Promise<void> {
+    try {
+      // We need the PR number, not the issue ID. Find the PR first.
+      type OpenPr = { title: string; body: string; headRefName: string; number: number };
+      const prs = await this.findPrsForIssue<OpenPr>(issueId, "open", "title,body,headRefName,number");
+      if (prs.length === 0) return;
+      await this.gh([
+        "api", `repos/:owner/:repo/pulls/${prs[0].number}/reviews/${reviewId}/reactions`,
         "--method", "POST",
         "--field", `content=${emoji}`,
       ]);

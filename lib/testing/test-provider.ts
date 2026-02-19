@@ -273,6 +273,10 @@ export class TestProvider implements IssueProvider {
     // no-op in test provider
   }
 
+  async reactToPrReview(_issueId: number, _reviewId: number, _emoji: string): Promise<void> {
+    // no-op in test provider
+  }
+
   async isCommitOnBaseBranch(_issueId: number, _baseBranch: string): Promise<boolean> {
     return false; // no-op in test provider
   }

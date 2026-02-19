@@ -105,6 +105,11 @@ export interface IssueProvider {
    * @param emoji  Reaction name understood by the provider (e.g. "rocket", "+1")
    */
   reactToPrComment(issueId: number, commentId: number, emoji: string): Promise<void>;
+  /**
+   * Add an emoji reaction to a PR review (not a comment) by its review ID.
+   * Best-effort — implementations should not throw.
+   */
+  reactToPrReview(issueId: number, reviewId: number, emoji: string): Promise<void>;
   addComment(issueId: number, body: string): Promise<void>;
   editIssue(issueId: number, updates: { title?: string; body?: string }): Promise<Issue>;
   healthCheck(): Promise<boolean>;
