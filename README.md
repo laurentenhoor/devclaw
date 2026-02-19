@@ -23,38 +23,6 @@ Then start onboarding by chatting with your agent in any channel:
 
 ---
 
-## What's New
-
-### v1.4.0 (Latest)
-
-- **Externalized defaults & reset tool** — All built-in defaults live in a `defaults/` directory. New `reset_defaults` tool restores workspace files to factory settings with `.bak` backups.
-- **Eyes marker (👀) on managed issues/PRs** — DevClaw marks issue and PR bodies it manages, distinguishing them from legacy or manually-created items.
-- **Comment consumption tracking** — Processed comments receive emoji reactions so workers don't re-read already-handled feedback.
-- **Auto-heal for context overflow** — Workers that hit context limits are automatically recovered instead of going zombie.
-- **Session context budget management** — Smarter token budgeting prevents context overflow before it happens.
-- **Safe two-phase label transitions** — Label changes on GitHub/GitLab use a two-phase commit to prevent half-states on API failures.
-- **PR review detection improvements** — More reliable detection of review approvals and change requests across providers.
-- **TOOLS.md template improvements** — Cleaner generated tool documentation for new workspaces.
-
-### v1.3.6
-
-- **Heartbeat starts immediately** — No more restarting after onboarding; the scheduler begins on first registration.
-- **New dashboard tools** — `tasks_status` (full project dashboard) and `task_list` (browse/filter issues by state) replace the old `status` tool.
-- **PR validation on `work_finish`** — Developers must have a valid PR before completing; catches missing PRs early.
-- **Blocked result support** — Workers can now report "blocked" to return tasks to the queue with context.
-- **Label colors for GitLab** — Pipeline labels get color-coded on GitLab for visual distinction.
-- **PR state detection improvements** — Better handling of draft PRs, merge conflicts, and cross-fork PRs.
-
-### v1.3.5
-
-- **LLM-powered model autoconfiguration** — `autoconfigure_models` uses an LLM to intelligently assign available models to role tiers based on capability.
-- **Registry default fallback** — When specific models aren't available, falls back to sensible defaults from the model registry.
-- **Better onboarding flow** — Streamlined setup with clearer prompts and automatic model detection.
-
-📋 Full release notes: [v1.4.0](https://github.com/laurentenhoor/devclaw/releases/tag/v1.4.0) · [v1.3.6](https://github.com/laurentenhoor/devclaw/releases/tag/v1.3.6) · [v1.3.5](https://github.com/laurentenhoor/devclaw/releases/tag/v1.3.5)
-
----
-
 ## What it looks like
 
 You have two projects in two Telegram groups. You go to bed. You wake up:
@@ -554,6 +522,12 @@ Full parameters and usage in the [Tools Reference](docs/TOOLS.md).
 | **[Testing](docs/TESTING.md)** | Test suite, fixtures, CI/CD |
 | **[Management Theory](docs/MANAGEMENT.md)** | The delegation model behind the design |
 | **[Roadmap](docs/ROADMAP.md)** | What's coming next |
+
+---
+
+## Release Notes
+
+See the [Changelog](CHANGELOG.md) for a detailed history of changes, or browse [GitHub Releases](https://github.com/laurentenhoor/devclaw/releases) for per-version notes.
 
 ---
 
