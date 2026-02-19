@@ -133,13 +133,20 @@ export class GitLabProvider implements IssueProvider {
   }
 
   async transitionLabel(issueId: number, from: StateLabel, to: StateLabel): Promise<void> {
+    // Two-phase transition to prevent label loss on failure:
+    // Phase 1: Add new label first — issue is correctly labelled even if phase 2 fails
+    // Phase 2: Remove old state labels (best-effort)
+    await this.glab(["issue", "update", String(issueId), "--label", to]);
+
     const issue = await this.getIssue(issueId);
     const stateLabels = getStateLabels(this.workflow);
-    const currentStateLabels = issue.labels.filter((l) => stateLabels.includes(l));
-    const args = ["issue", "update", String(issueId)];
-    for (const l of currentStateLabels) args.push("--unlabel", l);
-    args.push("--label", to);
-    await this.glab(args);
+    const currentStateLabels = issue.labels.filter((l) => stateLabels.includes(l) && l !== to);
+
+    if (currentStateLabels.length > 0) {
+      const args = ["issue", "update", String(issueId)];
+      for (const l of currentStateLabels) args.push("--unlabel", l);
+      await this.glab(args);
+    }
   }
 
   async addLabel(issueId: number, label: string): Promise<void> {

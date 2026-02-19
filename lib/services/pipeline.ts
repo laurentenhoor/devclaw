@@ -175,8 +175,10 @@ export async function executeCompletion(opts: {
     });
   }
 
-  // Deactivate worker + transition label
-  await deactivateWorker(workspaceDir, projectSlug, role);
+  // Transition label first (critical — if this fails, issue still has correct state)
+  // Then execute post-transition actions (close/reopen)
+  // Finally deactivate worker (last — ensures label is set even if deactivation fails)
+  
   await provider.transitionLabel(issueId, rule.from as StateLabel, rule.to as StateLabel);
 
   // Execute post-transition actions
@@ -190,6 +192,9 @@ export async function executeCompletion(opts: {
         break;
     }
   }
+
+  // Deactivate worker last (non-critical — session cleanup)
+  await deactivateWorker(workspaceDir, projectSlug, role);
 
   // Send review routing notification when developer completes
   if (role === "developer" && result === "done") {

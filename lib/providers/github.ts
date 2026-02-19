@@ -223,13 +223,24 @@ export class GitHubProvider implements IssueProvider {
   }
 
   async transitionLabel(issueId: number, from: StateLabel, to: StateLabel): Promise<void> {
+    // Two-phase transition to ensure atomicity and recoverability:
+    // Phase 1: Add new label first (safer than removing first)
+    // Phase 2: Remove old state labels
+    // This way, if phase 2 fails, the issue still has the new label (issue is correctly transitioned)
+    // instead of having no state label at all.
+    
+    await this.gh(["issue", "edit", String(issueId), "--add-label", to]);
+    
+    // Remove old state labels (best-effort if there are multiple old labels)
     const issue = await this.getIssue(issueId);
     const stateLabels = getStateLabels(this.workflow);
-    const currentStateLabels = issue.labels.filter((l) => stateLabels.includes(l));
-    const args = ["issue", "edit", String(issueId)];
-    for (const l of currentStateLabels) args.push("--remove-label", l);
-    args.push("--add-label", to);
-    await this.gh(args);
+    const currentStateLabels = issue.labels.filter((l) => stateLabels.includes(l) && l !== to);
+    
+    if (currentStateLabels.length > 0) {
+      const args = ["issue", "edit", String(issueId)];
+      for (const l of currentStateLabels) args.push("--remove-label", l);
+      await this.gh(args);
+    }
   }
 
   async addLabel(issueId: number, label: string): Promise<void> {
