@@ -309,6 +309,13 @@ export class GitHubProvider implements IssueProvider {
       const state = pr.reviewDecision === "APPROVED" ? PrState.APPROVED : PrState.MERGED;
       return { state, url: pr.url, title: pr.title, sourceBranch: pr.headRefName };
     }
+    // Check for closed-without-merge PRs. url: non-null = PR was explicitly closed;
+    // url: null = no PR has ever been created for this issue.
+    const allPrs = await this.findPrsViaTimeline(issueId, "all");
+    const closedPr = allPrs?.find((pr) => pr.state === "CLOSED");
+    if (closedPr) {
+      return { state: PrState.CLOSED, url: closedPr.url, title: closedPr.title, sourceBranch: closedPr.headRefName };
+    }
     return { state: PrState.CLOSED, url: null };
   }
 

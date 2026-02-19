@@ -202,6 +202,10 @@ export class GitLabProvider implements IssueProvider {
     // Check merged MRs
     const merged = mrs.find((mr) => mr.state === "merged");
     if (merged) return { state: PrState.MERGED, url: merged.web_url, title: merged.title, sourceBranch: merged.source_branch };
+    // Check for closed-without-merge MRs. url: non-null = MR was explicitly closed;
+    // url: null = no MR has ever been created for this issue.
+    const closed = mrs.find((mr) => mr.state === "closed");
+    if (closed) return { state: PrState.CLOSED, url: closed.web_url, title: closed.title, sourceBranch: closed.source_branch };
     return { state: PrState.CLOSED, url: null };
   }
 
