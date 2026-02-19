@@ -138,6 +138,21 @@ export interface IssueProvider {
    * Best-effort — implementations should not throw.
    */
   reactToPrReview(issueId: number, reviewId: number, emoji: string): Promise<void>;
+  /**
+   * Check if an issue comment has a specific emoji reaction.
+   * Returns false on error (best-effort).
+   */
+  issueCommentHasReaction(issueId: number, commentId: number, emoji: string): Promise<boolean>;
+  /**
+   * Check if a PR comment has a specific emoji reaction.
+   * Returns false on error (best-effort).
+   */
+  prCommentHasReaction(issueId: number, commentId: number, emoji: string): Promise<boolean>;
+  /**
+   * Check if a PR review has a specific emoji reaction.
+   * Returns false on error (best-effort).
+   */
+  prReviewHasReaction(issueId: number, reviewId: number, emoji: string): Promise<boolean>;
   /** Add a comment to an issue. Returns the new comment's ID. */
   addComment(issueId: number, body: string): Promise<number>;
   editIssue(issueId: number, updates: { title?: string; body?: string }): Promise<Issue>;

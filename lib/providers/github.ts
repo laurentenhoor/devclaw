@@ -573,6 +573,35 @@ export class GitHubProvider implements IssueProvider {
     } catch { /* best-effort */ }
   }
 
+  async issueCommentHasReaction(issueId: number, commentId: number, emoji: string): Promise<boolean> {
+    try {
+      const raw = await this.gh(["api", `repos/:owner/:repo/issues/comments/${commentId}/reactions`]);
+      const reactions = JSON.parse(raw) as Array<{ content: string }>;
+      return reactions.some((r) => r.content === emoji);
+    } catch { return false; }
+  }
+
+  async prCommentHasReaction(issueId: number, commentId: number, emoji: string): Promise<boolean> {
+    try {
+      const raw = await this.gh(["api", `repos/:owner/:repo/issues/comments/${commentId}/reactions`]);
+      const reactions = JSON.parse(raw) as Array<{ content: string }>;
+      return reactions.some((r) => r.content === emoji);
+    } catch { return false; }
+  }
+
+  async prReviewHasReaction(issueId: number, reviewId: number, emoji: string): Promise<boolean> {
+    try {
+      type OpenPr = { title: string; body: string; headRefName: string; number: number };
+      const prs = await this.findPrsForIssue<OpenPr>(issueId, "open", "title,body,headRefName,number");
+      if (prs.length === 0) return false;
+      const raw = await this.gh([
+        "api", `repos/:owner/:repo/pulls/${prs[0].number}/reviews/${reviewId}/reactions`,
+      ]);
+      const reactions = JSON.parse(raw) as Array<{ content: string }>;
+      return reactions.some((r) => r.content === emoji);
+    } catch { return false; }
+  }
+
   async editIssue(issueId: number, updates: { title?: string; body?: string }): Promise<Issue> {
     const args = ["issue", "edit", String(issueId)];
     if (updates.title !== undefined) args.push("--title", updates.title);

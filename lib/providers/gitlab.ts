@@ -444,6 +444,32 @@ export class GitLabProvider implements IssueProvider {
     await this.reactToPrComment(issueId, reviewId, emoji);
   }
 
+  async issueCommentHasReaction(issueId: number, commentId: number, emoji: string): Promise<boolean> {
+    try {
+      const raw = await this.glab(["api", `projects/:id/issues/${issueId}/notes/${commentId}/award_emoji`]);
+      const emojis = JSON.parse(raw) as Array<{ name: string }>;
+      return emojis.some((e) => e.name === emoji);
+    } catch { return false; }
+  }
+
+  async prCommentHasReaction(issueId: number, commentId: number, emoji: string): Promise<boolean> {
+    try {
+      const mrs = await this.getRelatedMRs(issueId);
+      const open = mrs.find((mr) => mr.state === "opened");
+      if (!open) return false;
+      const raw = await this.glab([
+        "api", `projects/:id/merge_requests/${open.iid}/notes/${commentId}/award_emoji`,
+      ]);
+      const emojis = JSON.parse(raw) as Array<{ name: string }>;
+      return emojis.some((e) => e.name === emoji);
+    } catch { return false; }
+  }
+
+  async prReviewHasReaction(issueId: number, reviewId: number, emoji: string): Promise<boolean> {
+    // GitLab doesn't distinguish reviews from comments, so use the same logic as prCommentHasReaction
+    return this.prCommentHasReaction(issueId, reviewId, emoji);
+  }
+
   async editIssue(issueId: number, updates: { title?: string; body?: string }): Promise<Issue> {
     const args = ["issue", "update", String(issueId)];
     if (updates.title !== undefined) args.push("--title", updates.title);
