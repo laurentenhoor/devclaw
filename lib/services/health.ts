@@ -4,23 +4,25 @@
  * Triangulates THREE sources of truth:
  *   1. projects.json — worker state (active, issueId, level, sessions)
  *   2. Issue label — current GitHub/GitLab label (from workflow config)
- *   3. Session state — whether the OpenClaw session exists via gateway status
+ *   3. Session state — whether the OpenClaw session exists via gateway status (including abortedLastRun flag)
  *
  * Detection matrix:
- *   | projects.json | Issue label       | Session      | Action                                    |
- *   |---------------|-------------------|--------------|-------------------------------------------|
- *   | active        | Active label ✅    | dead/missing | Deactivate worker, revert to queue        |
- *   | active        | NOT Active label  | any          | Deactivate worker (moved externally)      |
- *   | active        | Active label ✅    | alive        | Healthy (flag if stale >2h)               |
- *   | inactive      | Active label      | any          | Revert issue to queue (label stuck)       |
- *   | inactive      | issueId set       | any          | Clear issueId (warning)                   |
- *   | active        | issue deleted     | any          | Deactivate worker, clear state            |
+ *   | projects.json | Issue label       | Session state           | Action                                    |
+ *   |---------------|-------------------|-------------------------|-------------------------------------------|
+ *   | active        | Active label ✅    | abortedLastRun: true    | HEAL: Revert to queue + clear session     |
+ *   | active        | Active label ✅    | dead/missing            | Deactivate worker, revert to queue        |
+ *   | active        | NOT Active label  | any                     | Deactivate worker (moved externally)      |
+ *   | active        | Active label ✅    | alive + normal          | Healthy (flag if stale >2h)               |
+ *   | inactive      | Active label      | any                     | Revert issue to queue (label stuck)       |
+ *   | inactive      | issueId set       | any                     | Clear issueId (warning)                   |
+ *   | active        | issue deleted     | any                     | Deactivate worker, clear state            |
  *
- * Session liveness notes:
+ * Session state notes:
  *   - gateway status `sessions.recent` is capped at 10 entries. We avoid this cap by
  *     reading session keys directly from the session files listed in `sessions.paths`.
  *   - Grace period: workers activated within the last GRACE_PERIOD_MS are never
  *     considered session-dead (they may not appear in sessions yet).
+ *   - abortedLastRun: indicates session hit context limit (#287, #290) — triggers immediate healing.
  */
 import type { StateLabel, IssueProvider, Issue } from "../providers/provider.js";
 import {
@@ -32,6 +34,7 @@ import {
   type ProjectsData,
 } from "../projects.js";
 import { runCommand } from "../run-command.js";
+import { log as auditLog } from "../audit.js";
 import {
   DEFAULT_WORKFLOW,
   getActiveLabel,
@@ -62,7 +65,8 @@ export type HealthIssue = {
     | "orphan_issue_id"      // Case 5: inactive but issueId set
     | "issue_gone"           // Case 6: active but issue deleted/closed
     | "orphaned_label"        // Case 7: active label but no worker tracking it
-    | "orphaned_session";    // Case 8: gateway session exists but not tracked in projects.json
+    | "orphaned_session"      // Case 8: gateway session exists but not tracked in projects.json
+    | "context_overflow";    // Case 1c: active worker but session hit context limit (abortedLastRun)
   severity: "critical" | "warning";
   project: string;
   projectSlug: string;
@@ -290,6 +294,52 @@ export async function checkWorkerHealth(opts: {
     }
     fixes.push(fix);
     return fixes;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Case 1c: Active with correct label but session hit context limit (abortedLastRun)
+  // This indicates the session was aborted due to context overflow (#287, #290)
+  // Should heal immediately by reverting label and deactivating worker
+  // ---------------------------------------------------------------------------
+  if (worker.active && sessionKey && sessions && isSessionAlive(sessionKey, sessions)) {
+    const session = sessions.get(sessionKey);
+    if (session?.abortedLastRun) {
+      const fix: HealthFix = {
+        issue: {
+          type: "context_overflow",
+          severity: "critical",
+          project: project.name,
+          projectSlug,
+          role,
+          sessionKey,
+          level: worker.level,
+          issueId: worker.issueId,
+          expectedLabel,
+          actualLabel: currentLabel,
+          message: `${role.toUpperCase()} session "${sessionKey}" hit context limit (abortedLastRun: true). Healing by reverting to queue.`,
+        },
+        fixed: false,
+      };
+      if (autoFix) {
+        if (issue && currentLabel === expectedLabel) {
+          await revertLabel(fix, expectedLabel, queueLabel);
+        }
+        // Clear the session for this level (force fresh start on next dispatch)
+        await deactivate(true);
+        fix.fixed = true;
+      }
+      fixes.push(fix);
+      // Log the healing action for monitoring/correlation
+      await auditLog(workspaceDir, "context_overflow_healed", {
+        project: project.name,
+        projectSlug,
+        role,
+        issueId: worker.issueId,
+        sessionKey,
+        level: worker.level,
+      }).catch(() => {});
+      return fixes; // Critical issue, stop checking further
+    }
   }
 
   // ---------------------------------------------------------------------------
