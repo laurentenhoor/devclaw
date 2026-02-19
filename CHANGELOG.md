@@ -5,6 +5,49 @@ All notable changes to DevClaw will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-02-19
+
+### Added
+
+- **Externalized defaults & `reset_defaults` tool** — All built-in templates (AGENTS.md, HEARTBEAT.md, IDENTITY.md, TOOLS.md, workflow states, role prompts) moved to a `defaults/` directory. New `reset_defaults` tool restores workspace files to factory settings with `.bak` backups, with warnings about project-level prompt overrides.
+- **Eyes marker (👀) on managed issues/PRs** — DevClaw adds an eyes marker to issue and PR bodies it manages, distinguishing them from legacy or manually-created items.
+- **Comment consumption tracking with reactions** — Processed comments receive emoji reactions so workers don't re-read already-handled feedback on subsequent dispatches.
+- **Auto-heal for context overflow** — Workers that hit context limits are automatically recovered and restarted instead of becoming zombies.
+- **Session context budget management** — Smarter token budgeting prevents context overflow before it happens by tracking available budget.
+
+### Changed
+
+- **Safe two-phase label transitions** — Label changes on GitHub/GitLab use a two-phase commit (add new → remove old) to prevent half-states on API failures.
+- **PR review detection improvements** — More reliable detection of review approvals, change requests, and conversation comments across GitHub and GitLab providers.
+- **TOOLS.md template improvements** — Cleaner generated tool documentation for new workspaces.
+- **15 tools** (was 14) — added `reset_defaults`
+
+## [1.3.6] - 2026-02-18
+
+### Added
+
+- **Heartbeat starts immediately** — No restart needed after onboarding; the scheduler begins on first project registration.
+- **`tasks_status` tool** — Full project dashboard showing issues waiting for input (hold), work in progress (active), and queued for work (queue).
+- **`task_list` tool** — Browse and filter issues by workflow state with text search.
+- **PR validation on `work_finish`** — Developers must have a valid PR before completing; catches missing PRs early.
+- **Blocked result support** — All worker roles can now report "blocked" to return tasks to the queue with context about what they need.
+- **Label colors for GitLab** — Pipeline labels get color-coded on GitLab for visual distinction.
+
+### Fixed
+
+- **PR state detection improvements** — Better handling of draft PRs, merge conflicts, and cross-fork PRs.
+
+## [1.3.5] - 2026-02-17
+
+### Added
+
+- **LLM-powered model autoconfiguration** — `autoconfigure_models` uses an LLM to intelligently assign available models to role tiers based on capability analysis.
+- **Registry default fallback** — When specific models aren't available, falls back to sensible defaults from the model registry.
+
+### Changed
+
+- **Improved onboarding flow** — Streamlined setup with clearer prompts and automatic model detection.
+
 ## [1.3.0] - 2026-02-17
 
 ### Changed — Default Workflow
@@ -196,6 +239,9 @@ openclaw chat "Hey, can you help me set up DevClaw?"
 
 ---
 
+[1.4.0]: https://github.com/laurentenhoor/devclaw/compare/v1.3.6...v1.4.0
+[1.3.6]: https://github.com/laurentenhoor/devclaw/compare/v1.3.5...v1.3.6
+[1.3.5]: https://github.com/laurentenhoor/devclaw/compare/v1.3.4...v1.3.5
 [1.3.0]: https://github.com/laurentenhoor/devclaw/compare/v1.2.2...v1.3.0
 [1.1.0]: https://github.com/laurentenhoor/devclaw/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/laurentenhoor/devclaw/compare/v0.1.1...v1.0.0
