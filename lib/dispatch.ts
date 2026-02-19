@@ -10,9 +10,11 @@ import { runCommand } from "./run-command.js";
 import {
   type Project,
   activateWorker,
+  updateWorker,
   getSessionForLevel,
   getWorker,
 } from "./projects.js";
+import { fetchGatewaySessions, type GatewaySession } from "./services/gateway-sessions.js";
 import { resolveModel, getFallbackEmoji } from "./roles/index.js";
 import { notify, getNotificationConfig } from "./notify.js";
 import { loadConfig, type ResolvedRoleConfig } from "./config/index.js";
@@ -156,7 +158,19 @@ export async function dispatchTask(
   const { timeouts } = resolvedConfig;
   const model = resolveModel(role, level, resolvedRole);
   const worker = getWorker(project, role);
-  const existingSessionKey = getSessionForLevel(worker, level);
+  let existingSessionKey = getSessionForLevel(worker, level);
+
+  // Context budget check: clear session if over budget (unless same issue — feedback cycle)
+  if (existingSessionKey && timeouts.sessionContextBudget < 1) {
+    const shouldClear = await shouldClearSession(existingSessionKey, worker, issueId, timeouts, workspaceDir, project.name);
+    if (shouldClear) {
+      await updateWorker(workspaceDir, project.slug, role, {
+        sessions: { [level]: null },
+      });
+      existingSessionKey = null;
+    }
+  }
+
   const sessionAction = existingSessionKey ? "send" : "spawn";
 
   // Compute session key deterministically (avoids waiting for gateway)
@@ -269,6 +283,58 @@ export async function dispatchTask(
   const announcement = buildAnnouncement(level, role, sessionAction, issueId, issueTitle, issueUrl, resolvedRole);
 
   return { sessionAction, sessionKey, level, model, announcement };
+}
+
+// ---------------------------------------------------------------------------
+// Context budget management
+// ---------------------------------------------------------------------------
+
+/**
+ * Determine whether a session should be cleared based on context budget.
+ *
+ * Rules:
+ * - If same issue (feedback cycle), keep session — worker needs prior context
+ * - If context ratio exceeds sessionContextBudget, clear
+ */
+async function shouldClearSession(
+  sessionKey: string,
+  worker: import("./projects.js").WorkerState,
+  newIssueId: number,
+  timeouts: import("./config/types.js").ResolvedTimeouts,
+  workspaceDir: string,
+  projectName: string,
+): Promise<boolean> {
+  // Don't clear if re-dispatching for the same issue (feedback cycle)
+  if (worker.issueId && String(newIssueId) === String(worker.issueId)) {
+    return false;
+  }
+
+  // Check context budget via gateway session data
+  try {
+    const sessions = await fetchGatewaySessions();
+    if (!sessions) return false; // Gateway unavailable — don't clear
+
+    const session = sessions.get(sessionKey);
+    if (!session) return false; // Session not found — will be spawned fresh anyway
+
+    const ratio = session.percentUsed / 100;
+    if (ratio > timeouts.sessionContextBudget) {
+      await auditLog(workspaceDir, "session_budget_reset", {
+        project: projectName,
+        sessionKey,
+        reason: "context_budget",
+        percentUsed: session.percentUsed,
+        threshold: timeouts.sessionContextBudget * 100,
+        totalTokens: session.totalTokens,
+        contextTokens: session.contextTokens,
+      });
+      return true;
+    }
+  } catch {
+    // Gateway query failed — don't clear, let dispatch proceed normally
+  }
+
+  return false;
 }
 
 // ---------------------------------------------------------------------------

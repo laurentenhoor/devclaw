@@ -15,6 +15,8 @@ export type GatewaySession = {
   updatedAt: number;
   percentUsed: number;
   abortedLastRun?: boolean;
+  totalTokens?: number;
+  contextTokens?: number;
 };
 
 export type SessionLookup = Map<string, GatewaySession>;
@@ -50,7 +52,7 @@ export async function fetchGatewaySessions(gatewayTimeoutMs = 15_000): Promise<S
     for (const filePath of sessionPaths) {
       try {
         const raw = await fs.readFile(filePath, "utf-8");
-        const fileData = JSON.parse(raw) as Record<string, { updatedAt?: number; percentUsed?: number; abortedLastRun?: boolean }>;
+        const fileData = JSON.parse(raw) as Record<string, { updatedAt?: number; percentUsed?: number; abortedLastRun?: boolean; totalTokens?: number; contextTokens?: number }>;
         for (const [key, entry] of Object.entries(fileData)) {
           if (key && !lookup.has(key)) {
             lookup.set(key, {
@@ -58,6 +60,8 @@ export async function fetchGatewaySessions(gatewayTimeoutMs = 15_000): Promise<S
               updatedAt: entry.updatedAt ?? 0,
               percentUsed: entry.percentUsed ?? 0,
               abortedLastRun: entry.abortedLastRun,
+              totalTokens: entry.totalTokens,
+              contextTokens: entry.contextTokens,
             });
           }
         }
