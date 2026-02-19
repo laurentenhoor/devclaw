@@ -85,6 +85,8 @@ export type WorkerState = {
   sessions: Record<string, string | null>;
   /** Label the issue had before being transitioned to the active (Doing/Testing) state. Used by health check to revert to the correct queue label. */
   previousLabel?: string | null;
+  /** Number of tasks completed on the current session. Reset when session is cleared. */
+  taskCount?: number;
 };
 
 /**
@@ -304,6 +306,8 @@ export async function activateWorker(
     startTime?: string;
     /** Label the issue had before transitioning to the active state (e.g. "To Do", "To Improve"). */
     previousLabel?: string;
+    /** Task count for context budget tracking. */
+    taskCount?: number;
   },
 ): Promise<ProjectsData> {
   const updates: Partial<WorkerState> = {
@@ -319,6 +323,9 @@ export async function activateWorker(
   }
   if (params.previousLabel !== undefined) {
     updates.previousLabel = params.previousLabel;
+  }
+  if (params.taskCount !== undefined) {
+    updates.taskCount = params.taskCount;
   }
   return updateWorker(workspaceDir, slugOrGroupId, role, updates);
 }

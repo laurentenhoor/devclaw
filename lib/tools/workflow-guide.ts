@@ -396,6 +396,8 @@ timeouts:
   sessionPatchMs: 30000     # Session patch timeout (default: 30s)
   dispatchMs: 600000        # Worker dispatch timeout (default: 10min)
   staleWorkerHours: 2       # Hours before a worker is considered stale (default: 2)
+  sessionContextBudget: 0.6 # Clear session when context exceeds 60% of limit (default: 0.6)
+  sessionMaxTasks: 0        # Max tasks per session before clearing, 0 = no limit (default: 0)
 \`\`\`
 
 | Field             | Type   | Default  | Notes |
@@ -404,7 +406,9 @@ timeouts:
 | \`gatewayMs\`       | number | 15000    | Must be positive. Milliseconds. |
 | \`sessionPatchMs\`  | number | 30000    | Must be positive. Milliseconds. |
 | \`dispatchMs\`      | number | 600000   | Must be positive. Milliseconds. How long a worker dispatch can take. |
-| \`staleWorkerHours\`| number | 2        | Must be positive. Hours. After this, worker is flagged as stale. |`;
+| \`staleWorkerHours\`| number | 2        | Must be positive. Hours. After this, worker is flagged as stale. |
+| \`sessionContextBudget\` | number | 0.6 | 0-1. Clear session when context exceeds this ratio. Set to 1.0 to disable. Skips clear on same-issue re-dispatch (feedback cycle). |
+| \`sessionMaxTasks\` | number | 0        | Hard cap on tasks per session. 0 = no limit. Session cleared after N tasks. |`;
 }
 
 function buildOverridesSection(dataDir: string): string {
