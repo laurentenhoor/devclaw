@@ -120,11 +120,12 @@ export class GitLabProvider implements IssueProvider {
   async listComments(issueId: number): Promise<IssueComment[]> {
     try {
       const raw = await this.glab(["api", `projects/:id/issues/${issueId}/notes`, "--paginate"]);
-      const notes = JSON.parse(raw) as Array<{ author: { username: string }; body: string; created_at: string; system: boolean }>;
+      const notes = JSON.parse(raw) as Array<{ id: number; author: { username: string }; body: string; created_at: string; system: boolean }>;
       // Filter out system notes (e.g. "changed label", "closed issue")
       return notes
         .filter((note) => !note.system)
         .map((note) => ({
+          id: note.id,
           author: note.author.username,
           body: note.body,
           created_at: note.created_at,
@@ -368,6 +369,16 @@ export class GitLabProvider implements IssueProvider {
    * @param commentId  The note ID on the MR
    * @param emoji  Emoji name without colons (e.g. "robot", "thumbsup")
    */
+  async reactToIssueComment(issueId: number, commentId: number, emoji: string): Promise<void> {
+    try {
+      await this.glab([
+        "api", `projects/:id/issues/${issueId}/notes/${commentId}/award_emoji`,
+        "--method", "POST",
+        "--field", `name=${emoji}`,
+      ]);
+    } catch { /* best-effort */ }
+  }
+
   async reactToPrComment(issueId: number, commentId: number, emoji: string): Promise<void> {
     try {
       const mrs = await this.getRelatedMRs(issueId);

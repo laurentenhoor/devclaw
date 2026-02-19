@@ -193,6 +193,9 @@ export async function dispatchTask(
     comments, resolvedRole, prContext, prFeedback,
   });
 
+  // Mark all consumed comments as seen (fire-and-forget)
+  acknowledgeComments(provider, issueId, comments, prFeedback).catch(() => {});
+
   // Step 1: Transition label (this is the commitment point)
   await provider.transitionLabel(issueId, fromLabel, toLabel);
 
@@ -335,6 +338,39 @@ async function shouldClearSession(
   }
 
   return false;
+}
+
+// ---------------------------------------------------------------------------
+// Comment acknowledgement — mark consumed comments with 👀
+// ---------------------------------------------------------------------------
+
+const EYES_EMOJI = "eyes";
+
+/**
+ * Mark all consumed comments (issue + PR review) with 👀 so they're
+ * recognized as "seen" on subsequent passes. Best-effort, never throws.
+ */
+async function acknowledgeComments(
+  provider: import("./providers/provider.js").IssueProvider,
+  issueId: number,
+  comments: import("./providers/provider.js").IssueComment[],
+  prFeedback?: PrFeedback,
+): Promise<void> {
+  // Issue comments
+  for (const c of comments) {
+    await provider.reactToIssueComment(issueId, c.id, EYES_EMOJI);
+  }
+
+  // PR review comments (from feedback context)
+  if (prFeedback) {
+    for (const c of prFeedback.comments) {
+      if (c.state === "APPROVED" || c.state === "CHANGES_REQUESTED" || c.state === "COMMENTED") {
+        await provider.reactToPrReview(issueId, c.id, EYES_EMOJI);
+      } else {
+        await provider.reactToPrComment(issueId, c.id, EYES_EMOJI);
+      }
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

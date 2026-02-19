@@ -216,7 +216,7 @@ export class GitHubProvider implements IssueProvider {
 
   async listComments(issueId: number): Promise<IssueComment[]> {
     try {
-      const raw = await this.gh(["api", `repos/:owner/:repo/issues/${issueId}/comments`, "--jq", ".[] | {author: .user.login, body: .body, created_at: .created_at}"]);
+      const raw = await this.gh(["api", `repos/:owner/:repo/issues/${issueId}/comments`, "--jq", ".[] | {id: .id, author: .user.login, body: .body, created_at: .created_at}"]);
       if (!raw) return [];
       return raw.split("\n").filter(Boolean).map((line) => JSON.parse(line));
     } catch { return []; }
@@ -479,6 +479,16 @@ export class GitHubProvider implements IssueProvider {
 
   async addComment(issueId: number, body: string): Promise<void> {
     await this.gh(["issue", "comment", String(issueId), "--body", body]);
+  }
+
+  async reactToIssueComment(_issueId: number, commentId: number, emoji: string): Promise<void> {
+    try {
+      await this.gh([
+        "api", `repos/:owner/:repo/issues/comments/${commentId}/reactions`,
+        "--method", "POST",
+        "--field", `content=${emoji}`,
+      ]);
+    } catch { /* best-effort */ }
   }
 
   /**

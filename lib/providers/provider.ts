@@ -23,6 +23,7 @@ export type Issue = {
 };
 
 export type IssueComment = {
+  id: number;
   author: string;
   body: string;
   created_at: string;
@@ -104,6 +105,11 @@ export interface IssueProvider {
    * @param commentId  The numeric ID of the comment to react to
    * @param emoji  Reaction name understood by the provider (e.g. "rocket", "+1")
    */
+  /**
+   * Add an emoji reaction to an issue comment by its comment ID.
+   * Best-effort — implementations should not throw.
+   */
+  reactToIssueComment(issueId: number, commentId: number, emoji: string): Promise<void>;
   reactToPrComment(issueId: number, commentId: number, emoji: string): Promise<void>;
   /**
    * Add an emoji reaction to a PR review (not a comment) by its review ID.

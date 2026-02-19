@@ -16,7 +16,7 @@ import { PrState } from "./providers/provider.js";
 export type PrFeedback = {
   url: string;
   reason?: "changes_requested" | "merge_conflict" | "rejected";
-  comments: Array<{ author: string; body: string; state: string; path?: string; line?: number }>;
+  comments: Array<{ id: number; author: string; body: string; state: string; path?: string; line?: number }>;
 };
 
 export type PrContext = {
@@ -53,7 +53,7 @@ export async function fetchPrFeedback(
       url: prStatus.url,
       reason,
       comments: reviewComments.map((c) => ({
-        author: c.author, body: c.body, state: c.state,
+        id: c.id, author: c.author, body: c.body, state: c.state,
         path: c.path, line: c.line,
       })),
     };

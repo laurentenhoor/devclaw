@@ -269,6 +269,10 @@ export class TestProvider implements IssueProvider {
     return [];
   }
 
+  async reactToIssueComment(_issueId: number, _commentId: number, _emoji: string): Promise<void> {
+    // no-op in test provider
+  }
+
   async reactToPrComment(_issueId: number, _commentId: number, _emoji: string): Promise<void> {
     // no-op in test provider
   }
@@ -285,6 +289,7 @@ export class TestProvider implements IssueProvider {
     this.calls.push({ method: "addComment", args: { issueId, body } });
     const existing = this.comments.get(issueId) ?? [];
     existing.push({
+      id: Date.now(),
       author: "test",
       body,
       created_at: new Date().toISOString(),

@@ -87,8 +87,8 @@ describe("E2E pipeline", () => {
 
     it("should include comments in task message", async () => {
       h.provider.comments.set(42, [
-        { author: "alice", body: "Please use OAuth", created_at: "2026-01-01T00:00:00Z" },
-        { author: "bob", body: "Agreed, OAuth2 flow", created_at: "2026-01-02T00:00:00Z" },
+        { id: 1001, author: "alice", body: "Please use OAuth", created_at: "2026-01-01T00:00:00Z" },
+        { id: 1002, author: "bob", body: "Agreed, OAuth2 flow", created_at: "2026-01-02T00:00:00Z" },
       ]);
 
       await dispatchTask({
