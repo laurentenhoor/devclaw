@@ -3,6 +3,7 @@
 
 roles:
   developer:
+    # maxWorkers: 3  # Maximum concurrent developer workers (default: 1)
     models:
       junior: anthropic/claude-haiku-4-5
       medior: anthropic/claude-sonnet-4-5

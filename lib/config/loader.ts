@@ -100,6 +100,7 @@ function resolve(config: DevClawConfig): ResolvedConfig {
         // Disabled role — include with enabled: false for visibility
         const reg = ROLE_REGISTRY[id];
         roles[id] = {
+          maxWorkers: 1,
           levels: reg ? [...reg.levels] : [],
           defaultLevel: reg?.defaultLevel ?? "",
           models: reg ? { ...reg.models } : {},
@@ -112,6 +113,7 @@ function resolve(config: DevClawConfig): ResolvedConfig {
 
       const reg = ROLE_REGISTRY[id];
       roles[id] = {
+        maxWorkers: override.maxWorkers ?? 1,
         levels: override.levels ?? (reg ? [...reg.levels] : []),
         defaultLevel: override.defaultLevel ?? reg?.defaultLevel ?? "",
         models: { ...(reg?.models ?? {}), ...(override.models ?? {}) },
@@ -126,6 +128,7 @@ function resolve(config: DevClawConfig): ResolvedConfig {
   for (const [id, reg] of Object.entries(ROLE_REGISTRY)) {
     if (!roles[id]) {
       roles[id] = {
+        maxWorkers: 1,
         levels: [...reg.levels],
         defaultLevel: reg.defaultLevel,
         models: { ...reg.models },

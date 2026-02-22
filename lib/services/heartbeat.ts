@@ -517,5 +517,5 @@ async function checkProjectActive(
   const data = await readProjects(workspaceDir);
   const project = getProject(data, slug);
   if (!project) return false;
-  return Object.values(project.workers).some((w) => w.active);
+  return Object.values(project.workers).some((w) => w.slots.some(s => s.active));
 }

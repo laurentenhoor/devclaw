@@ -151,11 +151,14 @@ export function createResetDefaultsTool() {
         const data = await readProjects(workspaceDir);
 
         for (const [slug, project] of Object.entries(data.projects)) {
-          for (const [role, worker] of Object.entries(project.workers)) {
-            if (worker.active) {
+          for (const [role, rw] of Object.entries(project.workers)) {
+            const hasActive = rw.slots.some(s => s.active);
+            if (hasActive) {
               // Never touch active workers
-              for (const [level, key] of Object.entries(worker.sessions)) {
-                if (key) sessionsSkipped.push(`${slug}/${role}:${level} (active)`);
+              for (const slot of rw.slots) {
+                if (slot.active && slot.sessionKey && slot.level) {
+                  sessionsSkipped.push(`${slug}/${role}:${slot.level} (active)`);
+                }
               }
               continue;
             }
@@ -163,10 +166,10 @@ export function createResetDefaultsTool() {
             const keysToDelete: string[] = [];
             const nulledSessions: Record<string, null> = {};
 
-            for (const [level, key] of Object.entries(worker.sessions)) {
-              if (!key) continue;
-              keysToDelete.push(key);
-              nulledSessions[level] = null;
+            for (const slot of rw.slots) {
+              if (!slot.sessionKey || !slot.level) continue;
+              keysToDelete.push(slot.sessionKey);
+              nulledSessions[slot.level] = null;
             }
 
             if (Object.keys(nulledSessions).length === 0) continue;

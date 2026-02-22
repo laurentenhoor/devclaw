@@ -62,7 +62,7 @@ export async function migrateLegacySchema(data: any): Promise<ProjectsData> {
     const slug = projectName.toLowerCase().replace(/\s+/g, "-");
     const firstProj = legacyList[0];
     const mostRecent = legacyList.reduce((a, b) =>
-      (a.workers?.developer?.startTime || "") > (b.workers?.developer?.startTime || "") ? a : b
+      (a.workers?.developer?.slots?.[0]?.startTime || "") > (b.workers?.developer?.slots?.[0]?.startTime || "") ? a : b
     );
 
     // Create channels: first groupId is "primary", rest are "secondary-{n}"
@@ -77,7 +77,7 @@ export async function migrateLegacySchema(data: any): Promise<ProjectsData> {
     const mergedWorkers = { ...firstProj.workers };
     if (mostRecent !== firstProj) {
       for (const [role, worker] of Object.entries(mostRecent.workers)) {
-        if (worker.active) {
+        if (worker.slots?.some(s => s.active)) {
           mergedWorkers[role] = worker;
         }
       }

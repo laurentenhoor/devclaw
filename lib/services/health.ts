@@ -27,11 +27,13 @@
 import type { StateLabel, IssueProvider, Issue } from "../providers/provider.js";
 import {
   getSessionForLevel,
-  getWorker,
-  updateWorker,
+  getRoleWorker,
+  updateSlot,
+  deactivateWorker,
   readProjects,
   type Project,
   type ProjectsData,
+  type RoleWorkerState,
 } from "../projects.js";
 import { runCommand } from "../run-command.js";
 import { log as auditLog } from "../audit.js";
@@ -78,6 +80,7 @@ export type HealthIssue = {
   issueId?: string | null;
   expectedLabel?: string;
   actualLabel?: string | null;
+  slotIndex?: number;      // Slot index for multi-worker support
 };
 
 export type HealthFix = {
@@ -110,6 +113,7 @@ async function fetchIssue(
 // Health check logic
 // ---------------------------------------------------------------------------
 
+
 export async function checkWorkerHealth(opts: {
   workspaceDir: string;
   projectSlug: string;
@@ -134,302 +138,283 @@ export async function checkWorkerHealth(opts: {
   // Skip roles without workflow states (e.g. architect — tool-triggered only)
   if (!hasWorkflowStates(workflow, role)) return fixes;
 
-  const worker = getWorker(project, role);
-  const sessionKey = worker.level ? getSessionForLevel(worker, worker.level) : null;
+  const roleWorker = getRoleWorker(project, role);
 
   // Get labels from workflow config
   const expectedLabel = getActiveLabel(workflow, role);
-  // Use the label stored at dispatch time (previousLabel) if available.
-  // This ensures we revert to "To Improve" instead of always "To Do" when
-  // a worker was dispatched from a non-standard queue state.
-  const queueLabel: string = worker.previousLabel ?? getRevertLabel(workflow, role);
+  const queueLabel = getRevertLabel(workflow, role);
 
-  // Grace period: skip session liveness checks for recently-started workers.
-  // A freshly dispatched worker may not appear in gateway sessions yet.
-  const workerStartTime = worker.startTime ? new Date(worker.startTime).getTime() : null;
-  const withinGracePeriod = workerStartTime !== null && (Date.now() - workerStartTime) < GRACE_PERIOD_MS;
+  // Iterate over all slots
+  for (let slotIndex = 0; slotIndex < roleWorker.slots.length; slotIndex++) {
+    const slot = roleWorker.slots[slotIndex]!;
+    const sessionKey = slot.sessionKey;
 
-  // Parse issueId (may be comma-separated for batch, take first)
-  const issueIdNum = worker.issueId ? Number(worker.issueId.split(",")[0]) : null;
+    // Use the label stored at dispatch time (previousLabel) if available
+    const slotQueueLabel: string = slot.previousLabel ?? queueLabel;
 
-  // Fetch issue state if we have an issueId
-  let issue: Issue | null = null;
-  let currentLabel: StateLabel | null = null;
-  if (issueIdNum) {
-    issue = await fetchIssue(provider, issueIdNum);
-    currentLabel = issue ? getCurrentStateLabel(issue.labels, workflow) : null;
-  }
+    // Grace period: skip session liveness checks for recently-started workers
+    const workerStartTime = slot.startTime ? new Date(slot.startTime).getTime() : null;
+    const withinGracePeriod = workerStartTime !== null && (Date.now() - workerStartTime) < GRACE_PERIOD_MS;
 
-  // Helper to revert label
-  async function revertLabel(fix: HealthFix, from: StateLabel, to: StateLabel) {
-    if (!issueIdNum) return;
-    try {
-      await provider.transitionLabel(issueIdNum, from, to);
-      fix.labelReverted = `${from} → ${to}`;
-    } catch {
-      fix.labelRevertFailed = true;
+    // Parse issueId
+    const issueIdNum = slot.issueId ? Number(slot.issueId) : null;
+
+    // Fetch issue state if we have an issueId
+    let issue: Issue | null = null;
+    let currentLabel: StateLabel | null = null;
+    if (issueIdNum) {
+      issue = await fetchIssue(provider, issueIdNum);
+      currentLabel = issue ? getCurrentStateLabel(issue.labels, workflow) : null;
     }
-  }
 
-  // Helper to deactivate worker
-  async function deactivate(clearSessions = false) {
-    const updates: Record<string, unknown> = {
-      active: false,
-      issueId: null,
-      startTime: null,
-    };
-    if (clearSessions && worker.level) {
-      updates.sessions = { ...worker.sessions, [worker.level]: null };
-    }
-    await updateWorker(workspaceDir, projectSlug, role, updates);
-  }
-
-  // ---------------------------------------------------------------------------
-  // Case 6: Active but issue doesn't exist (deleted/closed externally)
-  // ---------------------------------------------------------------------------
-  if (worker.active && issueIdNum && !issue) {
-    const fix: HealthFix = {
-      issue: {
-        type: "issue_gone",
-        severity: "critical",
-        project: project.name,
-        projectSlug,
-        role,
-        level: worker.level,
-        sessionKey,
-        issueId: worker.issueId,
-        message: `${role.toUpperCase()} active but issue #${issueIdNum} no longer exists or is closed`,
-      },
-      fixed: false,
-    };
-    if (autoFix) {
-      await deactivate(true);
-      fix.fixed = true;
-    }
-    fixes.push(fix);
-    return fixes; // No point checking further
-  }
-
-  // ---------------------------------------------------------------------------
-  // Case 2: Active but issue label is NOT the expected in-progress label
-  // ---------------------------------------------------------------------------
-  if (worker.active && issue && currentLabel !== expectedLabel) {
-    const fix: HealthFix = {
-      issue: {
-        type: "label_mismatch",
-        severity: "critical",
-        project: project.name,
-        projectSlug,
-        role,
-        level: worker.level,
-        sessionKey,
-        issueId: worker.issueId,
-        expectedLabel,
-        actualLabel: currentLabel,
-        message: `${role.toUpperCase()} active but issue #${issueIdNum} has label "${currentLabel}" (expected "${expectedLabel}")`,
-      },
-      fixed: false,
-    };
-    if (autoFix) {
-      await deactivate(true);
-      fix.fixed = true;
-    }
-    fixes.push(fix);
-    return fixes; // State is invalid, don't check session
-  }
-
-  // ---------------------------------------------------------------------------
-  // Case 1: Active with correct label but session is dead/missing
-  // Skip if:
-  //   - sessions lookup unavailable (gateway timeout) — unknown ≠ dead
-  //   - worker started within grace period (may not appear in gateway yet)
-  // ---------------------------------------------------------------------------
-  if (worker.active && sessionKey && sessions && !withinGracePeriod && !isSessionAlive(sessionKey, sessions)) {
-    const fix: HealthFix = {
-      issue: {
-        type: "session_dead",
-        severity: "critical",
-        project: project.name,
-        projectSlug,
-        role,
-        sessionKey,
-        level: worker.level,
-        issueId: worker.issueId,
-        message: `${role.toUpperCase()} active but session "${sessionKey}" not found in gateway`,
-      },
-      fixed: false,
-    };
-    if (autoFix) {
-      await revertLabel(fix, expectedLabel, queueLabel);
-      await deactivate(true);
-      fix.fixed = true;
-    }
-    fixes.push(fix);
-    return fixes;
-  }
-
-  // ---------------------------------------------------------------------------
-  // Case 1b: Active but no session key at all (shouldn't happen normally)
-  // ---------------------------------------------------------------------------
-  if (worker.active && !sessionKey) {
-    const fix: HealthFix = {
-      issue: {
-        type: "session_dead",
-        severity: "critical",
-        project: project.name,
-        projectSlug,
-        role,
-        level: worker.level,
-        issueId: worker.issueId,
-        message: `${role.toUpperCase()} active but no session key for level "${worker.level}"`,
-      },
-      fixed: false,
-    };
-    if (autoFix) {
-      if (issue && currentLabel === expectedLabel) {
-        await revertLabel(fix, expectedLabel, queueLabel);
+    // Helper to revert label for this issue
+    async function revertLabel(fix: HealthFix, from: StateLabel, to: StateLabel) {
+      if (!issueIdNum) return;
+      try {
+        await provider.transitionLabel(issueIdNum, from, to);
+        fix.labelReverted = `${from} → ${to}`;
+      } catch {
+        fix.labelRevertFailed = true;
       }
-      await deactivate();
-      fix.fixed = true;
     }
-    fixes.push(fix);
-    return fixes;
-  }
 
-  // ---------------------------------------------------------------------------
-  // Case 1c: Active with correct label but session hit context limit (abortedLastRun)
-  // This indicates the session was aborted due to context overflow (#287, #290)
-  // Should heal immediately by reverting label and deactivating worker
-  // ---------------------------------------------------------------------------
-  if (worker.active && sessionKey && sessions && isSessionAlive(sessionKey, sessions)) {
-    const session = sessions.get(sessionKey);
-    if (session?.abortedLastRun) {
+    // Helper to deactivate this slot
+    async function deactivateSlot(clearSession = false) {
+      await deactivateWorker(workspaceDir, projectSlug, role, { 
+        slotIndex, 
+        issueId: slot.issueId ?? undefined 
+      });
+    }
+
+    // Case 6: Active but issue doesn't exist (deleted/closed externally)
+    if (slot.active && issueIdNum && !issue) {
       const fix: HealthFix = {
         issue: {
-          type: "context_overflow",
+          type: "issue_gone",
+          severity: "critical",
+          project: project.name,
+          projectSlug,
+          role,
+          level: slot.level,
+          sessionKey,
+          issueId: slot.issueId,
+          slotIndex,
+          message: `${role.toUpperCase()} slot ${slotIndex} active but issue #${issueIdNum} no longer exists or is closed`,
+        },
+        fixed: false,
+      };
+      if (autoFix) {
+        await deactivateSlot(true);
+        fix.fixed = true;
+      }
+      fixes.push(fix);
+      continue; // Skip other checks for this slot
+    }
+
+    // Case 2: Active but issue label is NOT the expected in-progress label
+    if (slot.active && issue && currentLabel !== expectedLabel) {
+      const fix: HealthFix = {
+        issue: {
+          type: "label_mismatch",
+          severity: "critical",
+          project: project.name,
+          projectSlug,
+          role,
+          level: slot.level,
+          sessionKey,
+          issueId: slot.issueId,
+          expectedLabel,
+          actualLabel: currentLabel,
+          slotIndex,
+          message: `${role.toUpperCase()} slot ${slotIndex} active but issue #${issueIdNum} has label "${currentLabel}" (expected "${expectedLabel}")`,
+        },
+        fixed: false,
+      };
+      if (autoFix) {
+        await deactivateSlot(true);
+        fix.fixed = true;
+      }
+      fixes.push(fix);
+      continue; // State is invalid, don't check session
+    }
+
+    // Case 1: Active with correct label but session is dead/missing
+    if (slot.active && sessionKey && sessions && !withinGracePeriod && !isSessionAlive(sessionKey, sessions)) {
+      const fix: HealthFix = {
+        issue: {
+          type: "session_dead",
           severity: "critical",
           project: project.name,
           projectSlug,
           role,
           sessionKey,
-          level: worker.level,
-          issueId: worker.issueId,
-          expectedLabel,
-          actualLabel: currentLabel,
-          message: `${role.toUpperCase()} session "${sessionKey}" hit context limit (abortedLastRun: true). Healing by reverting to queue.`,
+          level: slot.level,
+          issueId: slot.issueId,
+          slotIndex,
+          message: `${role.toUpperCase()} slot ${slotIndex} active but session "${sessionKey}" not found in gateway`,
+        },
+        fixed: false,
+      };
+      if (autoFix) {
+        await revertLabel(fix, expectedLabel, slotQueueLabel);
+        await deactivateSlot(true);
+        fix.fixed = true;
+      }
+      fixes.push(fix);
+      continue;
+    }
+
+    // Case 1b: Active but no session key at all
+    if (slot.active && !sessionKey) {
+      const fix: HealthFix = {
+        issue: {
+          type: "session_dead",
+          severity: "critical",
+          project: project.name,
+          projectSlug,
+          role,
+          level: slot.level,
+          issueId: slot.issueId,
+          slotIndex,
+          message: `${role.toUpperCase()} slot ${slotIndex} active but no session key for level "${slot.level}"`,
         },
         fixed: false,
       };
       if (autoFix) {
         if (issue && currentLabel === expectedLabel) {
-          await revertLabel(fix, expectedLabel, queueLabel);
+          await revertLabel(fix, expectedLabel, slotQueueLabel);
         }
-        // Clear the session for this level (force fresh start on next dispatch)
-        await deactivate(true);
+        await deactivateSlot();
         fix.fixed = true;
       }
       fixes.push(fix);
-      // Log the healing action for monitoring/correlation
-      await auditLog(workspaceDir, "context_overflow_healed", {
-        project: project.name,
-        projectSlug,
-        role,
-        issueId: worker.issueId,
-        sessionKey,
-        level: worker.level,
-      }).catch(() => {});
-      return fixes; // Critical issue, stop checking further
+      continue;
     }
-  }
 
-  // ---------------------------------------------------------------------------
-  // Case 3: Active with correct label and alive session — check for staleness
-  // Skip if sessions lookup unavailable (gateway timeout)
-  // ---------------------------------------------------------------------------
-  if (worker.active && worker.startTime && sessionKey && sessions && isSessionAlive(sessionKey, sessions)) {
-    const hours = (Date.now() - new Date(worker.startTime).getTime()) / 3_600_000;
-    if (hours > staleWorkerHours) {
+    // Case 1c: Active with correct label but session hit context limit (abortedLastRun)
+    if (slot.active && sessionKey && sessions && isSessionAlive(sessionKey, sessions)) {
+      const session = sessions.get(sessionKey);
+      if (session?.abortedLastRun) {
+        const fix: HealthFix = {
+          issue: {
+            type: "context_overflow",
+            severity: "critical",
+            project: project.name,
+            projectSlug,
+            role,
+            sessionKey,
+            level: slot.level,
+            issueId: slot.issueId,
+            expectedLabel,
+            actualLabel: currentLabel,
+            slotIndex,
+            message: `${role.toUpperCase()} slot ${slotIndex} session "${sessionKey}" hit context limit (abortedLastRun: true). Healing by reverting to queue.`,
+          },
+          fixed: false,
+        };
+        if (autoFix) {
+          if (issue && currentLabel === expectedLabel) {
+            await revertLabel(fix, expectedLabel, slotQueueLabel);
+          }
+          await deactivateSlot(true);
+          fix.fixed = true;
+        }
+        fixes.push(fix);
+        await auditLog(workspaceDir, "context_overflow_healed", {
+          project: project.name,
+          projectSlug,
+          role,
+          issueId: slot.issueId,
+          sessionKey,
+          level: slot.level,
+          slotIndex,
+        }).catch(() => {});
+        continue;
+      }
+    }
+
+    // Case 3: Active with correct label and alive session — check for staleness
+    if (slot.active && slot.startTime && sessionKey && sessions && isSessionAlive(sessionKey, sessions)) {
+      const hours = (Date.now() - new Date(slot.startTime).getTime()) / 3_600_000;
+      if (hours > staleWorkerHours) {
+        const fix: HealthFix = {
+          issue: {
+            type: "stale_worker",
+            severity: "warning",
+            project: project.name,
+            projectSlug,
+            role,
+            hoursActive: Math.round(hours * 10) / 10,
+            sessionKey,
+            issueId: slot.issueId,
+            slotIndex,
+            message: `${role.toUpperCase()} slot ${slotIndex} active for ${Math.round(hours * 10) / 10}h — may need attention`,
+          },
+          fixed: false,
+        };
+        if (autoFix) {
+          await revertLabel(fix, expectedLabel, slotQueueLabel);
+          await deactivateSlot();
+          fix.fixed = true;
+        }
+        fixes.push(fix);
+      }
+    }
+
+    // Case 4: Inactive but issue has stuck active label
+    if (!slot.active && issue && currentLabel === expectedLabel) {
       const fix: HealthFix = {
         issue: {
-          type: "stale_worker",
+          type: "stuck_label",
+          severity: "critical",
+          project: project.name,
+          projectSlug,
+          role,
+          issueId: slot.issueId,
+          expectedLabel: slotQueueLabel,
+          actualLabel: currentLabel,
+          slotIndex,
+          message: `${role.toUpperCase()} slot ${slotIndex} inactive but issue #${issueIdNum} still has "${currentLabel}" label`,
+        },
+        fixed: false,
+      };
+      if (autoFix) {
+        await revertLabel(fix, expectedLabel, slotQueueLabel);
+        // Clear the slot's issueId
+        if (slot.issueId) {
+          await updateSlot(workspaceDir, projectSlug, role, slotIndex, { issueId: null });
+        }
+        fix.fixed = true;
+      }
+      fixes.push(fix);
+      continue;
+    }
+
+    // Case 5: Inactive but still has issueId set (orphan reference)
+    if (!slot.active && slot.issueId) {
+      const fix: HealthFix = {
+        issue: {
+          type: "orphan_issue_id",
           severity: "warning",
           project: project.name,
           projectSlug,
           role,
-          hoursActive: Math.round(hours * 10) / 10,
-          sessionKey,
-          issueId: worker.issueId,
-          message: `${role.toUpperCase()} active for ${Math.round(hours * 10) / 10}h — may need attention`,
+          issueId: slot.issueId,
+          slotIndex,
+          message: `${role.toUpperCase()} slot ${slotIndex} inactive but still has issueId "${slot.issueId}"`,
         },
         fixed: false,
       };
-      // Stale workers get auto-fixed: revert label and deactivate
       if (autoFix) {
-        await revertLabel(fix, expectedLabel, queueLabel);
-        await deactivate();
+        await updateSlot(workspaceDir, projectSlug, role, slotIndex, { issueId: null });
         fix.fixed = true;
       }
       fixes.push(fix);
     }
-    // Otherwise: healthy, no issues to report
-  }
-
-  // ---------------------------------------------------------------------------
-  // Case 4: Inactive but issue has stuck active label
-  // ---------------------------------------------------------------------------
-  if (!worker.active && issue && currentLabel === expectedLabel) {
-    const fix: HealthFix = {
-      issue: {
-        type: "stuck_label",
-        severity: "critical",
-        project: project.name,
-        projectSlug,
-        role,
-        issueId: worker.issueId,
-        expectedLabel: queueLabel,
-        actualLabel: currentLabel,
-        message: `${role.toUpperCase()} inactive but issue #${issueIdNum} still has "${currentLabel}" label`,
-      },
-      fixed: false,
-    };
-    if (autoFix) {
-      await revertLabel(fix, expectedLabel, queueLabel);
-      // Also clear the issueId if present
-      if (worker.issueId) {
-        await updateWorker(workspaceDir, projectSlug, role, { issueId: null });
-      }
-      fix.fixed = true;
-    }
-    fixes.push(fix);
-    return fixes;
-  }
-
-  // ---------------------------------------------------------------------------
-  // Case 5: Inactive but still has issueId set (orphan reference)
-  // ---------------------------------------------------------------------------
-  if (!worker.active && worker.issueId) {
-    const fix: HealthFix = {
-      issue: {
-        type: "orphan_issue_id",
-        severity: "warning",
-        project: project.name,
-        projectSlug,
-        role,
-        issueId: worker.issueId,
-        message: `${role.toUpperCase()} inactive but still has issueId "${worker.issueId}"`,
-      },
-      fixed: false,
-    };
-    if (autoFix) {
-      await updateWorker(workspaceDir, projectSlug, role, { issueId: null });
-      fix.fixed = true;
-    }
-    fixes.push(fix);
   }
 
   return fixes;
 }
-
 // ---------------------------------------------------------------------------
 // Orphaned label scan
 // ---------------------------------------------------------------------------
@@ -463,7 +448,7 @@ export async function scanOrphanedLabels(opts: {
   // Skip roles without workflow states (e.g. architect — tool-triggered only)
   if (!hasWorkflowStates(workflow, role)) return fixes;
 
-  const worker = getWorker(project, role);
+  const roleWorker = getRoleWorker(project, role);
 
   // Get labels from workflow config
   const activeLabel = getActiveLabel(workflow, role);
@@ -478,15 +463,15 @@ export async function scanOrphanedLabels(opts: {
     return fixes;
   }
 
-  // Check each issue to see if it's tracked in worker state
+  // Check each issue to see if it's tracked in any slot
   for (const issue of issuesWithLabel) {
     const issueIdStr = String(issue.iid);
 
-    // Check if this issue is tracked
-    const isTracked = worker.active && worker.issueId === issueIdStr;
+    // Check if this issue is tracked in any slot
+    const isTracked = roleWorker.slots.some(slot => slot.active && slot.issueId === issueIdStr);
 
     if (!isTracked) {
-      // Orphaned label: issue has active label but no worker tracking it
+      // Orphaned label: issue has active label but no slot tracking it
       const fix: HealthFix = {
         issue: {
           type: "orphaned_label",
@@ -497,7 +482,7 @@ export async function scanOrphanedLabels(opts: {
           issueId: issueIdStr,
           expectedLabel: queueLabel,
           actualLabel: activeLabel,
-          message: `Issue #${issue.iid} has "${activeLabel}" label but no ${role.toUpperCase()} worker is tracking it`,
+          message: `Issue #${issue.iid} has "${activeLabel}" label but no ${role.toUpperCase()} slot is tracking it`,
         },
         fixed: false,
       };
@@ -523,7 +508,7 @@ export async function scanOrphanedLabels(opts: {
 // Orphaned session scan
 // ---------------------------------------------------------------------------
 
-/** Subagent session key pattern: agent:{agentId}:subagent:{project}-{role}-{level} */
+/** Subagent session key pattern: agent:{agentId}:subagent:{project}-{role}-{level}-{slotIndex} */
 const SUBAGENT_PATTERN = /^agent:[^:]+:subagent:/;
 
 /**
@@ -556,13 +541,13 @@ export async function scanOrphanedSessions(opts: {
   }
 
   for (const project of Object.values(data.projects)) {
-    for (const [_role, worker] of Object.entries(project.workers)) {
-      for (const [_level, sessionKey] of Object.entries(worker.sessions)) {
-        if (sessionKey) {
-          knownKeys.add(sessionKey);
+    for (const [_role, rw] of Object.entries(project.workers)) {
+      for (const slot of rw.slots) {
+        if (slot.sessionKey) {
+          knownKeys.add(slot.sessionKey);
           // Track active worker sessions (belt-and-suspenders: never delete these)
-          if (worker.active) {
-            activeSessionKeys.add(sessionKey);
+          if (slot.active) {
+            activeSessionKeys.add(slot.sessionKey);
           }
         }
       }

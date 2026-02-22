@@ -210,6 +210,7 @@ function buildRolesSection(): string {
 
 | Field              | Constrained?  | Notes |
 |-------------------|---------------|-------|
+| \`maxWorkers\`      | Must be positive integer | Maximum concurrent workers for this role. Default: 1. |
 | \`levels\`          | FREE — array of strings | Define your own level names. Default model routing uses these as keys. |
 | \`defaultLevel\`    | Must be one of \`levels\` | Used when no level specified on issue. |
 | \`models\`          | FREE — map of level→model ID | Model IDs are free-form strings. Format: \`provider/model-name\`. |
@@ -448,6 +449,13 @@ roles:
       junior: google/gemini-2.0-flash
       medior: google/gemini-2.5-pro
       senior: anthropic/claude-opus-4-6
+\`\`\`
+
+### Allow concurrent developers on a project
+\`\`\`yaml
+roles:
+  developer:
+    maxWorkers: 3  # Allow up to 3 developers working in parallel
 \`\`\`
 
 ### Override timeouts for a slow repo

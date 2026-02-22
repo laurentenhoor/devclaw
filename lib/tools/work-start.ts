@@ -10,7 +10,7 @@ import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
 import type { StateLabel } from "../providers/provider.js";
 import { selectLevel } from "../model-selector.js";
-import { getWorker } from "../projects.js";
+import { getRoleWorker, findFreeSlot, countActiveSlots } from "../projects.js";
 import { dispatchTask } from "../dispatch.js";
 import { findNextIssue, detectRoleFromLabel, detectRoleLevelFromLabels } from "../services/queue-scan.js";
 import { getAllRoleIds, getLevelsForRole } from "../roles/index.js";
@@ -68,11 +68,14 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
       if (roleParam && roleParam !== detectedRole) throw new Error(`Role mismatch: "${currentLabel}" → ${detectedRole}, requested ${roleParam}`);
 
       // Check worker availability
-      const worker = getWorker(project, role);
-      if (worker.active) throw new Error(`${role.toUpperCase()} already active on ${project.name} (issue: ${worker.issueId})`);
+      const roleWorker = getRoleWorker(project, role);
+      const freeSlot = findFreeSlot(roleWorker);
+      if (freeSlot === null) {
+        throw new Error(`${role.toUpperCase()} at capacity (${roleWorker.maxWorkers}/${roleWorker.maxWorkers} slots active)`);
+      }
       if ((project.roleExecution ?? ExecutionMode.PARALLEL) === ExecutionMode.SEQUENTIAL) {
         for (const [otherRole, otherWorker] of Object.entries(project.workers)) {
-          if (otherRole !== role && otherWorker.active) {
+          if (otherRole !== role && countActiveSlots(otherWorker) > 0) {
             throw new Error(`Sequential roleExecution: ${otherRole.toUpperCase()} is active`);
           }
         }
@@ -120,6 +123,7 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
         pluginConfig,
         sessionKey: ctx.sessionKey,
         runtime: api.runtime,
+        slotIndex: freeSlot,
       });
 
       // Auto-tick disabled per issue #125 - work_start should only pick up the explicitly requested issue

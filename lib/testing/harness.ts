@@ -187,21 +187,31 @@ export async function createTestHarness(opts?: HarnessOptions): Promise<TestHarn
   await fs.mkdir(logDir, { recursive: true });
 
   // Build project
-  const defaultWorkers: Record<string, import("../projects.js").WorkerState> = {
-    developer: emptyWorkerState(["junior", "medior", "senior"]),
-    tester: emptyWorkerState(["junior", "medior", "senior"]),
-    architect: emptyWorkerState(["junior", "senior"]),
-    reviewer: emptyWorkerState(["junior", "senior"]),
+  const defaultWorkers: Record<string, import("../projects.js").RoleWorkerState> = {
+    developer: emptyWorkerState(),
+    tester: emptyWorkerState(),
+    architect: emptyWorkerState(),
+    reviewer: emptyWorkerState(),
   };
 
-  // Apply worker overrides
+  // Apply worker overrides (legacy format: map to slot 0)
   if (workerOverrides) {
     for (const [role, overrides] of Object.entries(workerOverrides)) {
-      if (defaultWorkers[role]) {
-        defaultWorkers[role] = { ...defaultWorkers[role], ...overrides };
-      } else {
-        defaultWorkers[role] = { ...emptyWorkerState([]), ...overrides };
+      const rw = defaultWorkers[role] ?? emptyWorkerState();
+      const slot = rw.slots[0]!;
+      if (overrides.active !== undefined) slot.active = overrides.active;
+      if (overrides.issueId !== undefined) slot.issueId = overrides.issueId;
+      if (overrides.level !== undefined) slot.level = overrides.level;
+      if (overrides.startTime !== undefined) slot.startTime = overrides.startTime;
+      if (overrides.previousLabel !== undefined) slot.previousLabel = overrides.previousLabel;
+      if (overrides.sessions) {
+        // Extract sessionKey from sessions
+        const level = overrides.level ?? slot.level;
+        if (level && overrides.sessions[level]) {
+          slot.sessionKey = overrides.sessions[level]!;
+        }
       }
+      defaultWorkers[role] = rw;
     }
   }
 

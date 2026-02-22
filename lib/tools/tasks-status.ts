@@ -86,14 +86,23 @@ export function createTasksStatusTool(api: OpenClawPluginApi) {
             };
           }
 
-          // Workers summary
-          const workers: Record<string, { active: boolean; issueId: string | null; level: string | null; startTime: string | null }> = {};
-          for (const [role, worker] of Object.entries(project.workers)) {
+          // Workers summary - show slot utilization
+          const workers: Record<string, { 
+            maxWorkers: number; 
+            activeSlots: number;
+            slots: Array<{ active: boolean; issueId: string | null; level: string | null; startTime: string | null }>;
+          }> = {};
+          for (const [role, rw] of Object.entries(project.workers)) {
+            const activeSlots = rw.slots.filter(s => s.active).length;
             workers[role] = {
-              active: worker.active,
-              issueId: worker.issueId,
-              level: worker.level,
-              startTime: worker.startTime,
+              maxWorkers: rw.maxWorkers,
+              activeSlots,
+              slots: rw.slots.map(slot => ({
+                active: slot.active,
+                issueId: slot.issueId,
+                level: slot.level,
+                startTime: slot.startTime,
+              })),
             };
           }
 

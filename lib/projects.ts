@@ -77,15 +77,42 @@ async function releaseLock(workspaceDir: string): Promise<void> {
   try { await fs.unlink(lockPath(workspaceDir)); } catch { /* already removed */ }
 }
 
-export type WorkerState = {
+// ---------------------------------------------------------------------------
+// Slot-based worker model — supports multiple concurrent workers per role
+// ---------------------------------------------------------------------------
+
+export type SlotState = {
+  active: boolean;
+  issueId: string | null;
+  level: string | null;
+  sessionKey: string | null;
+  startTime: string | null;
+  previousLabel?: string | null;
+};
+
+export type RoleWorkerState = {
+  maxWorkers: number;
+  slots: SlotState[];
+};
+
+/**
+ * Legacy WorkerState — kept for migration detection and backward compatibility.
+ * All new code should use RoleWorkerState / SlotState.
+ */
+export type LegacyWorkerState = {
   active: boolean;
   issueId: string | null;
   startTime: string | null;
   level: string | null;
   sessions: Record<string, string | null>;
-  /** Label the issue had before being transitioned to the active (Doing/Testing) state. Used by health check to revert to the correct queue label. */
   previousLabel?: string | null;
 };
+
+/**
+ * @deprecated Use RoleWorkerState. Kept as alias for consumers not yet migrated.
+ * Maps to slot[0] of a RoleWorkerState for single-worker backward compatibility.
+ */
+export type WorkerState = LegacyWorkerState;
 
 /**
  * Channel registration: maps a groupId to messaging endpoint with event filters.
@@ -119,7 +146,7 @@ export type Project = {
   maxDevWorkers?: number;
   maxQaWorkers?: number;
   /** Worker state per role (developer, tester, architect, or custom roles). Shared across all channels. */
-  workers: Record<string, WorkerState>;
+  workers: Record<string, RoleWorkerState>;
 };
 
 /**
@@ -137,38 +164,88 @@ export type LegacyProject = {
   roleExecution?: ExecutionMode;
   maxDevWorkers?: number;
   maxQaWorkers?: number;
-  workers: Record<string, WorkerState>;
+  workers: Record<string, RoleWorkerState>;
 };
 
 export type ProjectsData = {
   projects: Record<string, Project>; // Keyed by slug (new schema)
 };
 
-/**
- * Create a blank WorkerState with null sessions for given level names.
- */
-export function emptyWorkerState(levels: string[]): WorkerState {
-  const sessions: Record<string, string | null> = {};
-  for (const l of levels) {
-    sessions[l] = null;
-  }
+// ---------------------------------------------------------------------------
+// Slot helpers
+// ---------------------------------------------------------------------------
+
+/** Create an empty (inactive) slot. */
+export function emptySlot(): SlotState {
   return {
     active: false,
     issueId: null,
-    startTime: null,
     level: null,
-    sessions,
+    sessionKey: null,
+    startTime: null,
   };
 }
 
+/** Create a blank RoleWorkerState with the given number of slots. */
+export function emptyRoleWorkerState(maxWorkers: number = 1): RoleWorkerState {
+  const slots: SlotState[] = [];
+  for (let i = 0; i < maxWorkers; i++) {
+    slots.push(emptySlot());
+  }
+  return { maxWorkers, slots };
+}
+
+/** Return the lowest-index inactive slot, or null if all slots are active. */
+export function findFreeSlot(roleWorker: RoleWorkerState): number | null {
+  for (let i = 0; i < roleWorker.slots.length; i++) {
+    if (!roleWorker.slots[i]!.active) return i;
+  }
+  return null;
+}
+
+/** Find the slot index for a given issueId, or null if not found. */
+export function findSlotByIssue(roleWorker: RoleWorkerState, issueId: string): number | null {
+  for (let i = 0; i < roleWorker.slots.length; i++) {
+    if (roleWorker.slots[i]!.issueId === issueId) return i;
+  }
+  return null;
+}
+
+/** Count the number of active slots. */
+export function countActiveSlots(roleWorker: RoleWorkerState): number {
+  return roleWorker.slots.filter(s => s.active).length;
+}
+
+// ---------------------------------------------------------------------------
+// Backward-compatible helpers (bridge old single-worker callers)
+// ---------------------------------------------------------------------------
+
 /**
- * Get session key for a specific level from a worker's sessions map.
+ * @deprecated Use emptyRoleWorkerState(). Kept for callers not yet migrated.
+ * Creates a RoleWorkerState with 1 slot (single-worker compat).
+ */
+export function emptyWorkerState(_levels?: string[]): RoleWorkerState {
+  return emptyRoleWorkerState(1);
+}
+
+/**
+ * Get session key for a specific level from slot 0 of a role's worker state.
+ * @deprecated Prefer direct slot access via roleWorker.slots[i].sessionKey
  */
 export function getSessionForLevel(
-  worker: WorkerState,
+  worker: RoleWorkerState | LegacyWorkerState,
   level: string,
 ): string | null {
-  return worker.sessions[level] ?? null;
+  // New slot-based format
+  if ("slots" in worker) {
+    // Find a slot with matching level that has a sessionKey
+    for (const slot of worker.slots) {
+      if (slot.level === level && slot.sessionKey) return slot.sessionKey;
+    }
+    return null;
+  }
+  // Legacy format fallback
+  return (worker as LegacyWorkerState).sessions[level] ?? null;
 }
 
 function projectsPath(workspaceDir: string): string {
@@ -241,24 +318,56 @@ export function getProject(
   return slug ? data.projects[slug] : undefined;
 }
 
-export function getWorker(
+/**
+ * Get the RoleWorkerState for a given role.
+ * Returns a single-slot empty state if the role has no workers configured.
+ */
+export function getRoleWorker(
   project: Project,
   role: string,
-): WorkerState {
-  return project.workers[role] ?? emptyWorkerState([]);
+): RoleWorkerState {
+  return project.workers[role] ?? emptyRoleWorkerState(1);
+}
+
+/** Convert a slot to a LegacyWorkerState for backward compatibility. */
+function slotToLegacy(rw: RoleWorkerState, slotIndex: number): LegacyWorkerState {
+  const slot = rw.slots[slotIndex] ?? emptySlot();
+  const sessions: Record<string, string | null> = {};
+  if (slot.level && slot.sessionKey) {
+    sessions[slot.level] = slot.sessionKey;
+  }
+  return {
+    active: slot.active,
+    issueId: slot.issueId,
+    startTime: slot.startTime,
+    level: slot.level,
+    sessions,
+    previousLabel: slot.previousLabel,
+  };
 }
 
 /**
- * Update worker state for a project. Accepts slug or groupId (dual-mode).
- * Only provided fields are updated.
- * Sessions are merged (not replaced) when both existing and new sessions are present.
+ * Get a backward-compatible single-worker view (slot 0) for callers not yet migrated.
+ * @deprecated Use getRoleWorker() + slot-based access. Will be removed after #328-#331.
+ */
+export function getWorker(
+  project: Project,
+  role: string,
+): LegacyWorkerState {
+  const rw = getRoleWorker(project, role);
+  return slotToLegacy(rw, 0);
+}
+
+/**
+ * Update a specific slot in a role's worker state.
  * Uses file locking to prevent concurrent read-modify-write races.
  */
-export async function updateWorker(
+export async function updateSlot(
   workspaceDir: string,
   slugOrGroupId: string,
   role: string,
-  updates: Partial<WorkerState>,
+  slotIndex: number,
+  updates: Partial<SlotState>,
 ): Promise<ProjectsData> {
   await acquireLock(workspaceDir);
   try {
@@ -268,18 +377,16 @@ export async function updateWorker(
       throw new Error(`Project not found for slug or groupId: ${slugOrGroupId}`);
     }
 
-    const project = data.projects[slug];
-    if (!project) {
-      throw new Error(`Project not found for slug: ${slug}`);
+    const project = data.projects[slug]!;
+    const rw = project.workers[role] ?? emptyRoleWorkerState(1);
+    
+    // Ensure slot exists (expand slots array if needed)
+    while (rw.slots.length <= slotIndex) {
+      rw.slots.push(emptySlot());
     }
 
-    const worker = project.workers[role] ?? emptyWorkerState([]);
-
-    if (updates.sessions && worker.sessions) {
-      updates.sessions = { ...worker.sessions, ...updates.sessions };
-    }
-
-    project.workers[role] = { ...worker, ...updates };
+    rw.slots[slotIndex] = { ...rw.slots[slotIndex]!, ...updates };
+    project.workers[role] = rw;
 
     await writeProjects(workspaceDir, data);
     return data;
@@ -289,9 +396,67 @@ export async function updateWorker(
 }
 
 /**
- * Mark a worker as active with a new task.
- * Stores session key in sessions[level] when a new session is spawned.
- * Stores previousLabel so health check can revert to the correct queue state.
+ * Update worker state for a project (backward-compatible single-slot mode).
+ * Operates on slot 0. Callers should migrate to updateSlot() for multi-slot support.
+ * @deprecated Use updateSlot() for explicit slot control.
+ */
+export async function updateWorker(
+  workspaceDir: string,
+  slugOrGroupId: string,
+  role: string,
+  updates: Partial<LegacyWorkerState>,
+): Promise<ProjectsData> {
+  await acquireLock(workspaceDir);
+  try {
+    const data = await readProjects(workspaceDir);
+    const slug = resolveProjectSlug(data, slugOrGroupId);
+    if (!slug) {
+      throw new Error(`Project not found for slug or groupId: ${slugOrGroupId}`);
+    }
+
+    const project = data.projects[slug]!;
+    const rw = project.workers[role] ?? emptyRoleWorkerState(1);
+    
+    // Operate on slot 0 for backward compatibility
+    const slot = rw.slots[0] ?? emptySlot();
+    
+    if (updates.active !== undefined) slot.active = updates.active;
+    if (updates.issueId !== undefined) slot.issueId = updates.issueId;
+    if (updates.level !== undefined) slot.level = updates.level;
+    if (updates.startTime !== undefined) slot.startTime = updates.startTime;
+    if (updates.previousLabel !== undefined) slot.previousLabel = updates.previousLabel;
+    
+    // Map sessions to sessionKey on slot 0
+    if (updates.sessions) {
+      // Find the session key for the current level, or take the first non-null
+      const level = updates.level ?? slot.level;
+      if (level && updates.sessions[level] !== undefined) {
+        slot.sessionKey = updates.sessions[level];
+      } else {
+        // Set to first non-null session, or null to clear
+        const firstEntry = Object.entries(updates.sessions).find(([, v]) => v != null);
+        if (firstEntry) {
+          slot.sessionKey = firstEntry[1];
+        } else if (Object.values(updates.sessions).every(v => v === null)) {
+          slot.sessionKey = null;
+        }
+      }
+    }
+    
+    rw.slots[0] = slot;
+    project.workers[role] = rw;
+
+    await writeProjects(workspaceDir, data);
+    return data;
+  } finally {
+    await releaseLock(workspaceDir);
+  }
+}
+
+/**
+ * Mark a worker slot as active with a new task.
+ * When slotIndex is provided, activates that specific slot.
+ * Otherwise, finds the first free slot (backward compatible with single-slot callers).
  * Accepts slug or groupId (dual-mode).
  */
 export async function activateWorker(
@@ -305,41 +470,99 @@ export async function activateWorker(
     startTime?: string;
     /** Label the issue had before transitioning to the active state (e.g. "To Do", "To Improve"). */
     previousLabel?: string;
+    /** Slot index to activate. If omitted, finds first free slot (defaults to 0). */
+    slotIndex?: number;
   },
 ): Promise<ProjectsData> {
-  const updates: Partial<WorkerState> = {
-    active: true,
-    issueId: params.issueId,
-    level: params.level,
-  };
-  if (params.sessionKey !== undefined) {
-    updates.sessions = { [params.level]: params.sessionKey };
+  await acquireLock(workspaceDir);
+  try {
+    const data = await readProjects(workspaceDir);
+    const slug = resolveProjectSlug(data, slugOrGroupId);
+    if (!slug) {
+      throw new Error(`Project not found for slug or groupId: ${slugOrGroupId}`);
+    }
+
+    const project = data.projects[slug]!;
+    const rw = project.workers[role] ?? emptyRoleWorkerState(1);
+    
+    const idx = params.slotIndex ?? findFreeSlot(rw) ?? 0;
+    
+    // Ensure slot exists
+    while (rw.slots.length <= idx) {
+      rw.slots.push(emptySlot());
+    }
+    
+    rw.slots[idx] = {
+      active: true,
+      issueId: params.issueId,
+      level: params.level,
+      sessionKey: params.sessionKey ?? rw.slots[idx]!.sessionKey,
+      startTime: params.startTime ?? new Date().toISOString(),
+      previousLabel: params.previousLabel ?? null,
+    };
+    
+    project.workers[role] = rw;
+    await writeProjects(workspaceDir, data);
+    return data;
+  } finally {
+    await releaseLock(workspaceDir);
   }
-  if (params.startTime !== undefined) {
-    updates.startTime = params.startTime;
-  }
-  if (params.previousLabel !== undefined) {
-    updates.previousLabel = params.previousLabel;
-  }
-  return updateWorker(workspaceDir, slugOrGroupId, role, updates);
 }
 
 /**
- * Mark a worker as inactive after task completion.
- * Preserves sessions map and level for reuse via updateWorker's spread.
- * Clears startTime to prevent stale state on inactive workers.
+ * Mark a worker slot as inactive after task completion.
+ * Preserves sessionKey and level for session reuse.
+ * When issueId is provided, finds the slot with that issue.
+ * When slotIndex is provided, deactivates that specific slot.
+ * Otherwise deactivates slot 0 (backward compatible).
  * Accepts slug or groupId (dual-mode).
  */
 export async function deactivateWorker(
   workspaceDir: string,
   slugOrGroupId: string,
   role: string,
+  opts?: { slotIndex?: number; issueId?: string },
 ): Promise<ProjectsData> {
-  return updateWorker(workspaceDir, slugOrGroupId, role, {
-    active: false,
-    issueId: null,
-    startTime: null,
-  });
+  await acquireLock(workspaceDir);
+  try {
+    const data = await readProjects(workspaceDir);
+    const slug = resolveProjectSlug(data, slugOrGroupId);
+    if (!slug) {
+      throw new Error(`Project not found for slug or groupId: ${slugOrGroupId}`);
+    }
+
+    const project = data.projects[slug]!;
+    const rw = project.workers[role] ?? emptyRoleWorkerState(1);
+    
+    let idx: number;
+    if (opts?.slotIndex !== undefined) {
+      idx = opts.slotIndex;
+    } else if (opts?.issueId) {
+      idx = findSlotByIssue(rw, opts.issueId) ?? 0;
+    } else {
+      // Backward compat: deactivate slot 0
+      idx = 0;
+    }
+    
+    if (idx < rw.slots.length) {
+      const slot = rw.slots[idx]!;
+      // Preserve sessionKey and level for reuse
+      rw.slots[idx] = {
+        active: false,
+        issueId: null,
+        level: slot.level,
+        sessionKey: slot.sessionKey,
+        startTime: null,
+        previousLabel: null,
+      };
+    }
+    
+    project.workers[role] = rw;
+    await writeProjects(workspaceDir, data);
+    return data;
+  } finally {
+    await releaseLock(workspaceDir);
+  }
 }
 
 /**
