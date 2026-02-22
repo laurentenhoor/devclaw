@@ -1,5 +1,5 @@
 /**
- * Tests for projects.ts — worker state, migration, and accessors.
+ * Tests for projects.ts — slot-based worker state, migration, and accessors.
  * Run with: npx tsx --test lib/projects.test.ts
  */
 import { describe, it } from "node:test";
@@ -7,10 +7,23 @@ import assert from "node:assert";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import { readProjects, getWorker, emptyWorkerState, writeProjects, type ProjectsData } from "./projects.js";
+import {
+  readProjects,
+  getWorker,
+  getRoleWorker,
+  emptyWorkerState,
+  emptyRoleWorkerState,
+  emptySlot,
+  findFreeSlot,
+  findSlotByIssue,
+  countActiveSlots,
+  writeProjects,
+  type ProjectsData,
+  type RoleWorkerState,
+} from "./projects.js";
 
 describe("readProjects migration", () => {
-  it("should migrate old format (dev/qa/architect fields) to workers map", async () => {
+  it("should migrate old format (dev/qa/architect fields) to slot-based workers", async () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "devclaw-proj-"));
     const projDir = path.join(tmpDir, "projects");
     await fs.mkdir(projDir, { recursive: true });
@@ -42,10 +55,12 @@ describe("readProjects migration", () => {
     assert.ok(project.workers.tester, "should have tester worker (migrated from qa)");
     assert.ok(project.workers.architect, "should have architect worker");
 
-    // Developer worker should be active with migrated level
-    assert.strictEqual(project.workers.developer.active, true);
-    assert.strictEqual(project.workers.developer.issueId, "42");
-    assert.strictEqual(project.workers.developer.level, "medior");
+    // Developer worker should have slot[0] active with migrated level
+    const devRw = project.workers.developer;
+    assert.strictEqual(devRw.slots[0]!.active, true);
+    assert.strictEqual(devRw.slots[0]!.issueId, "42");
+    assert.strictEqual(devRw.slots[0]!.level, "medior");
+    assert.strictEqual(devRw.slots[0]!.sessionKey, "key-1");
 
     // Old fields should not exist on the object
     assert.strictEqual((project as any).dev, undefined);
@@ -80,25 +95,26 @@ describe("readProjects migration", () => {
     const data = await readProjects(tmpDir);
     const project = data.projects["group-1"];
 
-    // Level names should be migrated (dev→developer, qa→tester, medior→medior, reviewer→medior)
-    assert.strictEqual(project.workers.developer.level, "medior");
-    assert.strictEqual(project.workers.tester.level, "medior");
-    assert.strictEqual(project.workers.architect.level, "senior");
+    // Level names should be migrated
+    assert.strictEqual(project.workers.developer.slots[0]!.level, "medior");
+    assert.strictEqual(project.workers.tester.slots[0]!.level, "medior");
+    assert.strictEqual(project.workers.architect.slots[0]!.level, "senior");
 
     // Session keys should be migrated
-    assert.strictEqual(project.workers.developer.sessions.medior, "key-1");
-    assert.strictEqual(project.workers.tester.sessions.medior, "key-2");
-    assert.strictEqual(project.workers.architect.sessions.senior, "key-3");
+    assert.strictEqual(project.workers.developer.slots[0]!.sessionKey, "key-1");
+    assert.strictEqual(project.workers.tester.slots[0]!.sessionKey, "key-2");
+    assert.strictEqual(project.workers.architect.slots[0]!.sessionKey, "key-3");
 
     await fs.rm(tmpDir, { recursive: true });
   });
 
-  it("should read new format (workers map) correctly", async () => {
+  it("should read legacy workers-map format and migrate to slots", async () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "devclaw-proj-"));
     const dataDir = path.join(tmpDir, "devclaw");
     await fs.mkdir(dataDir, { recursive: true });
 
-    const newFormat = {
+    // Old workers-map format (flat WorkerState, no slots)
+    const legacyFormat = {
       projects: {
         "group-1": {
           name: "modern",
@@ -114,25 +130,67 @@ describe("readProjects migration", () => {
         },
       },
     };
-    await fs.writeFile(path.join(dataDir, "projects.json"), JSON.stringify(newFormat), "utf-8");
+    await fs.writeFile(path.join(dataDir, "projects.json"), JSON.stringify(legacyFormat), "utf-8");
 
     const data = await readProjects(tmpDir);
     const project = data.projects["group-1"];
 
     assert.ok(project.workers.developer);
-    assert.strictEqual(project.workers.developer.active, true);
-    assert.strictEqual(project.workers.developer.level, "senior");
+    assert.strictEqual(project.workers.developer.slots[0]!.active, true);
+    assert.strictEqual(project.workers.developer.slots[0]!.level, "senior");
+    assert.strictEqual(project.workers.developer.slots[0]!.sessionKey, "key-s");
     assert.ok(project.workers.tester);
 
     await fs.rm(tmpDir, { recursive: true });
   });
 
-  it("should migrate old worker keys in new format", async () => {
+  it("should read new slot-based format correctly", async () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "devclaw-proj-"));
     const dataDir = path.join(tmpDir, "devclaw");
     await fs.mkdir(dataDir, { recursive: true });
 
-    // Workers map but with old role keys
+    const slotFormat = {
+      projects: {
+        "g1": {
+          slug: "test",
+          name: "test",
+          repo: "~/git/test",
+          groupName: "Test",
+          deployUrl: "",
+          baseBranch: "main",
+          deployBranch: "main",
+          channels: [{ groupId: "g1", channel: "telegram", name: "primary", events: ["*"] }],
+          workers: {
+            developer: {
+              maxWorkers: 2,
+              slots: [
+                { active: true, issueId: "5", level: "medior", sessionKey: "key-1", startTime: "2026-01-01T00:00:00Z" },
+                { active: false, issueId: null, level: null, sessionKey: null, startTime: null },
+              ],
+            },
+          },
+        },
+      },
+    };
+    await fs.writeFile(path.join(dataDir, "projects.json"), JSON.stringify(slotFormat), "utf-8");
+
+    const data = await readProjects(tmpDir);
+    const rw = data.projects["g1"].workers.developer;
+
+    assert.strictEqual(rw.maxWorkers, 2);
+    assert.strictEqual(rw.slots.length, 2);
+    assert.strictEqual(rw.slots[0]!.active, true);
+    assert.strictEqual(rw.slots[0]!.issueId, "5");
+    assert.strictEqual(rw.slots[1]!.active, false);
+
+    await fs.rm(tmpDir, { recursive: true });
+  });
+
+  it("should migrate old worker keys in workers-map format", async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "devclaw-proj-"));
+    const dataDir = path.join(tmpDir, "devclaw");
+    await fs.mkdir(dataDir, { recursive: true });
+
     const mixedFormat = {
       projects: {
         "group-1": {
@@ -157,15 +215,15 @@ describe("readProjects migration", () => {
     // Old keys should be migrated
     assert.ok(project.workers.developer, "dev should be migrated to developer");
     assert.ok(project.workers.tester, "qa should be migrated to tester");
-    assert.strictEqual(project.workers.developer.level, "medior");
-    assert.strictEqual(project.workers.developer.sessions.medior, "key-m");
+    assert.strictEqual(project.workers.developer.slots[0]!.level, "medior");
+    assert.strictEqual(project.workers.developer.slots[0]!.sessionKey, "key-m");
 
     await fs.rm(tmpDir, { recursive: true });
   });
 });
 
-describe("getWorker", () => {
-  it("should return worker from workers map", () => {
+describe("getWorker (backward compat)", () => {
+  it("should return legacy-shaped worker from slot 0", () => {
     const data: ProjectsData = {
       projects: {
         "g1": {
@@ -178,13 +236,16 @@ describe("getWorker", () => {
           deployBranch: "main",
           channels: [{ groupId: "g1", channel: "telegram", name: "primary", events: ["*"] }],
           workers: {
-            developer: { active: true, issueId: "5", startTime: null, level: "medior", sessions: {} },
+            developer: {
+              maxWorkers: 1,
+              slots: [{ active: true, issueId: "5", level: "medior", sessionKey: "key-1", startTime: null }],
+            },
           },
         },
       },
     };
 
-    const worker = getWorker(data.projects["g1"], "developer");
+    const worker = getWorker(data.projects["g1"]!, "developer");
     assert.strictEqual(worker.active, true);
     assert.strictEqual(worker.issueId, "5");
   });
@@ -206,14 +267,60 @@ describe("getWorker", () => {
       },
     };
 
-    const worker = getWorker(data.projects["g1"], "nonexistent");
+    const worker = getWorker(data.projects["g1"]!, "nonexistent");
     assert.strictEqual(worker.active, false);
     assert.strictEqual(worker.issueId, null);
   });
 });
 
+describe("slot helpers", () => {
+  it("findFreeSlot returns lowest inactive slot", () => {
+    const rw: RoleWorkerState = {
+      maxWorkers: 3,
+      slots: [
+        { active: true, issueId: "1", level: "medior", sessionKey: null, startTime: null },
+        { active: false, issueId: null, level: null, sessionKey: null, startTime: null },
+        { active: false, issueId: null, level: null, sessionKey: null, startTime: null },
+      ],
+    };
+    assert.strictEqual(findFreeSlot(rw), 1);
+  });
+
+  it("findFreeSlot returns null when all active", () => {
+    const rw: RoleWorkerState = {
+      maxWorkers: 1,
+      slots: [{ active: true, issueId: "1", level: "medior", sessionKey: null, startTime: null }],
+    };
+    assert.strictEqual(findFreeSlot(rw), null);
+  });
+
+  it("findSlotByIssue returns correct index", () => {
+    const rw: RoleWorkerState = {
+      maxWorkers: 2,
+      slots: [
+        { active: true, issueId: "10", level: "medior", sessionKey: null, startTime: null },
+        { active: true, issueId: "20", level: "junior", sessionKey: null, startTime: null },
+      ],
+    };
+    assert.strictEqual(findSlotByIssue(rw, "20"), 1);
+    assert.strictEqual(findSlotByIssue(rw, "99"), null);
+  });
+
+  it("countActiveSlots counts correctly", () => {
+    const rw: RoleWorkerState = {
+      maxWorkers: 3,
+      slots: [
+        { active: true, issueId: "1", level: "medior", sessionKey: null, startTime: null },
+        { active: false, issueId: null, level: null, sessionKey: null, startTime: null },
+        { active: true, issueId: "3", level: "junior", sessionKey: null, startTime: null },
+      ],
+    };
+    assert.strictEqual(countActiveSlots(rw), 2);
+  });
+});
+
 describe("writeProjects round-trip", () => {
-  it("should preserve workers map through write/read cycle", async () => {
+  it("should preserve slot-based workers through write/read cycle", async () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "devclaw-proj-"));
     const dataDir = path.join(tmpDir, "devclaw");
     await fs.mkdir(dataDir, { recursive: true });
@@ -230,9 +337,9 @@ describe("writeProjects round-trip", () => {
           deployBranch: "main",
           channels: [{ groupId: "g1", channel: "telegram", name: "primary", events: ["*"] }],
           workers: {
-            developer: emptyWorkerState(["junior", "medior", "senior"]),
-            tester: emptyWorkerState(["junior", "medior", "senior"]),
-            architect: emptyWorkerState(["junior", "senior"]),
+            developer: emptyRoleWorkerState(2),
+            tester: emptyRoleWorkerState(1),
+            architect: emptyRoleWorkerState(1),
           },
         },
       },
@@ -243,11 +350,10 @@ describe("writeProjects round-trip", () => {
     const project = loaded.projects["g1"];
 
     assert.ok(project.workers.developer);
-    assert.ok(project.workers.tester);
-    assert.ok(project.workers.architect);
-    assert.strictEqual(project.workers.developer.sessions.junior, null);
-    assert.strictEqual(project.workers.developer.sessions.medior, null);
-    assert.strictEqual(project.workers.developer.sessions.senior, null);
+    assert.strictEqual(project.workers.developer.maxWorkers, 2);
+    assert.strictEqual(project.workers.developer.slots.length, 2);
+    assert.strictEqual(project.workers.developer.slots[0]!.active, false);
+    assert.strictEqual(project.workers.developer.slots[1]!.active, false);
 
     await fs.rm(tmpDir, { recursive: true });
   });
