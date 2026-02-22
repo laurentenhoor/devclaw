@@ -8,11 +8,36 @@
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+
 // ---------------------------------------------------------------------------
 // File loader — reads from defaults/ (single source of truth)
 // ---------------------------------------------------------------------------
 
 const DEFAULTS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "defaults");
+
+/**
+ * Manifest of all default files with SHA256 hashes.
+ * Used for version tracking and detecting customizations.
+ */
+export type DefaultsManifest = {
+  version: string;
+  createdAt: string;
+  files: Record<string, { hash: string; updatedAt: string }>;
+};
+
+/**
+ * Load the DEFAULTS.json manifest from the plugin defaults directory.
+ * This manifest contains SHA256 hashes of all default files for version tracking.
+ */
+export function loadDefaultsManifest(): DefaultsManifest | null {
+  try {
+    const manifestPath = path.join(DEFAULTS_DIR, "DEFAULTS.json");
+    const content = fs.readFileSync(manifestPath, "utf-8");
+    return JSON.parse(content);
+  } catch {
+    return null;
+  }
+}
 
 function loadDefault(filename: string, fallback = ""): string {
   try {
