@@ -10,7 +10,7 @@ import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { readProjects, writeProjects, emptyWorkerState } from "../projects.js";
+import { readProjects, writeProjects, emptyRoleWorkerState } from "../projects.js";
 import { resolveRepoPath } from "../projects.js";
 import { runCommand } from "../run-command.js";
 import { createProvider } from "../providers/index.js";
@@ -220,10 +220,11 @@ export function createProjectRegisterTool() {
           existing.repoRemote = repoRemote;
         }
       } else {
-        // Create new project
+        // Create new project - get maxWorkers from resolved config (already loaded above)
         const workers: Record<string, import("../projects.js").RoleWorkerState> = {};
         for (const role of getAllRoleIds()) {
-          workers[role] = emptyWorkerState();
+          const maxWorkers = resolvedConfig.roles[role]?.maxWorkers ?? 1;
+          workers[role] = emptyRoleWorkerState(maxWorkers);
         }
 
         const newChannel: import("../projects.js").Channel = {
