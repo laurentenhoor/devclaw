@@ -12,10 +12,13 @@
  */
 import type { OpenClawPluginApi, PluginRuntime } from "openclaw/plugin-sdk";
 import fs from "node:fs";
+import fsp from "node:fs/promises";
 import path from "node:path";
 import { readProjects, getProject, type Project } from "../projects.js";
 import { log as auditLog } from "../audit.js";
 import { DATA_DIR } from "../setup/migrate-layout.js";
+import { DEFAULT_ROLE_INSTRUCTIONS } from "../templates.js";
+import { getAllRoleIds } from "../roles/index.js";
 import {
   checkWorkerHealth,
   scanOrphanedLabels,
@@ -94,6 +97,30 @@ export function registerHeartbeatService(api: OpenClawPluginApi) {
 
     start: async (ctx: ServiceContext) => {
       const { intervalSeconds } = HEARTBEAT_DEFAULTS;
+
+      // Overwrite workspace default prompts so updated templates from a new
+      // plugin version are picked up without re-running setup.
+      try {
+        const agents = discoverAgents(api.config);
+        const seen = new Set<string>();
+        for (const { workspace } of agents) {
+          if (seen.has(workspace)) continue;
+          seen.add(workspace);
+          try {
+            const promptsDir = path.join(workspace, DATA_DIR, "prompts");
+            await fsp.mkdir(promptsDir, { recursive: true });
+            for (const role of getAllRoleIds()) {
+              const content = DEFAULT_ROLE_INSTRUCTIONS[role];
+              if (!content) continue;
+              await fsp.writeFile(path.join(promptsDir, `${role}.md`), content, "utf-8");
+            }
+          } catch (err) {
+            ctx.logger.warn(`Failed to write default prompts for ${workspace}: ${err}`);
+          }
+        }
+      } catch (err) {
+        ctx.logger.warn(`Startup prompt refresh failed: ${err}`);
+      }
 
       // Config + agent discovery happen per-tick so the heartbeat automatically
       // picks up projects onboarded after the gateway starts — no restart needed.

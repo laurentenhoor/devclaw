@@ -191,7 +191,18 @@ APPROVED:
 - \`queue\` and \`active\` states must have a \`role\`
 - \`terminal\` states must NOT have \`on\` transitions
 - All transition targets must point to existing state keys
-- State labels must be unique`;
+- State labels must be unique
+
+## Syncing labels after changes
+
+After adding, renaming, or removing states in workflow.yaml, run the \`sync_labels\` tool to create the corresponding labels on GitHub/GitLab. Labels are only created during \`project_register\` — workflow.yaml edits are not automatically synced.
+
+\`sync_labels\` reads the fully resolved config (built-in + workspace + project overrides) and ensures every state label, role:level label, and step routing label exists on the provider. It is idempotent — safe to run multiple times.
+
+\`\`\`
+sync_labels                         # sync all projects
+sync_labels projectSlug=my-webapp   # sync one project
+\`\`\``;
 }
 
 function buildRolesSection(): string {

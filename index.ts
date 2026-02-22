@@ -15,6 +15,7 @@ import { createResearchTaskTool } from "./lib/tools/research-task.js";
 import { createTaskListTool } from "./lib/tools/task-list.js";
 import { createWorkflowGuideTool } from "./lib/tools/workflow-guide.js";
 import { createResetDefaultsTool } from "./lib/tools/reset-defaults.js";
+import { createSyncLabelsTool } from "./lib/tools/sync-labels.js";
 import { registerCli } from "./lib/cli.js";
 import { registerHeartbeatService } from "./lib/services/heartbeat.js";
 import { registerBootstrapHook } from "./lib/bootstrap-hook.js";
@@ -104,6 +105,9 @@ const plugin = {
     api.registerTool(createResetDefaultsTool(), {
       names: ["reset_defaults"],
     });
+    api.registerTool(createSyncLabelsTool(), {
+      names: ["sync_labels"],
+    });
 
     // CLI
     api.registerCli(({ program }: { program: any }) => registerCli(program, api), {
@@ -117,7 +121,7 @@ const plugin = {
     registerBootstrapHook(api);
 
     api.logger.info(
-      "DevClaw plugin registered (16 tools, 1 CLI command group, 1 service, 1 hook)",
+      "DevClaw plugin registered (17 tools, 1 CLI command group, 1 service, 1 hook)",
     );
   },
 };
