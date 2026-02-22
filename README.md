@@ -15,6 +15,7 @@ openclaw plugins install @laurentenhoor/devclaw
 ```
 
 Then start onboarding by chatting with your agent in any channel:
+
 ```
 "Hey, can you help me set up DevClaw?"
 ```
@@ -91,6 +92,7 @@ Three mechanisms compound to cut token usage dramatically versus running one lar
 OpenClaw is a great multi-agent runtime. It handles sessions, tools, channels, gateway RPC — everything you need to run AI agents. But it's a general-purpose platform. It has no opinion about how software gets built.
 
 Without DevClaw, your orchestrator agent has to figure out on its own how to:
+
 - Pick the right model for the task complexity
 - Create or reuse the right worker session
 - Transition issue labels in the right order
@@ -113,33 +115,33 @@ When a task comes in, you don't configure `anthropic/claude-sonnet-4-5` — you 
 
 ### Developers
 
-| Level | Assigns to | Model |
-|---|---|---|
-| **Junior** | Typos, CSS fixes, renames, single-file changes | Haiku |
-| **Medior** | Features, bug fixes, multi-file changes | Sonnet |
-| **Senior** | Architecture, migrations, system-wide refactoring | Opus |
+| Level      | Assigns to                                        | Model  |
+| ---------- | ------------------------------------------------- | ------ |
+| **Junior** | Typos, CSS fixes, renames, single-file changes    | Haiku  |
+| **Medior** | Features, bug fixes, multi-file changes           | Sonnet |
+| **Senior** | Architecture, migrations, system-wide refactoring | Opus   |
 
 ### Reviewers
 
-| Level | Assigns to | Model |
-|---|---|---|
-| **Junior** | Standard code review, PR inspection | Sonnet |
-| **Senior** | Thorough security review, complex edge cases | Opus |
+| Level      | Assigns to                                   | Model  |
+| ---------- | -------------------------------------------- | ------ |
+| **Junior** | Standard code review, PR inspection          | Sonnet |
+| **Senior** | Thorough security review, complex edge cases | Opus   |
 
 ### Testers (optional — enable in workflow.yaml)
 
-| Level | Assigns to | Model |
-|---|---|---|
-| **Junior** | Quick smoke tests, basic checks | Haiku |
-| **Medior** | Standard test validation | Sonnet |
-| **Senior** | Thorough QA, complex edge cases | Opus |
+| Level      | Assigns to                      | Model  |
+| ---------- | ------------------------------- | ------ |
+| **Junior** | Quick smoke tests, basic checks | Haiku  |
+| **Medior** | Standard test validation        | Sonnet |
+| **Senior** | Thorough QA, complex edge cases | Opus   |
 
 ### Architects
 
-| Level | Assigns to | Model |
-|---|---|---|
-| **Junior** | Standard design investigation | Sonnet |
-| **Senior** | Complex architecture decisions | Opus |
+| Level      | Assigns to                     | Model  |
+| ---------- | ------------------------------ | ------ |
+| **Junior** | Standard design investigation  | Sonnet |
+| **Senior** | Complex architecture decisions | Opus   |
 
 A CSS typo gets the intern. A database migration gets the architect. You're not burning Opus tokens on a color change, and you're not sending Haiku to redesign your auth system.
 
@@ -185,6 +187,7 @@ These labels live on your actual GitHub/GitLab issues. Not in some internal data
 ### What "atomic" means here
 
 When you say "pick up #42 for DEV", the plugin does all of this in one operation:
+
 1. Verifies the issue is in the right state
 2. Picks the developer level (or uses what you specified)
 3. Transitions the label (`To Do` → `Doing`)
@@ -209,6 +212,7 @@ When a developer finishes, they call `work_finish` directly — no orchestrator 
 - **PR changes requested** → label moves to `To Improve`, scheduler picks up DEV on next tick
 
 With the optional test phase enabled, an additional QA cycle runs before closing:
+
 - **TESTER "pass"** → `Done`, issue closes
 - **TESTER "fail"** → `To Improve`, back to DEV
 
@@ -314,13 +318,13 @@ Per-project settings live in `projects.json`:
 }
 ```
 
-| Setting | Where | Default | What it controls |
-|---|---|---|---|
-| `work_heartbeat.enabled` | `openclaw.json` | `true` | Turn the heartbeat on/off |
-| `work_heartbeat.intervalSeconds` | `openclaw.json` | `60` | Seconds between ticks |
-| `work_heartbeat.maxPickupsPerTick` | `openclaw.json` | `4` | Max workers dispatched per tick |
-| `projectExecution` | `openclaw.json` | `"parallel"` | All projects at once, or one at a time |
-| `roleExecution` | `projects.json` | `"parallel"` | All roles at once, or one role at a time |
+| Setting                            | Where           | Default      | What it controls                         |
+| ---------------------------------- | --------------- | ------------ | ---------------------------------------- |
+| `work_heartbeat.enabled`           | `openclaw.json` | `true`       | Turn the heartbeat on/off                |
+| `work_heartbeat.intervalSeconds`   | `openclaw.json` | `60`         | Seconds between ticks                    |
+| `work_heartbeat.maxPickupsPerTick` | `openclaw.json` | `4`          | Max workers dispatched per tick          |
+| `projectExecution`                 | `openclaw.json` | `"parallel"` | All projects at once, or one at a time   |
+| `roleExecution`                    | `projects.json` | `"parallel"` | All roles at once, or one role at a time |
 
 See the [Configuration reference](docs/CONFIGURATION.md) for the full schema.
 
@@ -393,17 +397,17 @@ The orchestrator is a **planner and dispatcher** — not a coder. This separatio
 
 All implementation work flows through the issue → worker pipeline:
 
-| Action | Goes through worker? | Why |
-|---|---|---|
-| Writing or editing code | ✅ Yes | Audit trail, tier selection |
-| Git operations (commits, branches, PRs) | ✅ Yes | Workers own their worktrees |
-| Running tests | ✅ Yes | Part of the dev/QA workflow |
-| Fixing bugs | ✅ Yes | Even quick fixes need tracking |
-| Refactoring | ✅ Yes | Sonnet/Opus for complexity |
-| Reading code to answer questions | ❌ No | Orchestrator can read |
-| Creating issues | ❌ No | Orchestrator's job |
-| Status checks | ❌ No | Orchestrator's job |
-| Architecture discussions | ❌ No | Orchestrator's job |
+| Action                                  | Goes through worker? | Why                            |
+| --------------------------------------- | -------------------- | ------------------------------ |
+| Writing or editing code                 | ✅ Yes               | Audit trail, tier selection    |
+| Git operations (commits, branches, PRs) | ✅ Yes               | Workers own their worktrees    |
+| Running tests                           | ✅ Yes               | Part of the dev/QA workflow    |
+| Fixing bugs                             | ✅ Yes               | Even quick fixes need tracking |
+| Refactoring                             | ✅ Yes               | Sonnet/Opus for complexity     |
+| Reading code to answer questions        | ❌ No                | Orchestrator can read          |
+| Creating issues                         | ❌ No                | Orchestrator's job             |
+| Status checks                           | ❌ No                | Orchestrator's job             |
+| Architecture discussions                | ❌ No                | Orchestrator's job             |
 
 ### Why this boundary exists
 
@@ -438,6 +442,7 @@ openclaw plugins install @laurentenhoor/devclaw
 ### Upgrade
 
 The easiest way to upgrade is through your agent:
+
 ```
 You: "Upgrade DevClaw"
 ```
@@ -445,18 +450,21 @@ You: "Upgrade DevClaw"
 The `upgrade` tool checks npm for newer versions, installs the update, and upgrades workspace files (docs, prompts, workflow states) with `.bak` backups — preserving your customizations.
 
 Or manually:
+
 ```bash
 openclaw plugins install @laurentenhoor/devclaw
 ```
 
-> **Migrating to v1.4.0?** Default templates and workspace files are now externalized to a `defaults/` directory. Your existing customizations are preserved — run `reset_defaults` through your agent if you want to pick up the latest built-in templates (creates `.bak` backups first).
+> **Migrating to v1.5.0?** Default templates and workspace files are now externalized to a `defaults/` directory. Your existing customizations are preserved — run `reset_defaults` through your agent if you want to pick up the latest built-in templates (creates `.bak` backups first).
 
 Or for local development:
+
 ```bash
 openclaw plugins install -l ./devclaw
 ```
 
 Start onboarding:
+
 ```bash
 openclaw chat "Help me set up DevClaw"
 ```
@@ -495,26 +503,26 @@ You can also use the [CLI wizard or non-interactive setup](docs/ONBOARDING.md#st
 
 DevClaw gives the orchestrator 18 tools. These aren't just convenience wrappers — they're **guardrails**. Each tool encodes a complex multi-step operation into a single atomic call. The agent provides intent, the plugin handles mechanics. The agent physically cannot skip a label transition, forget to update state, or dispatch to the wrong session — those decisions are made by deterministic code, not LLM reasoning.
 
-| Tool | What it does |
-|---|---|
-| `work_start` | Pick up a task — resolves level, transitions label, dispatches session, logs audit |
-| `work_finish` | Complete a task — transitions label, updates state, closes/reopens issue |
-| `task_create` | Create a new issue (used by workers to file bugs they discover) |
-| `task_update` | Manually change an issue's state label or override assigned level |
-| `task_comment` | Add a comment to an issue (with role attribution) |
-| `task_edit_body` | Edit issue title/description (initial state only; audit-logged) |
-| `task_list` | Browse and search issues by workflow state |
-| `tasks_status` | Full project dashboard: hold, active, and queued issues with details |
-| `health` | Detect zombie workers, stale sessions, state inconsistencies |
-| `project_register` | One-time project setup: creates labels, scaffolds instructions, initializes state |
-| `setup` | Agent + workspace initialization |
-| `onboard` | Conversational setup guide |
-| `research_task` | Spawn an architect for design investigation — creates issue, dispatches worker |
-| `autoconfigure_models` | LLM-powered model selection based on available models |
-| `workflow_guide` | Configuration reference for workflow.yaml (call before editing) |
-| `reset_defaults` | Restore workspace files to built-in defaults (creates `.bak` backups) |
-| `upgrade` | Upgrade plugin and workspace files — checks npm, installs, upgrades docs/prompts/states |
-| `sync_labels` | Sync GitHub/GitLab labels with workflow config after editing `workflow.yaml` |
+| Tool                   | What it does                                                                            |
+| ---------------------- | --------------------------------------------------------------------------------------- |
+| `work_start`           | Pick up a task — resolves level, transitions label, dispatches session, logs audit      |
+| `work_finish`          | Complete a task — transitions label, updates state, closes/reopens issue                |
+| `task_create`          | Create a new issue (used by workers to file bugs they discover)                         |
+| `task_update`          | Manually change an issue's state label or override assigned level                       |
+| `task_comment`         | Add a comment to an issue (with role attribution)                                       |
+| `task_edit_body`       | Edit issue title/description (initial state only; audit-logged)                         |
+| `task_list`            | Browse and search issues by workflow state                                              |
+| `tasks_status`         | Full project dashboard: hold, active, and queued issues with details                    |
+| `health`               | Detect zombie workers, stale sessions, state inconsistencies                            |
+| `project_register`     | One-time project setup: creates labels, scaffolds instructions, initializes state       |
+| `setup`                | Agent + workspace initialization                                                        |
+| `onboard`              | Conversational setup guide                                                              |
+| `research_task`        | Spawn an architect for design investigation — creates issue, dispatches worker          |
+| `autoconfigure_models` | LLM-powered model selection based on available models                                   |
+| `workflow_guide`       | Configuration reference for workflow.yaml (call before editing)                         |
+| `reset_defaults`       | Restore workspace files to built-in defaults (creates `.bak` backups)                   |
+| `upgrade`              | Upgrade plugin and workspace files — checks npm, installs, upgrades docs/prompts/states |
+| `sync_labels`          | Sync GitHub/GitLab labels with workflow config after editing `workflow.yaml`            |
 
 Full parameters and usage in the [Tools Reference](docs/TOOLS.md).
 
@@ -522,16 +530,16 @@ Full parameters and usage in the [Tools Reference](docs/TOOLS.md).
 
 ## Documentation
 
-| | |
-|---|---|
-| **[Architecture](docs/ARCHITECTURE.md)** | System design, session model, data flow, end-to-end diagrams |
-| **[Workflow](docs/WORKFLOW.md)** | State machine, review policies, optional test phase |
-| **[Tools Reference](docs/TOOLS.md)** | Complete reference for all 18 tools |
-| **[Configuration](docs/CONFIGURATION.md)** | `openclaw.json`, `projects.json`, roles, timeouts |
-| **[Onboarding Guide](docs/ONBOARDING.md)** | Full step-by-step setup |
-| **[Testing](docs/TESTING.md)** | Test suite, fixtures, CI/CD |
-| **[Management Theory](docs/MANAGEMENT.md)** | The delegation model behind the design |
-| **[Roadmap](docs/ROADMAP.md)** | What's coming next |
+|                                             |                                                              |
+| ------------------------------------------- | ------------------------------------------------------------ |
+| **[Architecture](docs/ARCHITECTURE.md)**    | System design, session model, data flow, end-to-end diagrams |
+| **[Workflow](docs/WORKFLOW.md)**            | State machine, review policies, optional test phase          |
+| **[Tools Reference](docs/TOOLS.md)**        | Complete reference for all 18 tools                          |
+| **[Configuration](docs/CONFIGURATION.md)**  | `openclaw.json`, `projects.json`, roles, timeouts            |
+| **[Onboarding Guide](docs/ONBOARDING.md)**  | Full step-by-step setup                                      |
+| **[Testing](docs/TESTING.md)**              | Test suite, fixtures, CI/CD                                  |
+| **[Management Theory](docs/MANAGEMENT.md)** | The delegation model behind the design                       |
+| **[Roadmap](docs/ROADMAP.md)**              | What's coming next                                           |
 
 ---
 
