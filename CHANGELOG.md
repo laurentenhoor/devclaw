@@ -5,6 +5,14 @@ All notable changes to DevClaw will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] - 2026-02-22
+
+### Changed
+
+- **esbuild bundler** — Build now produces a single `dist/index.js` with all dependencies (cockatiel, yaml, zod) inlined via esbuild. Eliminates the need for `npm install` at plugin install time; only the openclaw peer dependency is kept external.
+- **Dependencies moved to devDependencies** — cockatiel, yaml, and zod are bundled at build time, so they no longer need to be installed as runtime dependencies.
+- **Version injection at build time** — `PLUGIN_VERSION` and `PACKAGE_NAME` are now injected by esbuild defines instead of reading `package.json` at runtime, with a fallback for development/test environments.
+
 ## [1.5.0] - 2026-02-22
 
 ### Added
@@ -272,6 +280,8 @@ openclaw chat "Hey, can you help me set up DevClaw?"
 
 ---
 
+[1.5.1]: https://github.com/laurentenhoor/devclaw/compare/v1.5.0...v1.5.1
+[1.5.0]: https://github.com/laurentenhoor/devclaw/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/laurentenhoor/devclaw/compare/v1.3.6...v1.4.0
 [1.3.6]: https://github.com/laurentenhoor/devclaw/compare/v1.3.5...v1.3.6
 [1.3.5]: https://github.com/laurentenhoor/devclaw/compare/v1.3.4...v1.3.5

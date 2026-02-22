@@ -12,7 +12,7 @@ import path from "node:path";
 // File loader — reads from defaults/ (single source of truth)
 // ---------------------------------------------------------------------------
 
-const DEFAULTS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "defaults");
+const DEFAULTS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "defaults");
 
 function loadDefault(filename: string, fallback = ""): string {
   try {

@@ -29,17 +29,25 @@ import {
 import { runCommand } from "./run-command.js";
 
 // ---------------------------------------------------------------------------
-// Version
+// Version — injected by esbuild at build time, with runtime fallback for tests
 // ---------------------------------------------------------------------------
 
-const PKG_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const pkg = JSON.parse(fs.readFileSync(path.join(PKG_ROOT, "package.json"), "utf-8"));
+declare const __PLUGIN_VERSION__: string | undefined;
+declare const __PACKAGE_NAME__: string | undefined;
 
-/** Current running plugin version (from package.json). */
-export const PLUGIN_VERSION: string = pkg.version;
+function readPkgField(field: "version" | "name"): string {
+  const pkgPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "package.json");
+  const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+  return pkg[field];
+}
+
+/** Current running plugin version. */
+export const PLUGIN_VERSION: string =
+  typeof __PLUGIN_VERSION__ !== "undefined" ? __PLUGIN_VERSION__ : readPkgField("version");
 
 /** Package name on npm. */
-const PACKAGE_NAME: string = pkg.name;
+const PACKAGE_NAME: string =
+  typeof __PACKAGE_NAME__ !== "undefined" ? __PACKAGE_NAME__ : readPkgField("name");
 
 const VERSION_FILE = ".plugin-version";
 
