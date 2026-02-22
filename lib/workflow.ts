@@ -315,8 +315,8 @@ export function getNotifyLabel(groupId: string): string {
  */
 export function resolveNotifyChannel(
   issueLabels: string[],
-  channels: Array<{ groupId: string; channel: string }>,
-): { groupId: string; channel: string } | undefined {
+  channels: Array<{ groupId: string; channel: string; accountId?: string }>,
+): { groupId: string; channel: string; accountId?: string } | undefined {
   const notifyLabel = issueLabels.find((l) => l.startsWith(NOTIFY_LABEL_PREFIX));
   if (notifyLabel) {
     const taggedGroupId = notifyLabel.slice(NOTIFY_LABEL_PREFIX.length);
