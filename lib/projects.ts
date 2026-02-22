@@ -95,6 +95,7 @@ export type Channel = {
   channel: "telegram" | "whatsapp" | "discord" | "slack";
   name: string; // e.g. "primary", "dev-chat"
   events: string[]; // e.g. ["*"] for all, ["workerComplete"] for filtered
+  accountId?: string; // Optional account ID for multi-account setups
 };
 
 /**
