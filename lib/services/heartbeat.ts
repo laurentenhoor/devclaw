@@ -19,7 +19,6 @@ import { DATA_DIR } from "../setup/migrate-layout.js";
 import {
   checkWorkerHealth,
   scanOrphanedLabels,
-  scanOrphanedSessions,
   fetchGatewaySessions,
   type SessionLookup,
 } from "./health.js";
@@ -359,14 +358,6 @@ export async function tick(opts: {
       result.totalSkipped++;
     }
   }
-
-  // Orphaned session scan: clean up subagent sessions not tracked by any project
-  const orphanedSessionFixes = await scanOrphanedSessions({
-    workspaceDir,
-    sessions,
-    autoFix: true,
-  });
-  result.totalHealthFixes += orphanedSessionFixes.filter((f) => f.fixed).length;
 
   await auditLog(workspaceDir, "heartbeat_tick", {
     projectsScanned: slugs.length,

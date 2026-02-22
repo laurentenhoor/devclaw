@@ -18,14 +18,14 @@ Implement what the issue asks for, create a PR, and call `work_finish`.
 
 ## CRITICAL: Always Use a Dedicated Worktree
 
-**NEVER work directly in the default/root worktree or the main workspace checkout.** Always create a dedicated git worktree for your branch:
+**NEVER work directly in the default/root worktree or the main workspace checkout.** Always create a dedicated git worktree in the `.worktrees` sibling directory:
 
 ```bash
-git worktree add ../feature/<id>-<slug> -b feature/<id>-<slug>
-cd ../feature/<id>-<slug>
+git worktree add "$PWD.worktrees/feature/<id>-<slug>" -b feature/<id>-<slug>
+cd "$PWD.worktrees/feature/<id>-<slug>"
 ```
 
-Working in the root worktree risks corrupting the orchestrator's checkout, breaking other workers, and causing merge conflicts across parallel tasks. If you are already in a worktree from a previous task on the same branch, verify it's clean before reusing it.
+This places worktrees at `<repo>.worktrees/` next to the project folder, keeping the repo root clean. Working in the root worktree risks corrupting the orchestrator's checkout, breaking other workers, and causing merge conflicts across parallel tasks. If you are already in a worktree from a previous task on the same branch, verify it's clean before reusing it.
 
 ## Conventions
 

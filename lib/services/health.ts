@@ -29,11 +29,8 @@ import {
   getRoleWorker,
   updateSlot,
   deactivateWorker,
-  readProjects,
   type Project,
-  type ProjectsData,
 } from "../projects.js";
-import { runCommand } from "../run-command.js";
 import { log as auditLog } from "../audit.js";
 import {
   DEFAULT_WORKFLOW,
@@ -65,7 +62,6 @@ export type HealthIssue = {
     | "orphan_issue_id"      // Case 5: inactive but issueId set
     | "issue_gone"           // Case 6: active but issue deleted/closed
     | "orphaned_label"        // Case 7: active label but no worker tracking it
-    | "orphaned_session"      // Case 8: gateway session exists but not tracked in projects.json
     | "context_overflow";    // Case 1c: active worker but session hit context limit (abortedLastRun)
   severity: "critical" | "warning";
   project: string;
@@ -510,95 +506,3 @@ export async function scanOrphanedLabels(opts: {
   return fixes;
 }
 
-// ---------------------------------------------------------------------------
-// Orphaned session scan
-// ---------------------------------------------------------------------------
-
-/** Subagent session key pattern: agent:{agentId}:subagent:{project}-{role}-{level}-{slotIndex} */
-const SUBAGENT_PATTERN = /^agent:[^:]+:subagent:/;
-
-/**
- * Scan for gateway subagent sessions that are NOT tracked in any project's
- * worker sessions map. These are leftover from previous dispatches at
- * different levels and waste resources / contribute to session cap pressure.
- *
- * Returns fixes for all orphaned sessions found.
- */
-export async function scanOrphanedSessions(opts: {
-  workspaceDir: string;
-  sessions: SessionLookup | null;
-  autoFix: boolean;
-}): Promise<HealthFix[]> {
-  const { workspaceDir, sessions, autoFix } = opts;
-  const fixes: HealthFix[] = [];
-
-  // Skip if gateway unavailable
-  if (!sessions) return fixes;
-
-  // 1. Collect all known (tracked) session keys from projects.json
-  const knownKeys = new Set<string>();
-  const activeSessionKeys = new Set<string>();
-
-  let data: ProjectsData;
-  try {
-    data = await readProjects(workspaceDir);
-  } catch {
-    return fixes; // Can't read projects — skip
-  }
-
-  for (const project of Object.values(data.projects)) {
-    for (const [_role, rw] of Object.entries(project.workers)) {
-      for (const slots of Object.values(rw.levels)) {
-        for (const slot of slots) {
-          if (slot.sessionKey) {
-            knownKeys.add(slot.sessionKey);
-            if (slot.active) {
-              activeSessionKeys.add(slot.sessionKey);
-            }
-          }
-        }
-      }
-    }
-  }
-
-  // 2. Find subagent sessions in gateway that aren't tracked
-  for (const [key, _session] of sessions) {
-    // Only consider subagent sessions
-    if (!SUBAGENT_PATTERN.test(key)) continue;
-
-    // Skip if tracked in projects.json
-    if (knownKeys.has(key)) continue;
-
-    // Belt-and-suspenders: never delete active worker sessions
-    if (activeSessionKeys.has(key)) continue;
-
-    const fix: HealthFix = {
-      issue: {
-        type: "orphaned_session",
-        severity: "warning",
-        project: "global",
-        projectSlug: "global",
-        role: "developer", // Placeholder — role is embedded in session key
-        sessionKey: key,
-        message: `Gateway session "${key}" is not tracked by any project worker`,
-      },
-      fixed: false,
-    };
-
-    if (autoFix) {
-      try {
-        await runCommand(
-          ["openclaw", "gateway", "call", "sessions.delete", "--params", JSON.stringify({ key })],
-          { timeoutMs: 10_000 },
-        );
-        fix.fixed = true;
-      } catch {
-        // Deletion failed — report but don't crash
-      }
-    }
-
-    fixes.push(fix);
-  }
-
-  return fixes;
-}
