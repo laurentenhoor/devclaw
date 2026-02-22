@@ -221,9 +221,9 @@ export function createProjectRegisterTool() {
         }
       } else {
         // Create new project
-        const workers: Record<string, import("../projects.js").WorkerState> = {};
+        const workers: Record<string, import("../projects.js").RoleWorkerState> = {};
         for (const role of getAllRoleIds()) {
-          workers[role] = emptyWorkerState([...getLevelsForRole(role)]);
+          workers[role] = emptyWorkerState();
         }
 
         const newChannel: import("../projects.js").Channel = {

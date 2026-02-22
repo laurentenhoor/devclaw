@@ -88,12 +88,14 @@ export function createTasksStatusTool(api: OpenClawPluginApi) {
 
           // Workers summary
           const workers: Record<string, { active: boolean; issueId: string | null; level: string | null; startTime: string | null }> = {};
-          for (const [role, worker] of Object.entries(project.workers)) {
+          for (const [role, rw] of Object.entries(project.workers)) {
+            // Show slot 0 for backward compat (multi-slot display in #331)
+            const slot = rw.slots[0];
             workers[role] = {
-              active: worker.active,
-              issueId: worker.issueId,
-              level: worker.level,
-              startTime: worker.startTime,
+              active: slot?.active ?? false,
+              issueId: slot?.issueId ?? null,
+              level: slot?.level ?? null,
+              startTime: slot?.startTime ?? null,
             };
           }
 

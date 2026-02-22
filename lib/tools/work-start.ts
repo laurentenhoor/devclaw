@@ -72,7 +72,7 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
       if (worker.active) throw new Error(`${role.toUpperCase()} already active on ${project.name} (issue: ${worker.issueId})`);
       if ((project.roleExecution ?? ExecutionMode.PARALLEL) === ExecutionMode.SEQUENTIAL) {
         for (const [otherRole, otherWorker] of Object.entries(project.workers)) {
-          if (otherRole !== role && otherWorker.active) {
+          if (otherRole !== role && otherWorker.slots.some(s => s.active)) {
             throw new Error(`Sequential roleExecution: ${otherRole.toUpperCase()} is active`);
           }
         }

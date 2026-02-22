@@ -556,13 +556,13 @@ export async function scanOrphanedSessions(opts: {
   }
 
   for (const project of Object.values(data.projects)) {
-    for (const [_role, worker] of Object.entries(project.workers)) {
-      for (const [_level, sessionKey] of Object.entries(worker.sessions)) {
-        if (sessionKey) {
-          knownKeys.add(sessionKey);
+    for (const [_role, rw] of Object.entries(project.workers)) {
+      for (const slot of rw.slots) {
+        if (slot.sessionKey) {
+          knownKeys.add(slot.sessionKey);
           // Track active worker sessions (belt-and-suspenders: never delete these)
-          if (worker.active) {
-            activeSessionKeys.add(sessionKey);
+          if (slot.active) {
+            activeSessionKeys.add(slot.sessionKey);
           }
         }
       }
