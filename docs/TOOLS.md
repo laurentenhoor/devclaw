@@ -1,6 +1,6 @@
 # DevClaw — Tools Reference
 
-Complete reference for all 16 tools registered by DevClaw. See [`index.ts`](../index.ts) for registration.
+Complete reference for all 18 tools registered by DevClaw. See [`index.ts`](../index.ts) for registration.
 
 ## Worker Lifecycle
 
@@ -467,3 +467,50 @@ When the heartbeat fills free worker slots, issues are prioritized:
 3. **To Do** — Fresh tasks are picked up last
 
 This ensures the pipeline clears its backlog before starting new work.
+
+---
+
+## Maintenance
+
+### `upgrade`
+
+Upgrade DevClaw plugin and workspace files. Checks npm for a newer published version, installs it via `openclaw plugins install`, then upgrades workspace docs, default prompts, and workflow states to match the running version (with `.bak` backups). Preserves roles, timeouts, and project-level prompt overrides.
+
+**Source:** [`lib/tools/upgrade.ts`](../lib/tools/upgrade.ts)
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `skipNpmCheck` | boolean | No | Skip npm version check and only upgrade workspace files. Default: `false`. |
+
+**What it does:**
+
+1. Checks npm registry for a newer version of `@laurentenhoor/devclaw`
+2. Installs the update via `openclaw plugins install`
+3. Upgrades workspace docs (AGENTS.md, HEARTBEAT.md, etc.) to match the running version
+4. Creates `.bak` backups of any modified files
+5. Preserves user customizations in roles, timeouts, and project-level prompts
+
+---
+
+### `sync_labels`
+
+Sync GitHub/GitLab labels with the current workflow config. Creates any missing state labels, role:level labels, and step routing labels from the resolved (three-layer merged) config.
+
+**Source:** [`lib/tools/sync-labels.ts`](../lib/tools/sync-labels.ts)
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `projectSlug` | string | No | Project slug to sync. Omit to sync all registered projects. |
+
+**What it does:**
+
+1. Loads the resolved workflow config (built-in → workspace → project)
+2. Derives all required labels: state labels, role:level labels, step routing labels
+3. Creates any missing labels on the GitHub/GitLab repo via the provider
+4. Reports created vs. already-existing labels
+
+**When to use:** After editing `workflow.yaml` to add custom states, change label names, or enable the test phase.

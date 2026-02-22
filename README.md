@@ -74,7 +74,7 @@ GitHub/GitLab issues are the single source of truth — not an internal database
 
 - **[External task state](#your-issues-stay-in-your-tracker)** — labels, transitions, and status queries go through your issue tracker
 - **[Atomic operations](#what-atomic-means-here)** — label transition + state update + session dispatch + audit log in one call
-- **[Tool-based guardrails](#the-toolbox)** — 16 tools enforce the process; the agent provides intent, the plugin handles mechanics
+- **[Tool-based guardrails](#the-toolbox)** — 18 tools enforce the process; the agent provides intent, the plugin handles mechanics
 
 ### ~60-80% token savings
 
@@ -437,6 +437,14 @@ openclaw plugins install @laurentenhoor/devclaw
 
 ### Upgrade
 
+The easiest way to upgrade is through your agent:
+```
+You: "Upgrade DevClaw"
+```
+
+The `upgrade` tool checks npm for newer versions, installs the update, and upgrades workspace files (docs, prompts, workflow states) with `.bak` backups — preserving your customizations.
+
+Or manually:
 ```bash
 openclaw plugins install @laurentenhoor/devclaw
 ```
@@ -485,7 +493,7 @@ You can also use the [CLI wizard or non-interactive setup](docs/ONBOARDING.md#st
 
 ## The toolbox
 
-DevClaw gives the orchestrator 16 tools. These aren't just convenience wrappers — they're **guardrails**. Each tool encodes a complex multi-step operation into a single atomic call. The agent provides intent, the plugin handles mechanics. The agent physically cannot skip a label transition, forget to update state, or dispatch to the wrong session — those decisions are made by deterministic code, not LLM reasoning.
+DevClaw gives the orchestrator 18 tools. These aren't just convenience wrappers — they're **guardrails**. Each tool encodes a complex multi-step operation into a single atomic call. The agent provides intent, the plugin handles mechanics. The agent physically cannot skip a label transition, forget to update state, or dispatch to the wrong session — those decisions are made by deterministic code, not LLM reasoning.
 
 | Tool | What it does |
 |---|---|
@@ -505,6 +513,8 @@ DevClaw gives the orchestrator 16 tools. These aren't just convenience wrappers 
 | `autoconfigure_models` | LLM-powered model selection based on available models |
 | `workflow_guide` | Configuration reference for workflow.yaml (call before editing) |
 | `reset_defaults` | Restore workspace files to built-in defaults (creates `.bak` backups) |
+| `upgrade` | Upgrade plugin and workspace files — checks npm, installs, upgrades docs/prompts/states |
+| `sync_labels` | Sync GitHub/GitLab labels with workflow config after editing `workflow.yaml` |
 
 Full parameters and usage in the [Tools Reference](docs/TOOLS.md).
 
@@ -516,7 +526,7 @@ Full parameters and usage in the [Tools Reference](docs/TOOLS.md).
 |---|---|
 | **[Architecture](docs/ARCHITECTURE.md)** | System design, session model, data flow, end-to-end diagrams |
 | **[Workflow](docs/WORKFLOW.md)** | State machine, review policies, optional test phase |
-| **[Tools Reference](docs/TOOLS.md)** | Complete reference for all 16 tools |
+| **[Tools Reference](docs/TOOLS.md)** | Complete reference for all 18 tools |
 | **[Configuration](docs/CONFIGURATION.md)** | `openclaw.json`, `projects.json`, roles, timeouts |
 | **[Onboarding Guide](docs/ONBOARDING.md)** | Full step-by-step setup |
 | **[Testing](docs/TESTING.md)** | Test suite, fixtures, CI/CD |
