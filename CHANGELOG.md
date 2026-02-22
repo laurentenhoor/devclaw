@@ -5,10 +5,16 @@ All notable changes to DevClaw will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.4.0] - 2026-02-19
+## [1.4.0] - 2026-02-22
 
 ### Added
 
+- **`upgrade` tool** — Automatic plugin and workspace upgrades. Checks npm for newer versions, installs via `openclaw plugins install`, then upgrades workspace docs, prompts, and workflow states to match the running version (with `.bak` backups). Preserves roles, timeouts, and project-level prompt overrides.
+- **`sync_labels` tool** — Synchronize GitHub/GitLab labels with the current workflow config. Creates any missing state labels, role:level labels, and step routing labels from the resolved three-layer config. Use after editing `workflow.yaml` to push label changes to your issue tracker.
+- **Slot-based worker pools** — Workers now support multiple concurrent slots per role level via `maxWorkers` / `maxWorkersPerLevel` in `workflow.yaml`. The dispatch engine, health checks, status dashboard, and project registration all support multi-slot workers.
+- **PR closure handling** — Closing a PR without merging now transitions the issue to `Rejected` state with proper issue closure. New `PR_CLOSED` event in workflow transitions.
+- **accountId support in notifications** — All `notify()` call sites now pass `accountId` and `runtime` for channel-aware notification routing.
+- **PR_CLOSED event in review pass** — Heartbeat detects closed (unmerged) PRs in `To Review` and auto-transitions to `To Improve` for developer action.
 - **Externalized defaults & `reset_defaults` tool** — All built-in templates (AGENTS.md, HEARTBEAT.md, IDENTITY.md, TOOLS.md, workflow states, role prompts) moved to a `defaults/` directory. New `reset_defaults` tool restores workspace files to factory settings with `.bak` backups, with warnings about project-level prompt overrides.
 - **Eyes marker (👀) on managed issues/PRs** — DevClaw adds an eyes marker to issue and PR bodies it manages, distinguishing them from legacy or manually-created items.
 - **Comment consumption tracking with reactions** — Processed comments receive emoji reactions so workers don't re-read already-handled feedback on subsequent dispatches.
@@ -17,10 +23,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`projects.json` is pure runtime state** — All configuration moved to `workflow.yaml`; `projects.json` only tracks runtime worker state. Simplifies the config story.
+- **Bootstrap hook replaces AGENTS.md injection** — Worker sessions now receive role-specific instructions via the `agent:bootstrap` hook instead of AGENTS.md file replacement.
 - **Safe two-phase label transitions** — Label changes on GitHub/GitLab use a two-phase commit (add new → remove old) to prevent half-states on API failures.
 - **PR review detection improvements** — More reliable detection of review approvals, change requests, and conversation comments across GitHub and GitLab providers.
 - **TOOLS.md template improvements** — Cleaner generated tool documentation for new workspaces.
-- **16 tools** (was 14) — added `reset_defaults`, `tasks_status`, `task_list` (replaced `status` and `work_heartbeat`)
+- **18 tools** (was 14) — added `reset_defaults`, `tasks_status`, `task_list`, `upgrade`, `sync_labels` (replaced `status` and `work_heartbeat`)
+
+### Fixed
+
+- **Architect prompt** — Enforces single comprehensive task with checklist format instead of multiple small tasks.
+- **GitHub PR comment emoji marking** — Fixed consumption tracking for PR review comments.
+- **PR state property** — `findPrsViaTimeline` now returns `state` property; `getPrStatus` distinguishes closed-PR from no-PR.
+- **Workflow.yaml comments** — Corrected comments and formatting for clarity.
+
+### Removed
+
+- **Orphaned session scan** — Removed from health and heartbeat services (was causing false positives).
 
 ## [1.3.6] - 2026-02-18
 

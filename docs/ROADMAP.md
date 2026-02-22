@@ -47,6 +47,18 @@ DEVELOPER completes work (`result: "done"`), which transitions the issue to `To 
 
 The architect role enables design investigations. `research_task` creates an issue and dispatches an architect worker through dedicated `To Research` → `Researching` states. The architect posts findings as comments, creates implementation tasks in Planning, then completes with `done` or `blocked` (→ Refining).
 
+### Slot-Based Worker Pools
+
+Workers now support multiple concurrent slots per role level via `maxWorkers` / `maxWorkersPerLevel` in `workflow.yaml`. The data model (`WorkerState`), dispatch engine (`tick.ts`, `work-start.ts`), health checks, status dashboard, and project registration all support multi-slot workers. Session keys use slot-indexed naming for isolation.
+
+### Upgrade and Label Sync Tools
+
+Two new maintenance tools: `upgrade` checks npm for newer versions, installs updates, and upgrades workspace files with `.bak` backups. `sync_labels` synchronizes GitHub/GitLab labels with the resolved workflow config after editing `workflow.yaml`.
+
+### PR Closure and Rejection Handling
+
+Closing a PR without merging now transitions the associated issue to `Rejected` state with proper issue closure. The workflow state machine supports a new `PR_CLOSED` event in transitions.
+
 ### Workspace Layout Migration
 
 Data directory moved from `<workspace>/projects/` to `<workspace>/devclaw/`. Automatic migration on first load — see `lib/setup/migrate-layout.ts`.
