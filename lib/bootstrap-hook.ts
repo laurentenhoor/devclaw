@@ -16,21 +16,25 @@ import { DATA_DIR } from "./setup/migrate-layout.js";
 /**
  * Parse a DevClaw subagent session key to extract project name and role.
  *
- * Session key format: `agent:{agentId}:subagent:{projectName}-{role}-{level}`
+ * Session key format (new): `agent:{agentId}:subagent:{projectName}-{role}-{level}-{slotIndex}`
+ * Session key format (legacy): `agent:{agentId}:subagent:{projectName}-{role}-{level}`
  * Examples:
- *   - `agent:devclaw:subagent:my-project-developer-medior` → { projectName: "my-project", role: "developer" }
- *   - `agent:devclaw:subagent:webapp-tester-medior`        → { projectName: "webapp", role: "tester" }
+ *   - `agent:devclaw:subagent:my-project-developer-medior-0` → { projectName: "my-project", role: "developer" }
+ *   - `agent:devclaw:subagent:webapp-tester-medior`          → { projectName: "webapp", role: "tester" } (legacy)
  *
  * Note: projectName may contain hyphens, so we match role from the end.
  */
 export function parseDevClawSessionKey(
   sessionKey: string,
 ): { projectName: string; role: string } | null {
-  // Match `:subagent:` prefix, then capture project name and role (derived from registry)
   const rolePattern = getSessionKeyRolePattern();
-  const match = sessionKey.match(new RegExp(`:subagent:(.+)-(${rolePattern})-[^-]+$`));
-  if (!match) return null;
-  return { projectName: match[1], role: match[2] };
+  // New format: ...-{role}-{level}-{slotIndex}
+  const newMatch = sessionKey.match(new RegExp(`:subagent:(.+)-(${rolePattern})-[^-]+-\\d+$`));
+  if (newMatch) return { projectName: newMatch[1], role: newMatch[2] };
+  // Legacy format fallback: ...-{role}-{level} (for in-flight sessions during migration)
+  const legacyMatch = sessionKey.match(new RegExp(`:subagent:(.+)-(${rolePattern})-[^-]+$`));
+  if (legacyMatch) return { projectName: legacyMatch[1], role: legacyMatch[2] };
+  return null;
 }
 
 /**
