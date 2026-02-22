@@ -16,7 +16,7 @@ import { runCommand } from "../run-command.js";
 import { createProvider } from "../providers/index.js";
 import { log as auditLog } from "../audit.js";
 import { getAllRoleIds, getLevelsForRole } from "../roles/index.js";
-import { ExecutionMode, getRoleLabels } from "../workflow.js";
+import { getRoleLabels } from "../workflow.js";
 import { loadConfig } from "../config/index.js";
 import { DATA_DIR } from "../setup/migrate-layout.js";
 
@@ -121,11 +121,6 @@ export function createProjectRegisterTool() {
           type: "string",
           description: "Deployment URL for the project",
         },
-        roleExecution: {
-          type: "string",
-          enum: Object.values(ExecutionMode),
-          description: "Project-level role execution mode: parallel (DEV and QA can work simultaneously) or sequential (only one role active at a time). Defaults to parallel.",
-        },
       },
     },
 
@@ -138,7 +133,6 @@ export function createProjectRegisterTool() {
       const baseBranch = params.baseBranch as string;
       const deployBranch = (params.deployBranch as string) ?? baseBranch;
       const deployUrl = (params.deployUrl as string) ?? "";
-      const roleExecution = (params.roleExecution as ExecutionMode) ?? ExecutionMode.PARALLEL;
       const workspaceDir = ctx.workspaceDir;
 
       if (!workspaceDir) {
@@ -245,7 +239,6 @@ export function createProjectRegisterTool() {
           deployBranch,
           channels: [newChannel],
           provider: providerType,
-          roleExecution,
           workers,
         };
       }

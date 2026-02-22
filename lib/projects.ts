@@ -29,7 +29,7 @@ import { homedir } from "node:os";
 import { migrateProject } from "./migrations.js";
 import { ensureWorkspaceMigrated, DATA_DIR } from "./setup/migrate-layout.js";
 import { isLegacySchema, migrateLegacySchema } from "./schema-migration.js";
-import type { ExecutionMode } from "./workflow.js";
+
 
 // ---------------------------------------------------------------------------
 // File locking — prevents concurrent read-modify-write races
@@ -91,7 +91,6 @@ export type SlotState = {
 };
 
 export type RoleWorkerState = {
-  maxWorkers: number;
   slots: SlotState[];
 };
 
@@ -141,8 +140,6 @@ export type Project = {
   channels: Channel[];
   /** Issue tracker provider type (github or gitlab). Auto-detected at registration, stored for reuse. */
   provider?: "github" | "gitlab";
-  /** Project-level role execution: parallel (DEVELOPER+TESTER can run simultaneously) or sequential (only one role at a time). Default: parallel */
-  roleExecution?: ExecutionMode;
   maxDevWorkers?: number;
   maxQaWorkers?: number;
   /** Worker state per role (developer, tester, architect, or custom roles). Shared across all channels. */
@@ -161,7 +158,6 @@ export type LegacyProject = {
   deployBranch: string;
   channel?: string;
   provider?: "github" | "gitlab";
-  roleExecution?: ExecutionMode;
   maxDevWorkers?: number;
   maxQaWorkers?: number;
   workers: Record<string, RoleWorkerState>;
@@ -192,15 +188,39 @@ export function emptyRoleWorkerState(maxWorkers: number = 1): RoleWorkerState {
   for (let i = 0; i < maxWorkers; i++) {
     slots.push(emptySlot());
   }
-  return { maxWorkers, slots };
+  return { slots };
 }
 
-/** Return the lowest-index inactive slot, or null if all slots are active. */
-export function findFreeSlot(roleWorker: RoleWorkerState): number | null {
-  for (let i = 0; i < roleWorker.slots.length; i++) {
+/** Return the lowest-index inactive slot, or null if all at capacity.
+ *  When maxWorkers is provided, only considers slots within that bound. */
+export function findFreeSlot(roleWorker: RoleWorkerState, maxWorkers?: number): number | null {
+  const limit = maxWorkers !== undefined ? Math.min(maxWorkers, roleWorker.slots.length) : roleWorker.slots.length;
+  for (let i = 0; i < limit; i++) {
     if (!roleWorker.slots[i]!.active) return i;
   }
   return null;
+}
+
+/**
+ * Reconcile a role's slots array with the configured maxWorkers.
+ * - Expand: append empty slots if slots.length < maxWorkers
+ * - Shrink: remove idle (inactive) slots from the end if slots.length > maxWorkers
+ * Active workers are never removed — they finish naturally.
+ * Mutates roleWorker in place. Returns true if any changes were made.
+ */
+export function reconcileSlots(roleWorker: RoleWorkerState, maxWorkers: number): boolean {
+  let changed = false;
+  while (roleWorker.slots.length < maxWorkers) {
+    roleWorker.slots.push(emptySlot());
+    changed = true;
+  }
+  while (roleWorker.slots.length > maxWorkers) {
+    const lastSlot = roleWorker.slots[roleWorker.slots.length - 1]!;
+    if (lastSlot.active) break;
+    roleWorker.slots.pop();
+    changed = true;
+  }
+  return changed;
 }
 
 /** Find the slot index for a given issueId, or null if not found. */

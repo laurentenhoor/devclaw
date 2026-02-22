@@ -99,7 +99,6 @@ function parseLegacyWorkerState(worker: Record<string, unknown>, role: string): 
   }
 
   return {
-    maxWorkers: 1,
     slots: [{
       active: worker.active as boolean,
       issueId: worker.issueId as string | null,
@@ -116,7 +115,6 @@ function parseLegacyWorkerState(worker: Record<string, unknown>, role: string): 
  * applying level migration to each slot.
  */
 function parseSlotWorkerState(worker: Record<string, unknown>, role: string): RoleWorkerState {
-  const maxWorkers = (worker.maxWorkers as number) ?? 1;
   const rawSlots = (worker.slots as Array<Record<string, unknown>>) ?? [];
   const slots: import("./projects.js").SlotState[] = rawSlots.map(s => ({
     active: s.active as boolean,
@@ -126,11 +124,11 @@ function parseSlotWorkerState(worker: Record<string, unknown>, role: string): Ro
     startTime: s.startTime as string | null,
     previousLabel: (s.previousLabel as string | null) ?? null,
   }));
-  // Ensure we have at least maxWorkers slots
-  while (slots.length < maxWorkers) {
+  // Ensure at least one slot exists
+  if (slots.length === 0) {
     slots.push(emptySlot());
   }
-  return { maxWorkers, slots };
+  return { slots };
 }
 
 function parseWorkerState(worker: Record<string, unknown>, role: string): RoleWorkerState {
@@ -189,4 +187,7 @@ export function migrateProject(project: Project): void {
   }
   // Remove legacy field so it doesn't persist back to disk
   delete (raw as Record<string, unknown>).channel;
+
+  // Remove roleExecution from state — now lives in workflow.yaml
+  delete (raw as Record<string, unknown>).roleExecution;
 }

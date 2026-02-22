@@ -47,6 +47,7 @@ export function mergeConfig(
     merged.workflow = {
       initial: overlay.workflow?.initial ?? base.workflow?.initial,
       reviewPolicy: overlay.workflow?.reviewPolicy ?? base.workflow?.reviewPolicy,
+      roleExecution: overlay.workflow?.roleExecution ?? base.workflow?.roleExecution,
       states: {
         ...base.workflow?.states,
         ...overlay.workflow?.states,

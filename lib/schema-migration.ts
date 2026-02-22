@@ -94,7 +94,6 @@ export async function migrateLegacySchema(data: any): Promise<ProjectsData> {
       deployBranch: firstProj.deployBranch,
       channels,
       provider: firstProj.provider,
-      roleExecution: firstProj.roleExecution,
       maxDevWorkers: firstProj.maxDevWorkers,
       maxQaWorkers: firstProj.maxQaWorkers,
       workers: mergedWorkers,
