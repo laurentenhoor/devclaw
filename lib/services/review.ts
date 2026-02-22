@@ -132,20 +132,34 @@ export async function reviewPass(opts: {
         }
       }
 
-      // PR closed without merging → transition to toImprove
+      // PR closed without merging → execute configured transition + actions
       // status.url non-null distinguishes "PR was explicitly closed" from "no PR exists"
       if (status.state === PrState.CLOSED && status.url !== null) {
         const closedTransition = state.on[WorkflowEvent.PR_CLOSED];
         if (closedTransition) {
           const targetKey = typeof closedTransition === "string" ? closedTransition : closedTransition.target;
+          const closedActions = typeof closedTransition === "object" ? closedTransition.actions : undefined;
           const targetState = workflow.states[targetKey];
           if (targetState) {
             await provider.transitionLabel(issue.iid, state.label, targetState.label);
+            if (closedActions) {
+              for (const action of closedActions) {
+                switch (action) {
+                  case Action.CLOSE_ISSUE:
+                    try { await provider.closeIssue(issue.iid); } catch { /* best-effort */ }
+                    break;
+                  case Action.REOPEN_ISSUE:
+                    try { await provider.reopenIssue(issue.iid); } catch { /* best-effort */ }
+                    break;
+                }
+              }
+            }
             await auditLog(workspaceDir, "review_transition", {
               project: projectName, issueId: issue.iid,
               from: state.label, to: targetState.label,
               reason: "pr_closed",
               prUrl: status.url,
+              actions: closedActions,
             });
             onPrClosed?.(issue.iid, status.url, issue.title, issue.web_url);
             transitions++;

@@ -6,50 +6,64 @@ When you start work, you're given:
 
 - **Issue:** number, title, body, URL, labels, state
 - **Comments:** full discussion thread on the issue
-- **Assignees:** who's assigned
-- **Timestamps:** created, updated dates
 - **Project:** repo path, base branch, project name, projectSlug
 
 Read the comments carefully — they often contain clarifications, decisions, or scope changes that aren't in the original issue body.
 
-## Your Job
+## Workflow
 
-Implement what the issue asks for, create a PR, and call `work_finish`.
+### 1. Create a worktree
 
-## CRITICAL: Always Use a Dedicated Worktree
-
-**NEVER work directly in the default/root worktree or the main workspace checkout.** Always create a dedicated git worktree in the `.worktrees` sibling directory:
+**NEVER work in the main checkout.** Create a dedicated git worktree as a sibling to the repo:
 
 ```bash
-git worktree add "$PWD.worktrees/feature/<id>-<slug>" -b feature/<id>-<slug>
-cd "$PWD.worktrees/feature/<id>-<slug>"
+# Example: repo is at ~/git/myproject
+# Worktree goes to ~/git/myproject.worktrees/feature/123-add-auth
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+BRANCH="feature/<issue-id>-<slug>"
+WORKTREE="${REPO_ROOT}.worktrees/${BRANCH}"
+git worktree add "$WORKTREE" -b "$BRANCH"
+cd "$WORKTREE"
 ```
 
-This places worktrees at `<repo>.worktrees/` next to the project folder, keeping the repo root clean. Working in the root worktree risks corrupting the orchestrator's checkout, breaking other workers, and causing merge conflicts across parallel tasks. If you are already in a worktree from a previous task on the same branch, verify it's clean before reusing it.
+The `.worktrees/` directory sits NEXT TO the repo folder (not inside it). This keeps the main checkout clean for the orchestrator and other workers. If a worktree already exists from a previous task on the same branch, verify it's clean before reusing it.
 
-## Conventions
+### 2. Implement the changes
 
-- Conventional commits: `feat:`, `fix:`, `chore:`, `refactor:`, `test:`, `docs:`
-- Include issue number: `feat: add user authentication (#12)`
-- Branch naming: `feature/<id>-<slug>` or `fix/<id>-<slug>`
-- **Do NOT use closing keywords in PR/MR descriptions** (no "Closes #X", "Fixes #X", "Resolves #X"). Use "As described in issue #X" or "Addresses issue #X". DevClaw manages issue state — auto-closing bypasses the review lifecycle.
-- **Do NOT merge the PR yourself** — leave it open for review. The system will auto-merge when approved.
-- Run tests before completing when applicable
+- Read the issue description and comments thoroughly
+- Make the changes described in the issue
+- Follow existing code patterns and conventions in the project
+- Run tests/linting if the project has them configured
 
-## Filing Follow-Up Issues
+### 3. Commit and push
 
-If you discover unrelated bugs or needed improvements during your work, call `task_create`:
+```bash
+git add <files>
+git commit -m "feat: description of change (#<issue-id>)"
+git push -u origin "$BRANCH"
+```
 
-`task_create({ projectSlug: "<from task message>", title: "Bug: ...", description: "..." })`
+Conventional commits: `feat:`, `fix:`, `chore:`, `refactor:`, `test:`, `docs:`
 
-## Completing Your Task
+### 4. Create a Pull Request
 
-When you are done, **call `work_finish` yourself** — do not just announce in text.
+Use `gh pr create` to open a PR against the base branch. **Do NOT use closing keywords** in the description (no "Closes #X", "Fixes #X"). Use "Addresses issue #X" instead — DevClaw manages issue lifecycle.
 
-- **Done:** `work_finish({ role: "developer", result: "done", projectSlug: "<from task message>", summary: "<brief summary>" })`
-- **Blocked:** `work_finish({ role: "developer", result: "blocked", projectSlug: "<from task message>", summary: "<what you need>" })`
+### 5. Call work_finish
 
-The `projectSlug` is included in your task message.
+```
+work_finish({ role: "developer", result: "done", projectSlug: "<from task message>", summary: "<what you did>" })
+```
+
+If blocked: `work_finish({ role: "developer", result: "blocked", projectSlug: "<from task message>", summary: "<what you need>" })`
+
+**Always call work_finish** — even if you hit errors or can't complete the task.
+
+## Important Rules
+
+- **Do NOT merge PRs** — leave them open for review. The system auto-merges when approved.
+- **Do NOT work in the main checkout** — always use a worktree.
+- If you discover unrelated bugs, file them with `task_create({ projectSlug: "...", title: "...", description: "..." })`.
 
 ## Tools You Should NOT Use
 

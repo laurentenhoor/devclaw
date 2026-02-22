@@ -97,6 +97,10 @@ workflow:
         MERGE_FAILED: toImprove
         CHANGES_REQUESTED: toImprove
         MERGE_CONFLICT: toImprove
+        PR_CLOSED:
+          target: rejected
+          actions:
+            - closeIssue
     reviewing:
       type: active
       role: reviewer
@@ -146,6 +150,10 @@ workflow:
       type: terminal
       label: Done
       color: "#5cb85c"
+    rejected:
+      type: terminal
+      label: Rejected
+      color: "#e11d48"
     toImprove:
       type: queue
       role: developer

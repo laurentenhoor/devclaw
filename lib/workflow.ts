@@ -155,7 +155,7 @@ export const DEFAULT_WORKFLOW: WorkflowConfig = {
         [WorkflowEvent.MERGE_FAILED]: "toImprove",
         [WorkflowEvent.CHANGES_REQUESTED]: "toImprove",
         [WorkflowEvent.MERGE_CONFLICT]: "toImprove",
-        [WorkflowEvent.PR_CLOSED]: "toImprove",
+        [WorkflowEvent.PR_CLOSED]: { target: "rejected", actions: [Action.CLOSE_ISSUE] },
       },
     },
     reviewing: {
@@ -173,6 +173,11 @@ export const DEFAULT_WORKFLOW: WorkflowConfig = {
       type: StateType.TERMINAL,
       label: "Done",
       color: "#5cb85c",
+    },
+    rejected: {
+      type: StateType.TERMINAL,
+      label: "Rejected",
+      color: "#e11d48",
     },
 
     // ── Side paths (loops back into main pipeline) ──────────────
