@@ -11,7 +11,8 @@
  * - projects.json format: old role keys in workers map → canonical role keys
  */
 
-import type { WorkerState, Project } from "./projects.js";
+import type { LegacyWorkerState, RoleWorkerState, Project } from "./projects.js";
+import { emptyRoleWorkerState, emptySlot } from "./projects.js";
 
 // ---------------------------------------------------------------------------
 // Role aliases — old role IDs → canonical IDs
@@ -70,31 +71,73 @@ function migrateSessions(
   return migrated;
 }
 
-function parseWorkerState(worker: Record<string, unknown>, role: string): WorkerState {
+/**
+ * Detect if a worker object is in the legacy (flat) format.
+ * Legacy format has `active` at top level and no `slots` array.
+ */
+function isLegacyWorkerFormat(worker: Record<string, unknown>): boolean {
+  return "active" in worker && !("slots" in worker);
+}
+
+/**
+ * Parse a legacy flat worker state into a RoleWorkerState with one slot.
+ * Extracts sessionKey from sessions[level].
+ */
+function parseLegacyWorkerState(worker: Record<string, unknown>, role: string): RoleWorkerState {
   const level = (worker.level ?? worker.tier ?? null) as string | null;
+  const migratedLevel = migrateLevel(level, role);
   const sessions = (worker.sessions as Record<string, string | null>) ?? {};
+  const migratedSessions = migrateSessions(sessions, role);
+  
+  // Extract sessionKey: prefer sessions[level], fall back to first non-null
+  let sessionKey: string | null = null;
+  if (migratedLevel && migratedSessions[migratedLevel]) {
+    sessionKey = migratedSessions[migratedLevel]!;
+  } else {
+    const firstNonNull = Object.values(migratedSessions).find(v => v != null);
+    if (firstNonNull) sessionKey = firstNonNull;
+  }
+
   return {
-    active: worker.active as boolean,
-    issueId: worker.issueId as string | null,
-    startTime: worker.startTime as string | null,
-    level: migrateLevel(level, role),
-    sessions: migrateSessions(sessions, role),
+    maxWorkers: 1,
+    slots: [{
+      active: worker.active as boolean,
+      issueId: worker.issueId as string | null,
+      level: migratedLevel,
+      sessionKey,
+      startTime: worker.startTime as string | null,
+      previousLabel: (worker.previousLabel as string | null) ?? null,
+    }],
   };
 }
 
-/** Empty worker state with null sessions for given levels. */
-function emptyWorkerState(levels: string[]): WorkerState {
-  const sessions: Record<string, string | null> = {};
-  for (const l of levels) {
-    sessions[l] = null;
+/**
+ * Parse a worker object that's already in the new slot-based format,
+ * applying level migration to each slot.
+ */
+function parseSlotWorkerState(worker: Record<string, unknown>, role: string): RoleWorkerState {
+  const maxWorkers = (worker.maxWorkers as number) ?? 1;
+  const rawSlots = (worker.slots as Array<Record<string, unknown>>) ?? [];
+  const slots: import("./projects.js").SlotState[] = rawSlots.map(s => ({
+    active: s.active as boolean,
+    issueId: s.issueId as string | null,
+    level: migrateLevel(s.level as string | null, role),
+    sessionKey: s.sessionKey as string | null,
+    startTime: s.startTime as string | null,
+    previousLabel: (s.previousLabel as string | null) ?? null,
+  }));
+  // Ensure we have at least maxWorkers slots
+  while (slots.length < maxWorkers) {
+    slots.push(emptySlot());
   }
-  return {
-    active: false,
-    issueId: null,
-    startTime: null,
-    level: null,
-    sessions,
-  };
+  return { maxWorkers, slots };
+}
+
+function parseWorkerState(worker: Record<string, unknown>, role: string): RoleWorkerState {
+  if (isLegacyWorkerFormat(worker)) {
+    return parseLegacyWorkerState(worker, role);
+  }
+  return parseSlotWorkerState(worker, role);
 }
 
 /**
@@ -116,14 +159,14 @@ export function migrateProject(project: Project): void {
       const canonical = ROLE_ALIASES[role] ?? role;
       project.workers[canonical] = raw[role]
         ? parseWorkerState(raw[role] as Record<string, unknown>, role)
-        : emptyWorkerState([]);
+        : emptyRoleWorkerState(1);
     }
     // Clean up old fields from the in-memory object
     delete raw.dev;
     delete raw.qa;
     delete raw.architect;
   } else if (raw.workers) {
-    // New format: parse each worker with role-aware migration
+    // Parse each worker with role-aware migration (handles both legacy and slot formats)
     const workers = raw.workers as Record<string, Record<string, unknown>>;
     project.workers = {};
     for (const [role, worker] of Object.entries(workers)) {
