@@ -219,29 +219,30 @@ async function sendMessage(
   channel: string,
   workspaceDir: string,
   runtime?: PluginRuntime,
+  accountId?: string,
 ): Promise<boolean> {
   try {
     // Use runtime API when available (avoids CLI subprocess timeouts)
     if (runtime) {
       if (channel === "telegram") {
         // Cast to any to bypass TypeScript type limitation; disableWebPagePreview is valid in Telegram API
-        await runtime.channel.telegram.sendMessageTelegram(target, message, { silent: true, disableWebPagePreview: true } as any);
+        await runtime.channel.telegram.sendMessageTelegram(target, message, { silent: true, disableWebPagePreview: true, accountId } as any);
         return true;
       }
       if (channel === "whatsapp") {
-        await runtime.channel.whatsapp.sendMessageWhatsApp(target, message, { verbose: false });
+        await runtime.channel.whatsapp.sendMessageWhatsApp(target, message, { verbose: false, accountId });
         return true;
       }
       if (channel === "discord") {
-        await runtime.channel.discord.sendMessageDiscord(target, message);
+        await runtime.channel.discord.sendMessageDiscord(target, message, { accountId });
         return true;
       }
       if (channel === "slack") {
-        await runtime.channel.slack.sendMessageSlack(target, message);
+        await runtime.channel.slack.sendMessageSlack(target, message, { accountId });
         return true;
       }
       if (channel === "signal") {
-        await runtime.channel.signal.sendMessageSignal(target, message);
+        await runtime.channel.signal.sendMessageSignal(target, message, { accountId });
         return true;
       }
     }
@@ -294,6 +295,8 @@ export async function notify(
     channel?: string;
     /** Plugin runtime for direct API access (avoids CLI subprocess timeouts) */
     runtime?: PluginRuntime;
+    /** Optional account ID for multi-account setups */
+    accountId?: string;
   },
 ): Promise<boolean> {
   if (opts.config?.[event.type] === false) return true;
@@ -317,7 +320,7 @@ export async function notify(
     message,
   });
 
-  return sendMessage(target, message, channel, opts.workspaceDir, opts.runtime);
+  return sendMessage(target, message, channel, opts.workspaceDir, opts.runtime, opts.accountId);
 }
 
 /**
