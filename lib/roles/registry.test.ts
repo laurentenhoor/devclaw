@@ -144,7 +144,7 @@ describe("models", () => {
   });
 
   it("should resolve from resolved role config override", () => {
-    const resolvedRole = { models: { junior: "custom/model" }, levels: ["junior", "medior", "senior"], defaultLevel: "medior", emoji: {}, completionResults: [] as string[], enabled: true };
+    const resolvedRole = { maxWorkers: 1, models: { junior: "custom/model" }, levels: ["junior", "medior", "senior"], defaultLevel: "medior", emoji: {}, completionResults: [] as string[], enabled: true };
     assert.strictEqual(resolveModel("developer", "junior", resolvedRole), "custom/model");
   });
 
@@ -160,12 +160,12 @@ describe("models", () => {
     // "mid" alias maps to "medior" — should resolve to default medior model
     assert.strictEqual(resolveModel("developer", "mid"), "anthropic/claude-sonnet-4-5");
     // With explicit override in resolved config
-    const resolvedRole = { models: { medior: "custom/old-config-model" }, levels: ["junior", "medior", "senior"], defaultLevel: "medior", emoji: {}, completionResults: [] as string[], enabled: true };
+    const resolvedRole = { maxWorkers: 1, models: { medior: "custom/old-config-model" }, levels: ["junior", "medior", "senior"], defaultLevel: "medior", emoji: {}, completionResults: [] as string[], enabled: true };
     assert.strictEqual(resolveModel("developer", "mid", resolvedRole), "custom/old-config-model");
   });
 
   it("should resolve with resolved role overriding defaults selectively", () => {
-    const resolvedRole = { models: { junior: "custom/model" }, levels: ["junior", "medior", "senior"], defaultLevel: "medior", emoji: {}, completionResults: [] as string[], enabled: true };
+    const resolvedRole = { maxWorkers: 1, models: { junior: "custom/model" }, levels: ["junior", "medior", "senior"], defaultLevel: "medior", emoji: {}, completionResults: [] as string[], enabled: true };
     assert.strictEqual(resolveModel("developer", "junior", resolvedRole), "custom/model");
     // Levels not overridden fall through to registry defaults
     assert.strictEqual(resolveModel("developer", "medior", resolvedRole), "anthropic/claude-sonnet-4-5");

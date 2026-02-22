@@ -39,6 +39,7 @@ const WorkflowConfigSchema = z.object({
 const RoleOverrideSchema = z.union([
   z.literal(false),
   z.object({
+    maxWorkers: z.number().int().positive().optional(),
     levels: z.array(z.string()).optional(),
     defaultLevel: z.string().optional(),
     models: z.record(z.string(), z.string()).optional(),

@@ -11,6 +11,7 @@ import type { WorkflowConfig } from "../workflow.js";
  * Set to `false` to disable a role entirely for a project.
  */
 export type RoleOverride = {
+  maxWorkers?: number; // Maximum concurrent workers for this role (default: 1)
   levels?: string[];
   defaultLevel?: string;
   models?: Record<string, string>;
@@ -69,6 +70,7 @@ export type ResolvedConfig = {
  * Fully resolved role config — all fields present.
  */
 export type ResolvedRoleConfig = {
+  maxWorkers: number; // Maximum concurrent workers for this role (always resolved, default: 1)
   levels: string[];
   defaultLevel: string;
   models: Record<string, string>;
