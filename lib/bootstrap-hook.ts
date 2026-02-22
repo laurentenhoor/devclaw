@@ -92,13 +92,68 @@ export async function loadRoleInstructions(
 }
 
 /**
+ * Version status result from comparing plugin defaults with workspace.
+ */
+export type VersionStatus = {
+  status: "up-to-date" | "outdated" | "customizations-detected" | "unknown";
+  pluginVersion: string | null;
+  installedVersion: string | null;
+  customizedFiles?: string[];
+  outdatedFiles?: string[];
+};
+
+/**
+ * Check workspace defaults version status.
+ * Returns version comparison result for monitoring/diagnostics.
+ * 
+ * This is a best-effort check — failures return "unknown" status.
+ */
+export async function checkDefaultsVersion(workspaceDir: string): Promise<VersionStatus> {
+  try {
+    const { compareManifests } = await import("./setup/defaults-manifest.js");
+    const comparison = await compareManifests(workspaceDir);
+    
+    if (!comparison) {
+      return { status: "unknown", pluginVersion: null, installedVersion: null };
+    }
+    
+    if (comparison.customized.length > 0) {
+      return {
+        status: "customizations-detected",
+        pluginVersion: comparison.pluginVersion,
+        installedVersion: comparison.installedVersion,
+        customizedFiles: comparison.customized,
+      };
+    }
+    
+    if (comparison.outdated.length > 0) {
+      return {
+        status: "outdated",
+        pluginVersion: comparison.pluginVersion,
+        installedVersion: comparison.installedVersion,
+        outdatedFiles: comparison.outdated,
+      };
+    }
+    
+    return {
+      status: "up-to-date",
+      pluginVersion: comparison.pluginVersion,
+      installedVersion: comparison.installedVersion,
+    };
+  } catch {
+    return { status: "unknown", pluginVersion: null, installedVersion: null };
+  }
+}
+
+/**
  * Register the agent:bootstrap hook for DevClaw worker instruction injection.
  *
  * When a DevClaw worker session starts, this hook:
  * 1. Detects it's a DevClaw subagent via session key pattern
  * 2. Extracts project name and role
- * 3. Loads role-specific instructions from workspace
- * 4. Injects them as a virtual workspace file (WORKER_INSTRUCTIONS.md)
+ * 3. Checks workspace defaults version status
+ * 4. Loads role-specific instructions from workspace
+ * 5. Injects them as a virtual workspace file (WORKER_INSTRUCTIONS.md)
  *
  * OpenClaw automatically includes bootstrap files in the agent's system prompt,
  * so workers receive their instructions without any file-read in dispatch.ts.
@@ -129,6 +184,21 @@ export function registerBootstrapHook(api: OpenClawPluginApi): void {
     if (!workspaceDir || typeof workspaceDir !== "string") {
       api.logger.warn(`Bootstrap hook: no workspaceDir in context for ${sessionKey}`);
       return;
+    }
+
+    // Check defaults version status for monitoring/diagnostics
+    const versionStatus = await checkDefaultsVersion(workspaceDir);
+    if (versionStatus.status !== "up-to-date" && versionStatus.status !== "unknown") {
+      api.logger.info(
+        `Bootstrap hook: workspace defaults status=${versionStatus.status}, ` +
+        `plugin=${versionStatus.pluginVersion}, installed=${versionStatus.installedVersion}`
+      );
+      if (versionStatus.customizedFiles && versionStatus.customizedFiles.length > 0) {
+        api.logger.debug(`Customized files: ${versionStatus.customizedFiles.join(", ")}`);
+      }
+      if (versionStatus.outdatedFiles && versionStatus.outdatedFiles.length > 0) {
+        api.logger.debug(`Outdated files: ${versionStatus.outdatedFiles.join(", ")}`);
+      }
     }
 
     const bootstrapFiles = context.bootstrapFiles;
