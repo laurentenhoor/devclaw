@@ -39,6 +39,32 @@ export const DATA_DIR = "devclaw";
 const migrated = new Set<string>();
 
 /**
+ * Create or update the .INSTALLED_DEFAULTS manifest for version tracking.
+ * 
+ * On first run (or legacy workspace without the manifest), creates a retroactive
+ * snapshot of current file hashes. On subsequent runs, this is a no-op unless
+ * the manifest is missing or corrupted.
+ */
+async function ensureInstalledManifest(workspaceDir: string): Promise<void> {
+  try {
+    // Lazy import to avoid circular dependencies
+    const { loadInstalledManifest, saveInstalledManifest, createRetroactiveManifest } = 
+      await import("./defaults-manifest.js");
+    
+    const existing = await loadInstalledManifest(workspaceDir);
+    if (existing) return; // Already exists, nothing to do
+    
+    // Create retroactive manifest from current state
+    const manifest = await createRetroactiveManifest(workspaceDir);
+    if (manifest) {
+      await saveInstalledManifest(workspaceDir, manifest);
+    }
+  } catch {
+    // Best-effort — don't break migration if manifest creation fails
+  }
+}
+
+/**
  * Ensure a workspace has been migrated and default files exist (at most once per process).
  * Safe to call from any code path — no-ops if already run this process.
  */
@@ -49,6 +75,9 @@ export async function ensureWorkspaceMigrated(workspaceDir: string): Promise<voi
   // Lazy import to avoid circular dependency (workspace.ts imports from this file)
   const { ensureDefaultFiles } = await import("./workspace.js");
   await ensureDefaultFiles(workspaceDir);
+  
+  // Create or update .INSTALLED_DEFAULTS manifest for version tracking
+  await ensureInstalledManifest(workspaceDir);
 }
 
 /**
