@@ -199,6 +199,29 @@ export function registerBootstrapHook(api: OpenClawPluginApi): void {
       if (versionStatus.outdatedFiles && versionStatus.outdatedFiles.length > 0) {
         api.logger.debug(`Outdated files: ${versionStatus.outdatedFiles.join(", ")}`);
       }
+      
+      // Check if we should notify about available upgrades
+      try {
+        const { checkVersionStatus: checkDetailedStatus, getNotificationState, updateNotificationState } = 
+          await import("./setup/version-check.js");
+        const detailedStatus = await checkDetailedStatus(workspaceDir);
+        
+        if (detailedStatus.changesAvailable && detailedStatus.pluginVersion) {
+          const notifiedVersion = await getNotificationState(workspaceDir);
+          
+          // Only log if not yet notified about this version
+          if (notifiedVersion !== detailedStatus.pluginVersion) {
+            api.logger.info(
+              `⚠️ DevClaw defaults upgrade available: ${detailedStatus.installedVersion} → ${detailedStatus.pluginVersion}. ` +
+              `Run 'openclaw devclaw upgrade-defaults --preview' to review changes.`
+            );
+            // Mark as notified
+            await updateNotificationState(workspaceDir, detailedStatus.pluginVersion);
+          }
+        }
+      } catch {
+        // Best-effort - don't break bootstrap if notification fails
+      }
     }
 
     const bootstrapFiles = context.bootstrapFiles;
