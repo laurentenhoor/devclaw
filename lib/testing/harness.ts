@@ -17,14 +17,14 @@ import { TestProvider } from "./test-provider.js";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 
 // ---------------------------------------------------------------------------
-// Bootstrap file type (mirrors OpenClaw's internal type)
+// Bootstrap result type (mirrors OpenClaw's PluginHookBeforeAgentStartResult)
 // ---------------------------------------------------------------------------
 
-export type BootstrapFile = {
-  name: string;
-  path: string;
-  content?: string;
-  missing: boolean;
+export type BootstrapResult = {
+  prependContext?: string;
+  systemPrompt?: string;
+  modelOverride?: string;
+  providerOverride?: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -143,11 +143,11 @@ export type TestHarness = {
    */
   writePrompt(role: string, content: string, projectName?: string): Promise<void>;
   /**
-   * Simulate the agent:bootstrap hook firing for a session key.
-   * Registers the real hook with a mock API, fires it, returns the injected bootstrap files.
-   * This tests the full hook chain: session key → parse → load instructions → inject.
+   * Simulate both bootstrap hooks firing for a session key.
+   * Fires agent:bootstrap (strips AGENTS.md) + before_agent_start (returns prependContext).
+   * This tests the full hybrid hook chain.
    */
-  simulateBootstrap(sessionKey: string): Promise<BootstrapFile[]>;
+  simulateBootstrap(sessionKey: string): Promise<BootstrapResult | undefined>;
   /** Clean up temp directory. */
   cleanup(): Promise<void>;
 };
@@ -266,11 +266,15 @@ export async function createTestHarness(opts?: HarnessOptions): Promise<TestHarn
       await fs.writeFile(path.join(dir, `${role}.md`), content, "utf-8");
     },
     async simulateBootstrap(sessionKey: string) {
-      // Capture the hook callback by mocking api.registerHook
-      let hookCallback: ((event: any) => Promise<void>) | null = null;
+      // Capture callbacks from both hooks registered by registerBootstrapHook
+      let internalHookCb: ((event: any) => Promise<void>) | null = null;
+      let lifecycleHookCb: ((event: any, ctx: any) => Promise<any>) | null = null;
       const mockApi = {
         registerHook(_name: string, cb: (event: any) => Promise<void>) {
-          hookCallback = cb;
+          internalHookCb = cb;
+        },
+        on(_name: string, cb: (event: any, ctx: any) => Promise<any>) {
+          lifecycleHookCb = cb;
         },
         logger: {
           debug() {},
@@ -281,27 +285,31 @@ export async function createTestHarness(opts?: HarnessOptions): Promise<TestHarn
       } as unknown as OpenClawPluginApi;
 
       registerBootstrapHook(mockApi);
-      if (!hookCallback) throw new Error("registerBootstrapHook did not register a callback");
+      if (!lifecycleHookCb) throw new Error("registerBootstrapHook did not register before_agent_start callback");
 
-      // Build a bootstrap event matching what OpenClaw sends.
-      // OpenClaw always includes the workspace AGENTS.md in bootstrapFiles.
-      const bootstrapFiles: BootstrapFile[] = [
-        {
-          name: "AGENTS.md",
-          path: path.join(workspaceDir, "AGENTS.md"),
-          content: "# Orchestrator instructions\nThis content should be replaced by the bootstrap hook.",
-          missing: false,
-        },
-      ];
-      await hookCallback({
-        sessionKey,
-        context: {
-          workspaceDir,
-          bootstrapFiles,
-        },
-      });
+      // Fire the internal hook (agent:bootstrap) to strip AGENTS.md
+      if (internalHookCb) {
+        const bootstrapFiles = [
+          {
+            name: "AGENTS.md",
+            path: path.join(workspaceDir, "AGENTS.md"),
+            content: "# Orchestrator instructions\nThis content should be stripped.",
+            missing: false,
+          },
+        ];
+        await internalHookCb({
+          sessionKey,
+          context: { bootstrapFiles },
+        });
+      }
 
-      return bootstrapFiles;
+      // Fire the lifecycle hook (before_agent_start) to get prependContext
+      const result = await lifecycleHookCb(
+        { prompt: "", messages: [] },
+        { sessionKey, workspaceDir },
+      );
+
+      return result as BootstrapResult | undefined;
     },
     async cleanup() {
       await fs.rm(workspaceDir, { recursive: true, force: true });

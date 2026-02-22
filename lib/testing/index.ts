@@ -12,5 +12,5 @@ export {
   type HarnessOptions,
   type CommandInterceptor,
   type CapturedCommand,
-  type BootstrapFile,
+  type BootstrapResult,
 } from "./harness.js";

@@ -1,11 +1,15 @@
 /**
- * bootstrap-hook.ts — Agent bootstrap hook for injecting role instructions.
+ * bootstrap-hook.ts — Hybrid bootstrap for DevClaw worker sessions.
  *
- * Registers an `agent:bootstrap` hook that intercepts DevClaw worker session
- * startup and injects role-specific instructions as a virtual workspace file.
+ * Two hooks work together:
+ *   1. agent:bootstrap (internal hook) — strips orchestrator AGENTS.md so
+ *      the worker doesn't see the orchestrator's instructions.
+ *   2. before_agent_start (lifecycle hook) — injects role-specific instructions
+ *      via prependContext, which is always available regardless of config.
  *
- * This eliminates the file-read-network-send pattern in dispatch.ts that
- * triggered the security auditor's potential-exfiltration warning.
+ * If only before_agent_start fires (e.g. hooks.internal.enabled is off),
+ * the worker still gets role instructions prepended — just also sees the
+ * orchestrator AGENTS.md (suboptimal but functional).
  */
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -97,31 +101,27 @@ export async function loadRoleInstructions(
 }
 
 /**
- * Register the agent:bootstrap hook for DevClaw worker instruction injection.
+ * Register both bootstrap hooks for DevClaw worker sessions.
  *
- * When a DevClaw worker session starts, this hook:
- * 1. Detects it's a DevClaw subagent via session key pattern
- * 2. Extracts project name and role
- * 3. Loads role-specific instructions from workspace
- * 4. Replaces AGENTS.md content with role instructions (workers don't need orchestrator AGENTS.md)
+ * Hook 1 — agent:bootstrap (internal):
+ *   Strips AGENTS.md content so the worker doesn't see orchestrator instructions.
+ *   Requires hooks.internal.enabled in config. If it doesn't fire, the worker
+ *   still gets role instructions from hook 2, just also sees the orchestrator AGENTS.md.
  *
- * OpenClaw automatically includes AGENTS.md in the agent's system prompt (even for subagents),
- * so replacing its content is all we need — no extra virtual files.
+ * Hook 2 — before_agent_start (lifecycle):
+ *   Injects role-specific instructions via prependContext. Always available
+ *   regardless of config — the reliable injection path.
  */
 export function registerBootstrapHook(api: OpenClawPluginApi): void {
+  // Hook 1: Strip orchestrator AGENTS.md from DevClaw worker sessions
   api.registerHook("agent:bootstrap", async (event) => {
     const sessionKey = event.sessionKey;
-    api.logger.debug(`Bootstrap hook fired: sessionKey=${sessionKey ?? "undefined"}, event keys=${Object.keys(event).join(",")}`);
     if (!sessionKey) return;
 
     const parsed = parseDevClawSessionKey(sessionKey);
-    if (!parsed) {
-      api.logger.debug(`Bootstrap hook: not a DevClaw session key: ${sessionKey}`);
-      return;
-    }
+    if (!parsed) return;
 
     const context = event.context as {
-      workspaceDir?: string;
       bootstrapFiles?: Array<{
         name: string;
         path: string;
@@ -130,25 +130,35 @@ export function registerBootstrapHook(api: OpenClawPluginApi): void {
       }>;
     };
 
-    const workspaceDir = context.workspaceDir;
-    if (!workspaceDir || typeof workspaceDir !== "string") {
-      api.logger.warn(`Bootstrap hook: no workspaceDir in context for ${sessionKey}`);
-      return;
-    }
-
     const bootstrapFiles = context.bootstrapFiles;
-    if (!Array.isArray(bootstrapFiles)) {
-      api.logger.warn(`Bootstrap hook: no bootstrapFiles array in context for ${sessionKey}`);
-      return;
-    }
+    if (!Array.isArray(bootstrapFiles)) return;
 
     const agentsEntry = bootstrapFiles.find((f) => f.name === "AGENTS.md");
-    if (!agentsEntry) {
-      api.logger.warn(`Bootstrap hook: no AGENTS.md entry in bootstrapFiles for ${sessionKey}`);
+    if (agentsEntry) {
+      agentsEntry.content = "";
+      agentsEntry.missing = true;
+      api.logger.info(`agent:bootstrap: stripped AGENTS.md for ${parsed.role} worker in "${parsed.projectName}"`);
+    }
+  }, { name: "devclaw-strip-agents-md", description: "Strips orchestrator AGENTS.md from DevClaw worker sessions" } as any);
+
+  // Hook 2: Inject role-specific instructions via prependContext
+  api.on("before_agent_start", async (_event, ctx) => {
+    const sessionKey = ctx.sessionKey;
+    if (!sessionKey) return;
+
+    const parsed = parseDevClawSessionKey(sessionKey);
+    if (!parsed) {
+      api.logger.debug(`before_agent_start: not a DevClaw session key: ${sessionKey}`);
+      return;
+    }
+    api.logger.info(`before_agent_start: parsed → project="${parsed.projectName}", role="${parsed.role}"`);
+
+    const workspaceDir = ctx.workspaceDir;
+    if (!workspaceDir || typeof workspaceDir !== "string") {
+      api.logger.warn(`before_agent_start: no workspaceDir in context for ${sessionKey}`);
       return;
     }
 
-    // Load role-specific instructions and inject as AGENTS.md content
     const { content, source } = await loadRoleInstructions(
       workspaceDir,
       parsed.projectName,
@@ -157,15 +167,12 @@ export function registerBootstrapHook(api: OpenClawPluginApi): void {
     );
 
     if (content) {
-      agentsEntry.content = content.trim();
       api.logger.info(
-        `Bootstrap hook: replaced AGENTS.md with ${parsed.role} instructions for project "${parsed.projectName}" from ${source}`,
+        `before_agent_start: injecting ${parsed.role} instructions for "${parsed.projectName}" from ${source}`,
       );
+      return { prependContext: content.trim() };
     } else {
-      // No role instructions found — strip AGENTS.md so worker doesn't see orchestrator content
-      agentsEntry.content = "";
-      agentsEntry.missing = true;
-      api.logger.warn(`Bootstrap hook: no role instructions found for ${parsed.role} in project "${parsed.projectName}" — AGENTS.md stripped`);
+      api.logger.warn(`before_agent_start: no role instructions for ${parsed.role} in "${parsed.projectName}"`);
     }
-  }, { name: "devclaw-worker-instructions", description: "Injects role-specific instructions into DevClaw worker sessions" } as any);
+  });
 }

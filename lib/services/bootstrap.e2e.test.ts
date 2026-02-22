@@ -1,10 +1,10 @@
 /**
- * E2E bootstrap tests — verifies the full bootstrap hook chain:
- *   dispatchTask() → session key → registerBootstrapHook fires → bootstrapFiles injected
+ * E2E bootstrap tests — verifies the full before_agent_start hook chain:
+ *   dispatchTask() → session key → before_agent_start fires → prependContext returned
  *
  * Uses simulateBootstrap() which registers the real hook with a mock API,
- * fires it with the session key from dispatch, and returns the resulting
- * bootstrapFiles array — proving instructions actually reach the worker.
+ * fires it with the session key from dispatch, and returns the hook result
+ * containing prependContext — proving instructions actually reach the worker.
  *
  * Run: npx tsx --test lib/services/bootstrap.e2e.test.ts
  */
@@ -20,7 +20,7 @@ describe("E2E bootstrap — hook injection", () => {
     if (h) await h.cleanup();
   });
 
-  it("should inject project-specific instructions into bootstrapFiles", async () => {
+  it("should inject project-specific instructions via prependContext", async () => {
     h = await createTestHarness({ projectName: "my-app" });
     h.provider.seedIssue({ iid: 1, title: "Add feature", labels: ["To Do"] });
 
@@ -44,20 +44,15 @@ describe("E2E bootstrap — hook injection", () => {
       provider: h.provider,
     });
 
-    // Fire the actual bootstrap hook with the dispatch session key
-    const files = await h.simulateBootstrap(result.sessionKey);
+    // Fire the actual before_agent_start hook with the dispatch session key
+    const result2 = await h.simulateBootstrap(result.sessionKey);
 
-    // AGENTS.md entry should have its content replaced with role instructions
-    assert.strictEqual(files.length, 1, `Expected 1 bootstrap file, got ${files.length}`);
-    assert.strictEqual(files[0].name, "AGENTS.md");
-    assert.strictEqual(files[0].missing, false);
-
-    // Content should be project-specific, NOT default or orchestrator
-    const content = files[0].content!;
+    // Hook should return prependContext with project-specific role instructions
+    assert.ok(result2?.prependContext, "Expected prependContext to be set");
+    const content = result2.prependContext;
     assert.ok(content.includes("My App Developer"), `Got: ${content}`);
     assert.ok(content.includes("Use React"));
     assert.ok(!content.includes("Generic instructions"));
-    assert.ok(!content.includes("Orchestrator"), "Should not contain orchestrator content");
   });
 
   it("should fall back to default instructions when no project override exists", async () => {
@@ -82,11 +77,11 @@ describe("E2E bootstrap — hook injection", () => {
       provider: h.provider,
     });
 
-    const files = await h.simulateBootstrap(result.sessionKey);
+    const hookResult = await h.simulateBootstrap(result.sessionKey);
 
-    assert.strictEqual(files.length, 1);
-    assert.ok(files[0].content!.includes("Default Developer"));
-    assert.ok(files[0].content!.includes("Follow coding standards"));
+    assert.ok(hookResult?.prependContext, "Expected prependContext to be set");
+    assert.ok(hookResult.prependContext.includes("Default Developer"));
+    assert.ok(hookResult.prependContext.includes("Follow coding standards"));
   });
 
   it("should inject scaffolded default instructions when no overrides exist", async () => {
@@ -110,12 +105,12 @@ describe("E2E bootstrap — hook injection", () => {
       provider: h.provider,
     });
 
-    const files = await h.simulateBootstrap(result.sessionKey);
+    const hookResult = await h.simulateBootstrap(result.sessionKey);
 
     // Default developer instructions are scaffolded by ensureDefaultFiles
-    assert.strictEqual(files.length, 1);
-    assert.ok(files[0].content!.includes("DEVELOPER"), "Should contain DEVELOPER heading");
-    assert.ok(files[0].content!.includes("worktree"), "Should reference git worktree workflow");
+    assert.ok(hookResult?.prependContext, "Expected prependContext to be set");
+    assert.ok(hookResult.prependContext.includes("DEVELOPER"), "Should contain DEVELOPER heading");
+    assert.ok(hookResult.prependContext.includes("worktree"), "Should reference git worktree workflow");
   });
 
   it("should NOT inject anything for unknown custom roles", async () => {
@@ -123,13 +118,12 @@ describe("E2E bootstrap — hook injection", () => {
 
     // Simulate a session key for a custom role that has no prompt file
     // This key won't parse because "investigator" isn't in the role registry
-    const files = await h.simulateBootstrap(
+    const hookResult = await h.simulateBootstrap(
       "agent:main:subagent:custom-app-investigator-medior",
     );
 
-    // AGENTS.md entry is still present but should be unmodified (hook is a no-op)
-    assert.strictEqual(files.length, 1);
-    assert.ok(files[0].content!.includes("Orchestrator"), "Should keep original orchestrator content");
+    // Hook should no-op (return undefined) — unknown role doesn't match pattern
+    assert.strictEqual(hookResult, undefined, "Should not return anything for unknown roles");
   });
 
   it("should resolve tester instructions independently from developer", async () => {
@@ -157,17 +151,17 @@ describe("E2E bootstrap — hook injection", () => {
     });
 
     // Simulate bootstrap for the tester session
-    const testerFiles = await h.simulateBootstrap(result.sessionKey);
-    assert.strictEqual(testerFiles.length, 1);
-    assert.ok(testerFiles[0].content!.includes("Default Tester"));
-    assert.ok(!testerFiles[0].content!.includes("Dev for multi-role"));
+    const testerResult = await h.simulateBootstrap(result.sessionKey);
+    assert.ok(testerResult?.prependContext, "Expected tester prependContext");
+    assert.ok(testerResult.prependContext.includes("Default Tester"));
+    assert.ok(!testerResult.prependContext.includes("Dev for multi-role"));
 
     // Simulate bootstrap for a developer session on the same project
     const devKey = result.sessionKey.replace("-tester-", "-developer-");
-    const devFiles = await h.simulateBootstrap(devKey);
-    assert.strictEqual(devFiles.length, 1);
-    assert.ok(devFiles[0].content!.includes("Dev for multi-role"));
-    assert.ok(devFiles[0].content!.includes("Specific dev rules"));
+    const devResult = await h.simulateBootstrap(devKey);
+    assert.ok(devResult?.prependContext, "Expected developer prependContext");
+    assert.ok(devResult.prependContext.includes("Dev for multi-role"));
+    assert.ok(devResult.prependContext.includes("Specific dev rules"));
   });
 
   it("should handle project names with hyphens correctly", async () => {
@@ -195,11 +189,10 @@ describe("E2E bootstrap — hook injection", () => {
       provider: h.provider,
     });
 
-    const files = await h.simulateBootstrap(result.sessionKey);
+    const hookResult = await h.simulateBootstrap(result.sessionKey);
 
-    assert.strictEqual(files.length, 1);
-    assert.ok(files[0].content!.includes("Hyphenated Project"));
-    assert.ok(!files[0].content!.includes("Orchestrator"), "Should not contain orchestrator content");
+    assert.ok(hookResult?.prependContext, "Expected prependContext to be set");
+    assert.ok(hookResult.prependContext.includes("Hyphenated Project"));
   });
 
   it("should resolve architect instructions with project override", async () => {
@@ -224,20 +217,19 @@ describe("E2E bootstrap — hook injection", () => {
       provider: h.provider,
     });
 
-    const files = await h.simulateBootstrap(result.sessionKey);
+    const hookResult = await h.simulateBootstrap(result.sessionKey);
 
-    assert.strictEqual(files.length, 1);
-    assert.ok(files[0].content!.includes("Arch Proj Architect"));
-    assert.ok(files[0].content!.includes("event-driven"));
-    assert.ok(!files[0].content!.includes("General design guidelines"));
+    assert.ok(hookResult?.prependContext, "Expected prependContext to be set");
+    assert.ok(hookResult.prependContext.includes("Arch Proj Architect"));
+    assert.ok(hookResult.prependContext.includes("event-driven"));
+    assert.ok(!hookResult.prependContext.includes("General design guidelines"));
   });
 
   it("should not inject when session key is not a DevClaw subagent", async () => {
     h = await createTestHarness();
 
-    // Non-DevClaw session key — hook should no-op, AGENTS.md stays unmodified
-    const files = await h.simulateBootstrap("agent:main:orchestrator");
-    assert.strictEqual(files.length, 1);
-    assert.ok(files[0].content!.includes("Orchestrator"), "Should keep original orchestrator content");
+    // Non-DevClaw session key — hook should no-op (return undefined)
+    const hookResult = await h.simulateBootstrap("agent:main:orchestrator");
+    assert.strictEqual(hookResult, undefined, "Should not return anything for non-DevClaw sessions");
   });
 });

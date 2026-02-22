@@ -121,11 +121,11 @@ const plugin = {
     // Services
     registerHeartbeatService(api);
 
-    // Bootstrap hook for worker instruction injection
+    // Bootstrap hooks for worker instruction injection (hybrid: internal + lifecycle)
     registerBootstrapHook(api);
 
     api.logger.info(
-      "DevClaw plugin registered (18 tools, 1 CLI command group, 1 service, 1 hook)",
+      "DevClaw plugin registered (18 tools, 1 CLI command group, 1 service, 2 hooks)",
     );
   },
 };
