@@ -142,6 +142,7 @@ function resolve(config: DevClawConfig): ResolvedConfig {
   const workflow: WorkflowConfig = {
     initial: config.workflow?.initial ?? DEFAULT_WORKFLOW.initial,
     reviewPolicy: config.workflow?.reviewPolicy ?? DEFAULT_WORKFLOW.reviewPolicy,
+    roleExecution: config.workflow?.roleExecution ?? DEFAULT_WORKFLOW.roleExecution,
     states: { ...DEFAULT_WORKFLOW.states, ...config.workflow?.states },
   };
 

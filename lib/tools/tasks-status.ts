@@ -12,7 +12,8 @@ import { log as auditLog } from "../audit.js";
 import { getStateLabelsByType } from "../services/queue.js";
 import { requireWorkspaceDir, getPluginConfig } from "../tool-helpers.js";
 import { createProvider } from "../providers/index.js";
-import { loadWorkflow, ExecutionMode, StateType } from "../workflow.js";
+import { ExecutionMode, StateType } from "../workflow.js";
+import { loadConfig } from "../config/index.js";
 
 type IssueSummary = { id: number; title: string; url: string };
 
@@ -35,7 +36,8 @@ export function createTasksStatusTool(api: OpenClawPluginApi) {
       const pluginConfig = getPluginConfig(api);
       const projectExecution = (pluginConfig?.projectExecution as string) ?? ExecutionMode.PARALLEL;
 
-      const workflow = await loadWorkflow(workspaceDir);
+      const defaultConfig = await loadConfig(workspaceDir);
+      const workflow = defaultConfig.workflow;
       const statesByType = getStateLabelsByType(workflow);
 
       const data = await readProjects(workspaceDir);
@@ -86,16 +88,20 @@ export function createTasksStatusTool(api: OpenClawPluginApi) {
             };
           }
 
+          // Load per-project config for maxWorkers and roleExecution
+          const projectConfig = await loadConfig(workspaceDir, project.name);
+
           // Workers summary - show slot utilization
-          const workers: Record<string, { 
-            maxWorkers: number; 
+          const workers: Record<string, {
+            maxWorkers: number;
             activeSlots: number;
             slots: Array<{ active: boolean; issueId: string | null; level: string | null; startTime: string | null }>;
           }> = {};
           for (const [role, rw] of Object.entries(project.workers)) {
+            const configMaxWorkers = projectConfig.roles[role]?.maxWorkers ?? 1;
             const activeSlots = rw.slots.filter(s => s.active).length;
             workers[role] = {
-              maxWorkers: rw.maxWorkers,
+              maxWorkers: configMaxWorkers,
               activeSlots,
               slots: rw.slots.map(slot => ({
                 active: slot.active,
@@ -110,7 +116,7 @@ export function createTasksStatusTool(api: OpenClawPluginApi) {
             name: project.name,
             slug,
             primaryGroupId: project.channels[0]?.groupId || slug,
-            roleExecution: project.roleExecution ?? ExecutionMode.PARALLEL,
+            roleExecution: projectConfig.workflow.roleExecution ?? ExecutionMode.PARALLEL,
             workers,
             hold,
             active,

@@ -17,6 +17,7 @@ import {
   findFreeSlot,
   findSlotByIssue,
   countActiveSlots,
+  reconcileSlots,
   writeProjects,
   type ProjectsData,
   type RoleWorkerState,
@@ -177,7 +178,6 @@ describe("readProjects migration", () => {
     const data = await readProjects(tmpDir);
     const rw = data.projects["g1"].workers.developer;
 
-    assert.strictEqual(rw.maxWorkers, 2);
     assert.strictEqual(rw.slots.length, 2);
     assert.strictEqual(rw.slots[0]!.active, true);
     assert.strictEqual(rw.slots[0]!.issueId, "5");
@@ -237,7 +237,6 @@ describe("getWorker (backward compat)", () => {
           channels: [{ groupId: "g1", channel: "telegram", name: "primary", events: ["*"] }],
           workers: {
             developer: {
-              maxWorkers: 1,
               slots: [{ active: true, issueId: "5", level: "medior", sessionKey: "key-1", startTime: null }],
             },
           },
@@ -276,7 +275,6 @@ describe("getWorker (backward compat)", () => {
 describe("slot helpers", () => {
   it("findFreeSlot returns lowest inactive slot", () => {
     const rw: RoleWorkerState = {
-      maxWorkers: 3,
       slots: [
         { active: true, issueId: "1", level: "medior", sessionKey: null, startTime: null },
         { active: false, issueId: null, level: null, sessionKey: null, startTime: null },
@@ -288,7 +286,6 @@ describe("slot helpers", () => {
 
   it("findFreeSlot returns null when all active", () => {
     const rw: RoleWorkerState = {
-      maxWorkers: 1,
       slots: [{ active: true, issueId: "1", level: "medior", sessionKey: null, startTime: null }],
     };
     assert.strictEqual(findFreeSlot(rw), null);
@@ -296,7 +293,6 @@ describe("slot helpers", () => {
 
   it("findSlotByIssue returns correct index", () => {
     const rw: RoleWorkerState = {
-      maxWorkers: 2,
       slots: [
         { active: true, issueId: "10", level: "medior", sessionKey: null, startTime: null },
         { active: true, issueId: "20", level: "junior", sessionKey: null, startTime: null },
@@ -308,7 +304,6 @@ describe("slot helpers", () => {
 
   it("countActiveSlots counts correctly", () => {
     const rw: RoleWorkerState = {
-      maxWorkers: 3,
       slots: [
         { active: true, issueId: "1", level: "medior", sessionKey: null, startTime: null },
         { active: false, issueId: null, level: null, sessionKey: null, startTime: null },
@@ -350,11 +345,85 @@ describe("writeProjects round-trip", () => {
     const project = loaded.projects["g1"];
 
     assert.ok(project.workers.developer);
-    assert.strictEqual(project.workers.developer.maxWorkers, 2);
     assert.strictEqual(project.workers.developer.slots.length, 2);
     assert.strictEqual(project.workers.developer.slots[0]!.active, false);
     assert.strictEqual(project.workers.developer.slots[1]!.active, false);
 
     await fs.rm(tmpDir, { recursive: true });
+  });
+});
+
+describe("reconcileSlots", () => {
+  it("should expand slots when config increases maxWorkers", () => {
+    const rw: RoleWorkerState = {
+      slots: [emptySlot()],
+    };
+    const changed = reconcileSlots(rw, 3);
+    assert.strictEqual(changed, true);
+    assert.strictEqual(rw.slots.length, 3);
+    assert.strictEqual(rw.slots[1]!.active, false);
+    assert.strictEqual(rw.slots[2]!.active, false);
+  });
+
+  it("should shrink idle slots when config decreases maxWorkers", () => {
+    const rw: RoleWorkerState = {
+      slots: [emptySlot(), emptySlot(), emptySlot()],
+    };
+    const changed = reconcileSlots(rw, 1);
+    assert.strictEqual(changed, true);
+    assert.strictEqual(rw.slots.length, 1);
+  });
+
+  it("should not remove active slots when shrinking", () => {
+    const rw: RoleWorkerState = {
+      slots: [
+        { active: true, issueId: "1", level: "medior", sessionKey: null, startTime: null },
+        { active: false, issueId: null, level: null, sessionKey: null, startTime: null },
+        { active: true, issueId: "3", level: "junior", sessionKey: null, startTime: null },
+      ],
+    };
+    // Config says 1, but last slot (index 2) is active — shrinking stops immediately
+    const changed = reconcileSlots(rw, 1);
+    assert.strictEqual(changed, false);
+    assert.strictEqual(rw.slots.length, 3);
+  });
+
+  it("should remove trailing idle slots but stop at active ones", () => {
+    const rw: RoleWorkerState = {
+      slots: [
+        { active: true, issueId: "1", level: "medior", sessionKey: null, startTime: null },
+        { active: true, issueId: "2", level: "junior", sessionKey: null, startTime: null },
+        { active: false, issueId: null, level: null, sessionKey: null, startTime: null },
+      ],
+    };
+    // Config says 1, last slot (index 2) is idle → removed, then slot 1 is active → stop
+    const changed = reconcileSlots(rw, 1);
+    assert.strictEqual(changed, true);
+    assert.strictEqual(rw.slots.length, 2);
+  });
+
+  it("should not change when slots match config", () => {
+    const rw: RoleWorkerState = {
+      slots: [emptySlot(), emptySlot()],
+    };
+    const changed = reconcileSlots(rw, 2);
+    assert.strictEqual(changed, false);
+    assert.strictEqual(rw.slots.length, 2);
+  });
+
+  it("findFreeSlot respects maxWorkers bound", () => {
+    const rw: RoleWorkerState = {
+      slots: [
+        { active: true, issueId: "1", level: "medior", sessionKey: null, startTime: null },
+        { active: false, issueId: null, level: null, sessionKey: null, startTime: null },
+        { active: false, issueId: null, level: null, sessionKey: null, startTime: null },
+      ],
+    };
+    // With maxWorkers=1, only slot 0 is considered — and it's active
+    assert.strictEqual(findFreeSlot(rw, 1), null);
+    // With maxWorkers=2, slot 1 is also considered — and it's free
+    assert.strictEqual(findFreeSlot(rw, 2), 1);
+    // Without bound, slot 1 is returned
+    assert.strictEqual(findFreeSlot(rw), 1);
   });
 });

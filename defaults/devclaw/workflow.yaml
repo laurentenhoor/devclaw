@@ -28,6 +28,9 @@ workflow:
   # human — All PRs need human approval on GitHub/GitLab. Heartbeat auto-merges when approved.
   # agent — Agent reviewer checks every PR before merge.
   # auto  — Junior/medior → agent review, senior → human review.
+  # roleExecution: parallel  # Options: parallel (default), sequential
+  # parallel   — Different roles can work simultaneously (e.g. developer + tester).
+  # sequential — Only one role active at a time.
   states:
     planning:
       type: hold

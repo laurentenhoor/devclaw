@@ -33,6 +33,7 @@ const StateConfigSchema = z.object({
 const WorkflowConfigSchema = z.object({
   initial: z.string(),
   reviewPolicy: z.enum(["human", "agent", "auto"]).optional(),
+  roleExecution: z.enum(["parallel", "sequential"]).optional(),
   states: z.record(z.string(), StateConfigSchema),
 });
 

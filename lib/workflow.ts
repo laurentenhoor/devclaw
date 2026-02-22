@@ -96,6 +96,7 @@ export type StateConfig = {
 export type WorkflowConfig = {
   initial: string;
   reviewPolicy?: ReviewPolicy;
+  roleExecution?: ExecutionMode;
   states: Record<string, StateConfig>;
 };
 
@@ -112,6 +113,7 @@ export type CompletionRule = {
 export const DEFAULT_WORKFLOW: WorkflowConfig = {
   initial: "planning",
   reviewPolicy: ReviewPolicy.HUMAN,
+  roleExecution: ExecutionMode.PARALLEL,
   states: {
     // ── Main pipeline (happy path) ──────────────────────────────
     planning: {

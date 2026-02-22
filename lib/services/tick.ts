@@ -8,7 +8,7 @@ import type { PluginRuntime } from "openclaw/plugin-sdk";
 import type { Issue, IssueProvider } from "../providers/provider.js";
 import { createProvider } from "../providers/index.js";
 import { selectLevel } from "../model-selector.js";
-import { getRoleWorker, getProject, getSessionForLevel, readProjects, findFreeSlot, countActiveSlots } from "../projects.js";
+import { getRoleWorker, getProject, getSessionForLevel, readProjects, findFreeSlot, countActiveSlots, reconcileSlots } from "../projects.js";
 import { dispatchTask } from "../dispatch.js";
 import { getLevelsForRole } from "../roles/index.js";
 import { loadConfig } from "../config/index.js";
@@ -76,7 +76,7 @@ export async function projectTick(opts: {
   const workflow = opts.workflow ?? resolvedConfig.workflow;
 
   const provider = opts.provider ?? (await createProvider({ repo: project.repo, provider: project.provider })).provider;
-  const roleExecution = project.roleExecution ?? ExecutionMode.PARALLEL;
+  const roleExecution = workflow.roleExecution ?? ExecutionMode.PARALLEL;
   const enabledRoles = Object.entries(resolvedConfig.roles)
     .filter(([, r]) => r.enabled)
     .map(([id]) => id);
@@ -96,10 +96,12 @@ export async function projectTick(opts: {
     const fresh = getProject(await readProjects(workspaceDir), projectSlug);
     if (!fresh) break;
 
+    const configMaxWorkers = resolvedConfig.roles[role]?.maxWorkers ?? 1;
     const roleWorker = getRoleWorker(fresh, role);
-    const freeSlot = findFreeSlot(roleWorker);
+    reconcileSlots(roleWorker, configMaxWorkers);
+    const freeSlot = findFreeSlot(roleWorker, configMaxWorkers);
     if (freeSlot === null) {
-      skipped.push({ role, reason: `All ${roleWorker.maxWorkers} slots full` });
+      skipped.push({ role, reason: `All ${configMaxWorkers} slots full` });
       continue;
     }
     // Check sequential role execution: any other role must be inactive

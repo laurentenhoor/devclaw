@@ -10,12 +10,13 @@ import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
 import type { StateLabel } from "../providers/provider.js";
 import { selectLevel } from "../model-selector.js";
-import { getRoleWorker, findFreeSlot, countActiveSlots } from "../projects.js";
+import { getRoleWorker, findFreeSlot, countActiveSlots, reconcileSlots } from "../projects.js";
 import { dispatchTask } from "../dispatch.js";
 import { findNextIssue, detectRoleFromLabel, detectRoleLevelFromLabels } from "../services/queue-scan.js";
 import { getAllRoleIds, getLevelsForRole } from "../roles/index.js";
 import { requireWorkspaceDir, resolveProject, resolveProvider, getPluginConfig } from "../tool-helpers.js";
-import { loadWorkflow, getActiveLabel, getNotifyLabel, NOTIFY_LABEL_COLOR, NOTIFY_LABEL_PREFIX, ExecutionMode, getCurrentStateLabel } from "../workflow.js";
+import { getActiveLabel, getNotifyLabel, NOTIFY_LABEL_COLOR, NOTIFY_LABEL_PREFIX, ExecutionMode, getCurrentStateLabel } from "../workflow.js";
+import { loadConfig } from "../config/index.js";
 
 export function createWorkStartTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
@@ -44,7 +45,8 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
       const { project } = await resolveProject(workspaceDir, slug);
       const { provider } = await resolveProvider(project);
 
-      const workflow = await loadWorkflow(workspaceDir, project.name);
+      const resolvedConfig = await loadConfig(workspaceDir, project.name);
+      const workflow = resolvedConfig.workflow;
 
       // Find issue
       let issue: { iid: number; title: string; description: string; labels: string[]; web_url: string; state: string };
@@ -68,12 +70,14 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
       if (roleParam && roleParam !== detectedRole) throw new Error(`Role mismatch: "${currentLabel}" → ${detectedRole}, requested ${roleParam}`);
 
       // Check worker availability
+      const configMaxWorkers = resolvedConfig.roles[role]?.maxWorkers ?? 1;
       const roleWorker = getRoleWorker(project, role);
-      const freeSlot = findFreeSlot(roleWorker);
+      reconcileSlots(roleWorker, configMaxWorkers);
+      const freeSlot = findFreeSlot(roleWorker, configMaxWorkers);
       if (freeSlot === null) {
-        throw new Error(`${role.toUpperCase()} at capacity (${roleWorker.maxWorkers}/${roleWorker.maxWorkers} slots active)`);
+        throw new Error(`${role.toUpperCase()} at capacity (${configMaxWorkers}/${configMaxWorkers} slots active)`);
       }
-      if ((project.roleExecution ?? ExecutionMode.PARALLEL) === ExecutionMode.SEQUENTIAL) {
+      if ((workflow.roleExecution ?? ExecutionMode.PARALLEL) === ExecutionMode.SEQUENTIAL) {
         for (const [otherRole, otherWorker] of Object.entries(project.workers)) {
           if (otherRole !== role && countActiveSlots(otherWorker) > 0) {
             throw new Error(`Sequential roleExecution: ${otherRole.toUpperCase()} is active`);
