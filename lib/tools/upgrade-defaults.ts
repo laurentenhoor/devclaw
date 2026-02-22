@@ -164,6 +164,7 @@ async function applyUpgrade(
   relPath: string,
   content: string,
   dryRun: boolean,
+  version?: string,
 ): Promise<string | null> {
   const fullPath = path.join(workspaceDir, relPath);
   
@@ -180,6 +181,16 @@ async function applyUpgrade(
   
   // Rotate old backups
   await rotateBackups(fullPath);
+  
+  // Track backup metadata
+  if (version) {
+    try {
+      const { addBackupEntry } = await import("./backup-manager.js");
+      await addBackupEntry(workspaceDir, relPath, backupPath, version);
+    } catch {
+      // Best-effort - don't break upgrade if metadata fails
+    }
+  }
   
   return backupPath;
 }
@@ -286,6 +297,10 @@ export function createUpgradeDefaultsTool() {
           type: "string",
           description: "Specific backup timestamp to rollback to (optional)",
         },
+        listBackups: {
+          type: "boolean",
+          description: "List all available backup points. Default: false",
+        },
       },
     },
 
@@ -296,16 +311,69 @@ export function createUpgradeDefaultsTool() {
       const dryRun = (params.dryRun as boolean) ?? false;
       const rollback = (params.rollback as boolean) ?? false;
       const timestamp = params.timestamp as string | undefined;
+      const listBackups = (params.listBackups as boolean) ?? false;
+
+      // --- List backups mode -----------------------------------------------
+      
+      if (listBackups) {
+        const { listAllBackups, formatBackupInfo } = await import("./backup-manager.js");
+        const backups = await listAllBackups(workspaceDir);
+        
+        if (backups.length === 0) {
+          return jsonResult({
+            success: true,
+            mode: "list-backups",
+            message: "No backups found",
+            backups: [],
+          });
+        }
+        
+        const formatted = backups.map((b, i) => formatBackupInfo(b, i));
+        
+        return jsonResult({
+          success: true,
+          mode: "list-backups",
+          backups,
+          formattedList: formatted.join("\n\n"),
+        });
+      }
 
       // --- Rollback mode ---------------------------------------------------
       
       if (rollback) {
+        const { listAllBackups, isOldBackup } = await import("./backup-manager.js");
+        const backups = await listAllBackups(workspaceDir);
+        
+        // Find target backup
+        let targetBackup = null;
+        if (timestamp) {
+          targetBackup = backups.find(b => String(b.timestamp) === timestamp);
+        } else {
+          targetBackup = backups[0]; // Most recent
+        }
+        
+        // Safety checks
+        const warnings: string[] = [];
+        if (targetBackup && isOldBackup(targetBackup.timestamp)) {
+          warnings.push(
+            `⚠️ Warning: This backup is >30 days old (${new Date(targetBackup.timestamp).toISOString().split("T")[0]}). ` +
+            `Consider if you really want to rollback this far.`
+          );
+        }
+        
         const { restored, errors } = await rollbackFromBackup(workspaceDir, timestamp);
         return jsonResult({
           success: errors.length === 0,
           mode: "rollback",
           restored,
           errors: errors.length > 0 ? errors : undefined,
+          warnings: warnings.length > 0 ? warnings : undefined,
+          backupInfo: targetBackup ? {
+            timestamp: targetBackup.timestamp,
+            date: targetBackup.date,
+            version: targetBackup.fromVersion,
+            files: targetBackup.files,
+          } : undefined,
         });
       }
 
@@ -364,7 +432,7 @@ export function createUpgradeDefaultsTool() {
             continue;
           }
           
-          const backupPath = await applyUpgrade(workspaceDir, relPath, content, dryRun);
+          const backupPath = await applyUpgrade(workspaceDir, relPath, content, dryRun, comparison.pluginVersion);
           if (backupPath) result.backed_up.push(backupPath);
           result.applied.push(relPath);
         } catch (err) {
@@ -381,7 +449,7 @@ export function createUpgradeDefaultsTool() {
             continue;
           }
           
-          const backupPath = await applyUpgrade(workspaceDir, relPath, content, dryRun);
+          const backupPath = await applyUpgrade(workspaceDir, relPath, content, dryRun, comparison.pluginVersion);
           if (backupPath) result.backed_up.push(backupPath);
           result.applied.push(relPath);
         } catch (err) {
@@ -425,7 +493,7 @@ export function createUpgradeDefaultsTool() {
           
           switch (decision) {
             case "apply": {
-              const backupPath = await applyUpgrade(workspaceDir, relPath, content, dryRun);
+              const backupPath = await applyUpgrade(workspaceDir, relPath, content, dryRun, comparison.pluginVersion);
               if (backupPath) result.backed_up.push(backupPath);
               result.applied.push(relPath);
               break;
