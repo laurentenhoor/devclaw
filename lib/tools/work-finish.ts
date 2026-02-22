@@ -10,7 +10,7 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
-import { getWorker, resolveRepoPath } from "../projects.js";
+import { getRoleWorker, resolveRepoPath, findSlotByIssue } from "../projects.js";
 import { executeCompletion, getRule } from "../services/pipeline.js";
 import { log as auditLog } from "../audit.js";
 import { requireWorkspaceDir, resolveProject, resolveProvider, getPluginConfig } from "../tool-helpers.js";
@@ -127,11 +127,25 @@ export function createWorkFinishTool(api: OpenClawPluginApi) {
 
       // Resolve project + worker
       const { project } = await resolveProject(workspaceDir, slug);
-      const worker = getWorker(project, role);
-      if (!worker.active) throw new Error(`${role.toUpperCase()} worker not active on ${project.name}`);
-
-      const issueId = worker.issueId ? Number(worker.issueId.split(",")[0]) : null;
-      if (!issueId) throw new Error(`No issueId for active ${role.toUpperCase()} on ${project.name}`);
+      const roleWorker = getRoleWorker(project, role);
+      
+      // Find the active slot for this role
+      // With multi-slot support, we find the first active slot
+      // In the future, this could be enhanced to find by specific issueId from context
+      let slotIndex: number | null = null;
+      let issueId: number | null = null;
+      
+      for (let i = 0; i < roleWorker.slots.length; i++) {
+        if (roleWorker.slots[i]!.active && roleWorker.slots[i]!.issueId) {
+          slotIndex = i;
+          issueId = Number(roleWorker.slots[i]!.issueId);
+          break;
+        }
+      }
+      
+      if (slotIndex === null || issueId === null) {
+        throw new Error(`${role.toUpperCase()} worker not active on ${project.name}`);
+      }
 
       const { provider } = await resolveProvider(project);
       const workflow = await loadWorkflow(workspaceDir, project.name);
@@ -152,6 +166,7 @@ export function createWorkFinishTool(api: OpenClawPluginApi) {
         projectName: project.name,
         channels: project.channels,
         pluginConfig,
+        slotIndex,
         runtime: api.runtime,
         workflow,
         createdTasks,

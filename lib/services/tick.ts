@@ -8,7 +8,7 @@ import type { PluginRuntime } from "openclaw/plugin-sdk";
 import type { Issue, IssueProvider } from "../providers/provider.js";
 import { createProvider } from "../providers/index.js";
 import { selectLevel } from "../model-selector.js";
-import { getWorker, getProject, getSessionForLevel, readProjects } from "../projects.js";
+import { getRoleWorker, getProject, getSessionForLevel, readProjects, findFreeSlot, countActiveSlots } from "../projects.js";
 import { dispatchTask } from "../dispatch.js";
 import { getLevelsForRole } from "../roles/index.js";
 import { loadConfig } from "../config/index.js";
@@ -97,14 +97,15 @@ export async function projectTick(opts: {
     const fresh = getProject(await readProjects(workspaceDir), projectSlug);
     if (!fresh) break;
 
-    const worker = getWorker(fresh, role);
-    if (worker.active) {
-      skipped.push({ role, reason: `Already active (#${worker.issueId})` });
+    const roleWorker = getRoleWorker(fresh, role);
+    const freeSlot = findFreeSlot(roleWorker);
+    if (freeSlot === null) {
+      skipped.push({ role, reason: `All ${roleWorker.maxWorkers} slots full` });
       continue;
     }
     // Check sequential role execution: any other role must be inactive
     const otherRoles = enabledRoles.filter((r: string) => r !== role);
-    if (roleExecution === ExecutionMode.SEQUENTIAL && otherRoles.some((r: string) => getWorker(fresh, r).active)) {
+    if (roleExecution === ExecutionMode.SEQUENTIAL && otherRoles.some((r: string) => countActiveSlots(getRoleWorker(fresh, r)) > 0)) {
       skipped.push({ role, reason: "Sequential: other role active" });
       continue;
     }
@@ -147,7 +148,7 @@ export async function projectTick(opts: {
       pickups.push({
         project: project.name, projectSlug, issueId: issue.iid, issueTitle: issue.title, issueUrl: issue.web_url,
         role, level: selectedLevel,
-        sessionAction: getSessionForLevel(worker, selectedLevel) ? "send" : "spawn",
+        sessionAction: getSessionForLevel(roleWorker, selectedLevel) ? "send" : "spawn",
         announcement: `[DRY RUN] Would pick up #${issue.iid}`,
       });
     } else {
@@ -160,6 +161,7 @@ export async function projectTick(opts: {
           pluginConfig,
           sessionKey,
           runtime,
+          slotIndex: freeSlot,
         });
         pickups.push({
           project: project.name, projectSlug, issueId: issue.iid, issueTitle: issue.title, issueUrl: issue.web_url,
