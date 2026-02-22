@@ -12,6 +12,7 @@ import path from "node:path";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { getSessionKeyRolePattern } from "./roles/index.js";
 import { DATA_DIR } from "./setup/migrate-layout.js";
+import { WORKER_AGENTS_MD_TEMPLATE } from "./templates.js";
 
 /**
  * Parse a DevClaw subagent session key to extract project name and role.
@@ -141,6 +142,14 @@ export function registerBootstrapHook(api: OpenClawPluginApi): void {
       return;
     }
 
+    // Replace AGENTS.md with worker-specific version (removes orchestrator section)
+    const agentsEntry = bootstrapFiles.find((f) => f.name === "AGENTS.md");
+    if (agentsEntry && WORKER_AGENTS_MD_TEMPLATE) {
+      agentsEntry.content = WORKER_AGENTS_MD_TEMPLATE.trim();
+      api.logger.info(`Bootstrap hook: replaced AGENTS.md with worker version for ${parsed.role}`);
+    }
+
+    // Inject role-specific instructions
     const { content, source } = await loadRoleInstructions(
       workspaceDir,
       parsed.projectName,
@@ -148,22 +157,18 @@ export function registerBootstrapHook(api: OpenClawPluginApi): void {
       { withSource: true },
     );
 
-    if (!content) {
-      api.logger.warn(`Bootstrap hook: no content found for ${parsed.role} in project "${parsed.projectName}" (workspace: ${workspaceDir})`);
-      return;
+    if (content) {
+      bootstrapFiles.push({
+        name: "WORKER_INSTRUCTIONS.md" as any,
+        path: `<devclaw:${parsed.projectName}:${parsed.role}>`,
+        content: content.trim(),
+        missing: false,
+      });
+      api.logger.info(
+        `Bootstrap hook: injected ${parsed.role} instructions for project "${parsed.projectName}" from ${source}`,
+      );
+    } else {
+      api.logger.warn(`Bootstrap hook: no role instructions found for ${parsed.role} in project "${parsed.projectName}" (workspace: ${workspaceDir})`);
     }
-
-    // Inject as a virtual bootstrap file. OpenClaw includes these in the
-    // agent's system prompt automatically (via buildBootstrapContextFiles).
-    bootstrapFiles.push({
-      name: "WORKER_INSTRUCTIONS.md" as any,
-      path: `<devclaw:${parsed.projectName}:${parsed.role}>`,
-      content: content.trim(),
-      missing: false,
-    });
-
-    api.logger.info(
-      `Bootstrap hook: injected ${parsed.role} instructions for project "${parsed.projectName}" from ${source}`,
-    );
   }, { name: "devclaw-worker-instructions", description: "Injects role-specific instructions into DevClaw worker sessions" } as any);
 }
