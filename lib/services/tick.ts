@@ -52,7 +52,6 @@ export async function projectTick(opts: {
   workspaceDir: string;
   projectSlug: string;
   agentId?: string;
-  sessionKey?: string;
   pluginConfig?: Record<string, unknown>;
   dryRun?: boolean;
   maxPickups?: number;
@@ -66,7 +65,7 @@ export async function projectTick(opts: {
   workflow?: WorkflowConfig;
 }): Promise<TickResult> {
   const {
-    workspaceDir, projectSlug, agentId, sessionKey, pluginConfig, dryRun,
+    workspaceDir, projectSlug, agentId, pluginConfig, dryRun,
     maxPickups, targetRole, runtime,
   } = opts;
 
@@ -159,7 +158,6 @@ export async function projectTick(opts: {
           role, level: selectedLevel, fromLabel: currentLabel, toLabel: targetLabel,
           provider,
           pluginConfig,
-          sessionKey,
           runtime,
           slotIndex: freeSlot,
         });

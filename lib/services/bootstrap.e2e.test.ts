@@ -125,7 +125,7 @@ describe("E2E bootstrap — hook injection", () => {
     // Simulate a session key for a custom role that has no prompt file
     // This key won't parse because "investigator" isn't in the role registry
     const files = await h.simulateBootstrap(
-      "agent:main:subagent:custom-app-investigator-medior",
+      "agent:main-worker:worker:custom-app-investigator-medior-0",
     );
 
     assert.strictEqual(files.length, 0, "Should not inject files for unknown roles");
@@ -231,7 +231,7 @@ describe("E2E bootstrap — hook injection", () => {
     assert.ok(!files[0].content!.includes("General design guidelines"));
   });
 
-  it("should not inject when session key is not a DevClaw subagent", async () => {
+  it("should not inject when session key is not a DevClaw worker or subagent", async () => {
     h = await createTestHarness();
 
     // Non-DevClaw session key — hook should no-op

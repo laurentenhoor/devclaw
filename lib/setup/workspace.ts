@@ -7,6 +7,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import {
   AGENTS_MD_TEMPLATE,
+  WORKER_AGENTS_MD_TEMPLATE,
   HEARTBEAT_MD_TEMPLATE,
   IDENTITY_MD_TEMPLATE,
   SOUL_MD_TEMPLATE,
@@ -104,6 +105,24 @@ export async function scaffoldWorkspace(workspacePath: string, defaultWorkspaceP
 
   // Ensure all data-dir defaults (workflow.yaml, prompts, etc.)
   await ensureDefaultFiles(workspacePath);
+
+  return written;
+}
+
+/**
+ * Write workspace files for a DevClaw worker agent.
+ * Worker agents get their own AGENTS.md (no orchestrator section)
+ * and minimal workspace files. Prompts are loaded from the orchestrator
+ * workspace at runtime by the bootstrap hook.
+ */
+export async function scaffoldWorkerWorkspace(workspacePath: string): Promise<string[]> {
+  const written: string[] = [];
+
+  await fs.mkdir(workspacePath, { recursive: true });
+
+  // AGENTS.md — worker-specific (no orchestrator section)
+  await backupAndWrite(path.join(workspacePath, "AGENTS.md"), WORKER_AGENTS_MD_TEMPLATE);
+  written.push("AGENTS.md");
 
   return written;
 }

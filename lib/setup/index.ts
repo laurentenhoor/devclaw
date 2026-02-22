@@ -12,7 +12,8 @@ import { getAllDefaultModels } from "../roles/index.js";
 import { migrateChannelBinding } from "../binding-manager.js";
 import { createAgent, resolveWorkspacePath } from "./agent.js";
 import { writePluginConfig } from "./config.js";
-import { scaffoldWorkspace } from "./workspace.js";
+import { scaffoldWorkspace, scaffoldWorkerWorkspace } from "./workspace.js";
+import { resolveWorkerAgentId } from "../dispatch.js";
 import { DATA_DIR } from "./migrate-layout.js";
 import type { ExecutionMode } from "../workflow.js";
 
@@ -41,6 +42,9 @@ export type SetupResult = {
   agentId: string;
   agentCreated: boolean;
   workspacePath: string;
+  workerAgentId: string;
+  workerAgentCreated: boolean;
+  workerWorkspacePath: string;
   models: ModelConfig;
   filesWritten: string[];
   warnings: string[];
@@ -53,10 +57,11 @@ export type SetupResult = {
 /**
  * Run the full DevClaw setup.
  *
- * 1. Create agent (optional) or resolve existing workspace
- * 2. Write plugin config to openclaw.json (heartbeat, tool restrictions — no models)
- * 3. Write workspace files (AGENTS.md, HEARTBEAT.md, workflow.yaml, prompts)
- * 4. Write model config to workflow.yaml (single source of truth)
+ * 1. Create orchestrator agent (optional) or resolve existing workspace
+ * 2. Create worker agent (if it doesn't exist)
+ * 3. Write plugin config to openclaw.json (heartbeat, tool restrictions — no models)
+ * 4. Write workspace files (AGENTS.md, HEARTBEAT.md, workflow.yaml, prompts)
+ * 5. Write model config to workflow.yaml (single source of truth)
  */
 export async function runSetup(opts: SetupOpts): Promise<SetupResult> {
   const warnings: string[] = [];
@@ -64,15 +69,28 @@ export async function runSetup(opts: SetupOpts): Promise<SetupResult> {
   const { agentId, workspacePath, agentCreated, bindingMigrated } =
     await resolveOrCreateAgent(opts, warnings);
 
-  await writePluginConfig(opts.api, agentId, opts.projectExecution);
+  // Create or resolve the worker agent
+  const workerAgentId = resolveWorkerAgentId(agentId);
+  const { workerAgentCreated, workerWorkspacePath } =
+    await ensureWorkerAgent(opts.api, workerAgentId, warnings);
+
+  await writePluginConfig(opts.api, agentId, workerAgentId, opts.projectExecution);
 
   const defaultWorkspacePath = getDefaultWorkspacePath(opts.api);
   const filesWritten = await scaffoldWorkspace(workspacePath, defaultWorkspacePath);
 
+  // Scaffold worker workspace (standalone AGENTS.md, no data files)
+  const workerFiles = await scaffoldWorkerWorkspace(workerWorkspacePath);
+  filesWritten.push(...workerFiles.map((f) => `worker:${f}`));
+
   const models = buildModelConfig(opts.models);
   await writeModelsToWorkflow(workspacePath, models);
 
-  return { agentId, agentCreated, workspacePath, models, filesWritten, warnings, bindingMigrated };
+  return {
+    agentId, agentCreated, workspacePath,
+    workerAgentId, workerAgentCreated, workerWorkspacePath,
+    models, filesWritten, warnings, bindingMigrated,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -118,6 +136,38 @@ async function tryMigrateBinding(
   } catch (err) {
     warnings.push(`Failed to migrate binding from "${opts.migrateFrom}": ${(err as Error).message}`);
     return undefined;
+  }
+}
+
+/**
+ * Create the worker agent if it doesn't already exist.
+ * Worker agents are independent agents (not subagents) used for all DevClaw worker roles.
+ */
+async function ensureWorkerAgent(
+  api: OpenClawPluginApi,
+  workerAgentId: string,
+  warnings: string[],
+): Promise<{ workerAgentCreated: boolean; workerWorkspacePath: string }> {
+  // Check if worker agent already exists
+  try {
+    const workspacePath = resolveWorkspacePath(api, workerAgentId);
+    return { workerAgentCreated: false, workerWorkspacePath: workspacePath };
+  } catch {
+    // Agent doesn't exist — create it
+  }
+
+  try {
+    const { workspacePath } = await createAgent(api, workerAgentId);
+    return { workerAgentCreated: true, workerWorkspacePath: workspacePath };
+  } catch (err) {
+    warnings.push(`Failed to create worker agent "${workerAgentId}": ${(err as Error).message}`);
+    // Fall back to a conventional path so scaffolding can still proceed
+    const config = api.runtime.config.loadConfig();
+    const defaultWorkspace = (config as any).agents?.defaults?.workspace;
+    const fallbackPath = defaultWorkspace
+      ? path.join(path.dirname(defaultWorkspace), workerAgentId)
+      : path.join(process.env.HOME ?? "/tmp", ".openclaw", "workspace", workerAgentId);
+    return { workerAgentCreated: false, workerWorkspacePath: fallbackPath };
   }
 }
 
