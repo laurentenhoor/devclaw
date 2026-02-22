@@ -42,6 +42,8 @@ export type DispatchOpts = {
   provider: import("./providers/provider.js").IssueProvider;
   /** Plugin config for model resolution and notification config */
   pluginConfig?: Record<string, unknown>;
+  /** Orchestrator's session key (used as spawnedBy for subagent tracking) */
+  sessionKey?: string;
   /** Plugin runtime for direct API access (avoids CLI subprocess timeouts) */
   runtime?: PluginRuntime;
   /** Slot index within the role's worker slots (defaults to 0 for single-worker compat) */
@@ -181,9 +183,8 @@ export async function dispatchTask(
   const sessionAction = existingSessionKey ? "send" : "spawn";
 
   // Compute session key deterministically (avoids waiting for gateway)
-  // Workers run as independent agents (not subagents) with their own workspace
-  const workerAgentId = resolveWorkerAgentId(agentId);
-  const sessionKey = `agent:${workerAgentId}:worker:${project.name}-${role}-${level}-${slotIndex}`;
+  // Include slotIndex to prevent collisions when multiple workers share role+level
+  const sessionKey = `agent:${agentId ?? "unknown"}:subagent:${project.name}-${role}-${level}-${slotIndex}`;
 
   // Fetch comments to include in task context
   const comments = await provider.listComments(issueId);
@@ -273,10 +274,11 @@ export async function dispatchTask(
   // Session key is deterministic, so we can proceed immediately
   ensureSessionFireAndForget(sessionKey, model, workspaceDir, timeouts.sessionPatchMs);
 
-  // Step 4: Send task to worker agent (fire-and-forget)
+  // Step 4: Send task to agent (fire-and-forget)
   sendToAgent(sessionKey, taskMessage, {
-    workerAgentId, projectName: project.name, issueId, role, level, slotIndex,
-    workspaceDir, dispatchTimeoutMs: timeouts.dispatchMs,
+    agentId, projectName: project.name, issueId, role, level, slotIndex,
+    orchestratorSessionKey: opts.sessionKey, workspaceDir,
+    dispatchTimeoutMs: timeouts.dispatchMs,
   });
 
   // Step 5: Update worker state
@@ -470,14 +472,16 @@ function ensureSessionFireAndForget(sessionKey: string, model: string, workspace
 
 function sendToAgent(
   sessionKey: string, taskMessage: string,
-  opts: { workerAgentId: string; projectName: string; issueId: number; role: string; level?: string; slotIndex?: number; workspaceDir: string; dispatchTimeoutMs?: number },
+  opts: { agentId?: string; projectName: string; issueId: number; role: string; level?: string; slotIndex?: number; orchestratorSessionKey?: string; workspaceDir: string; dispatchTimeoutMs?: number },
 ): void {
   const gatewayParams = JSON.stringify({
     idempotencyKey: `devclaw-${opts.projectName}-${opts.issueId}-${opts.role}-${opts.level ?? "unknown"}-${opts.slotIndex ?? 0}-${sessionKey}`,
-    agentId: opts.workerAgentId,
+    agentId: opts.agentId ?? "devclaw",
     sessionKey,
     message: taskMessage,
     deliver: false,
+    lane: "subagent",
+    ...(opts.orchestratorSessionKey ? { spawnedBy: opts.orchestratorSessionKey } : {}),
   });
   // Fire-and-forget: long-running agent turn, don't await
   runCommand(
@@ -524,15 +528,6 @@ async function auditDispatch(
   await auditLog(workspaceDir, "model_selection", {
     issue: opts.issueId, role: opts.role, level: opts.level, model: opts.model,
   });
-}
-
-/**
- * Derive the worker agent ID from the orchestrator's agent ID.
- * Workers run as independent agents with their own workspace and system prompt.
- */
-export function resolveWorkerAgentId(orchestratorAgentId?: string): string {
-  if (!orchestratorAgentId || orchestratorAgentId === "unknown") return "devclaw-worker";
-  return `${orchestratorAgentId}-worker`;
 }
 
 function buildAnnouncement(

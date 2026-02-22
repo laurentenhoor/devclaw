@@ -14,15 +14,13 @@ import { getSessionKeyRolePattern } from "./roles/index.js";
 import { DATA_DIR } from "./setup/migrate-layout.js";
 
 /**
- * Parse a DevClaw worker session key to extract project name and role.
+ * Parse a DevClaw subagent session key to extract project name and role.
  *
- * Session key format: `agent:{workerAgentId}:worker:{projectName}-{role}-{level}-{slotIndex}`
- * Legacy subagent: `agent:{agentId}:subagent:{projectName}-{role}-{level}-{slotIndex}`
- * Legacy (no slot): `agent:{agentId}:subagent:{projectName}-{role}-{level}`
- *
+ * Session key format (new): `agent:{agentId}:subagent:{projectName}-{role}-{level}-{slotIndex}`
+ * Session key format (legacy): `agent:{agentId}:subagent:{projectName}-{role}-{level}`
  * Examples:
- *   - `agent:devclaw-worker:worker:my-project-developer-medior-0` → { projectName: "my-project", role: "developer" }
- *   - `agent:devclaw:subagent:webapp-tester-medior-0`              → { projectName: "webapp", role: "tester" } (legacy)
+ *   - `agent:devclaw:subagent:my-project-developer-medior-0` → { projectName: "my-project", role: "developer" }
+ *   - `agent:devclaw:subagent:webapp-tester-medior`          → { projectName: "webapp", role: "tester" } (legacy)
  *
  * Note: projectName may contain hyphens, so we match role from the end.
  */
@@ -30,60 +28,13 @@ export function parseDevClawSessionKey(
   sessionKey: string,
 ): { projectName: string; role: string } | null {
   const rolePattern = getSessionKeyRolePattern();
-  // Current format: agent:{id}:worker:{project}-{role}-{level}-{slot}
-  const workerMatch = sessionKey.match(new RegExp(`:worker:(.+)-(${rolePattern})-[^-]+-\\d+$`));
-  if (workerMatch) return { projectName: workerMatch[1], role: workerMatch[2] };
-  // Legacy subagent format: agent:{id}:subagent:{project}-{role}-{level}-{slot}
-  const subagentMatch = sessionKey.match(new RegExp(`:subagent:(.+)-(${rolePattern})-[^-]+-\\d+$`));
-  if (subagentMatch) return { projectName: subagentMatch[1], role: subagentMatch[2] };
-  // Legacy subagent format (no slot): agent:{id}:subagent:{project}-{role}-{level}
+  // New format: ...-{role}-{level}-{slotIndex}
+  const newMatch = sessionKey.match(new RegExp(`:subagent:(.+)-(${rolePattern})-[^-]+-\\d+$`));
+  if (newMatch) return { projectName: newMatch[1], role: newMatch[2] };
+  // Legacy format fallback: ...-{role}-{level} (for in-flight sessions during migration)
   const legacyMatch = sessionKey.match(new RegExp(`:subagent:(.+)-(${rolePattern})-[^-]+$`));
   if (legacyMatch) return { projectName: legacyMatch[1], role: legacyMatch[2] };
   return null;
-}
-
-/**
- * Extract the orchestrator agent ID from a worker session key.
- *
- * Worker keys: `agent:{orchestratorId}-worker:worker:...` → orchestratorId
- * Legacy subagent keys: `agent:{orchestratorId}:subagent:...` → orchestratorId
- */
-function extractOrchestratorAgentId(sessionKey: string): string | null {
-  // Worker agent format: agent:{id}-worker:worker:...
-  const workerMatch = sessionKey.match(/^agent:(.+)-worker:worker:/);
-  if (workerMatch) return workerMatch[1];
-  // Legacy subagent format: agent:{id}:subagent:...
-  const subagentMatch = sessionKey.match(/^agent:(.+):subagent:/);
-  if (subagentMatch) return subagentMatch[1];
-  return null;
-}
-
-/**
- * Resolve the orchestrator's workspace directory.
- *
- * Worker agents have their own workspace, but prompts live in the orchestrator's
- * workspace. This function looks up the orchestrator agent's workspace via config.
- * Falls back to the worker's own workspace if resolution fails (backward compat).
- */
-function resolveOrchestratorWorkspace(
-  api: OpenClawPluginApi,
-  sessionKey: string,
-  workerWorkspaceDir: string,
-): string {
-  const orchestratorId = extractOrchestratorAgentId(sessionKey);
-  if (!orchestratorId) return workerWorkspaceDir;
-
-  try {
-    const config = api.runtime.config.loadConfig();
-    const agent = config.agents?.list?.find(
-      (a) => a.id === orchestratorId,
-    );
-    if (agent?.workspace) return agent.workspace;
-  } catch {
-    // Config lookup failed — fall back to worker workspace
-  }
-
-  return workerWorkspaceDir;
 }
 
 /**
@@ -148,9 +99,9 @@ export async function loadRoleInstructions(
  * Register the agent:bootstrap hook for DevClaw worker instruction injection.
  *
  * When a DevClaw worker session starts, this hook:
- * 1. Detects it's a DevClaw worker via session key pattern
+ * 1. Detects it's a DevClaw subagent via session key pattern
  * 2. Extracts project name and role
- * 3. Loads role-specific instructions from the orchestrator's workspace
+ * 3. Loads role-specific instructions from workspace
  * 4. Injects them as a virtual workspace file (WORKER_INSTRUCTIONS.md)
  *
  * OpenClaw automatically includes bootstrap files in the agent's system prompt,
@@ -178,8 +129,8 @@ export function registerBootstrapHook(api: OpenClawPluginApi): void {
       }>;
     };
 
-    const workerWorkspaceDir = context.workspaceDir;
-    if (!workerWorkspaceDir || typeof workerWorkspaceDir !== "string") {
+    const workspaceDir = context.workspaceDir;
+    if (!workspaceDir || typeof workspaceDir !== "string") {
       api.logger.warn(`Bootstrap hook: no workspaceDir in context for ${sessionKey}`);
       return;
     }
@@ -189,9 +140,6 @@ export function registerBootstrapHook(api: OpenClawPluginApi): void {
       api.logger.warn(`Bootstrap hook: no bootstrapFiles array in context for ${sessionKey}`);
       return;
     }
-
-    // Prompts live in the orchestrator's workspace, not the worker's
-    const workspaceDir = resolveOrchestratorWorkspace(api, sessionKey, workerWorkspaceDir);
 
     const { content, source } = await loadRoleInstructions(
       workspaceDir,

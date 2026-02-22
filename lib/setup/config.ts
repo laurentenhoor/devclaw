@@ -1,7 +1,7 @@
 /**
  * setup/config.ts — Plugin config writer (openclaw.json).
  *
- * Handles: tool restrictions for orchestrator and worker agents, heartbeat defaults.
+ * Handles: tool restrictions, subagent cleanup, heartbeat defaults.
  * Models are stored in workflow.yaml (not openclaw.json).
  */
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
@@ -12,8 +12,8 @@ import type { ExecutionMode } from "../workflow.js";
  * Write DevClaw plugin config to openclaw.json plugins section.
  *
  * Configures:
- * - Tool restrictions (deny sessions_spawn, sessions_send) for orchestrator agent
- * - Tool restrictions (deny orchestrator-only tools) for worker agent
+ * - Tool restrictions (deny sessions_spawn, sessions_send) for DevClaw agents
+ * - Subagent cleanup interval (30 days) to keep development sessions alive
  * - Heartbeat defaults
  *
  * Read-modify-write to preserve existing config.
@@ -22,7 +22,6 @@ import type { ExecutionMode } from "../workflow.js";
 export async function writePluginConfig(
   api: OpenClawPluginApi,
   agentId?: string,
-  workerAgentId?: string,
   projectExecution?: ExecutionMode,
 ): Promise<void> {
   const config = api.runtime.config.loadConfig() as Record<string, unknown>;
@@ -38,13 +37,11 @@ export async function writePluginConfig(
 
   ensureInternalHooks(config);
   ensureHeartbeatDefaults(config);
+  configureSubagentCleanup(config);
   ensureTelegramLinkPreviewDisabled(config);
 
   if (agentId) {
     addToolRestrictions(config, agentId);
-  }
-  if (workerAgentId) {
-    addWorkerToolRestrictions(config, workerAgentId);
   }
 
   await api.runtime.config.writeConfigFile(config as any);
@@ -62,6 +59,15 @@ function ensurePluginStructure(config: Record<string, unknown>): void {
   if (!entries.devclaw) entries.devclaw = {};
   const devclaw = entries.devclaw as Record<string, unknown>;
   if (!devclaw.config) devclaw.config = {};
+}
+
+function configureSubagentCleanup(config: Record<string, unknown>): void {
+  if (!config.agents) config.agents = {};
+  const agents = config.agents as Record<string, unknown>;
+  if (!agents.defaults) agents.defaults = {};
+  const defaults = agents.defaults as Record<string, unknown>;
+  if (!defaults.subagents) defaults.subagents = {};
+  (defaults.subagents as Record<string, unknown>).archiveAfterMinutes = 43200;
 }
 
 function addToolRestrictions(config: Record<string, unknown>, agentId: string): void {
@@ -84,27 +90,6 @@ function ensureHeartbeatDefaults(config: Record<string, unknown>): void {
   const devclaw = (config as any).plugins.entries.devclaw.config;
   if (!devclaw.work_heartbeat) {
     devclaw.work_heartbeat = { ...HEARTBEAT_DEFAULTS };
-  }
-}
-
-/**
- * Deny orchestrator-only tools on the worker agent.
- * Workers should only use work_finish, task_create, and standard dev tools.
- */
-function addWorkerToolRestrictions(config: Record<string, unknown>, workerAgentId: string): void {
-  const agent = (config as any).agents?.list?.find((a: { id: string }) => a.id === workerAgentId);
-  if (agent) {
-    if (!agent.tools) agent.tools = {};
-    agent.tools.deny = [
-      "sessions_spawn",
-      "sessions_send",
-      "work_start",
-      "tasks_status",
-      "health",
-      "project_register",
-      "setup",
-    ];
-    delete agent.tools.allow;
   }
 }
 

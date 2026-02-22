@@ -9,41 +9,14 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 
-describe("parseDevClawSessionKey — worker format", () => {
-  it("should parse a standard worker developer session key", () => {
-    const result = parseDevClawSessionKey("agent:devclaw-worker:worker:my-project-developer-medior-0");
-    assert.deepStrictEqual(result, { projectName: "my-project", role: "developer" });
-  });
-
-  it("should parse a worker tester session key", () => {
-    const result = parseDevClawSessionKey("agent:devclaw-worker:worker:webapp-tester-medior-0");
-    assert.deepStrictEqual(result, { projectName: "webapp", role: "tester" });
-  });
-
-  it("should handle project names with hyphens in worker format", () => {
-    const result = parseDevClawSessionKey("agent:devclaw-worker:worker:my-cool-project-developer-junior-0");
-    assert.deepStrictEqual(result, { projectName: "my-cool-project", role: "developer" });
-  });
-
-  it("should handle multi-digit slot indices", () => {
-    const result = parseDevClawSessionKey("agent:devclaw-worker:worker:my-project-developer-medior-12");
-    assert.deepStrictEqual(result, { projectName: "my-project", role: "developer" });
-  });
-
-  it("should parse architect worker session key", () => {
-    const result = parseDevClawSessionKey("agent:devclaw-worker:worker:my-project-architect-senior-0");
-    assert.deepStrictEqual(result, { projectName: "my-project", role: "architect" });
-  });
-});
-
-describe("parseDevClawSessionKey — legacy subagent format", () => {
+describe("parseDevClawSessionKey", () => {
   it("should parse a standard developer session key", () => {
     const result = parseDevClawSessionKey("agent:devclaw:subagent:my-project-developer-medior");
     assert.deepStrictEqual(result, { projectName: "my-project", role: "developer" });
   });
 
-  it("should parse subagent with slot index", () => {
-    const result = parseDevClawSessionKey("agent:devclaw:subagent:webapp-tester-medior-0");
+  it("should parse a tester session key", () => {
+    const result = parseDevClawSessionKey("agent:devclaw:subagent:webapp-tester-medior");
     assert.deepStrictEqual(result, { projectName: "webapp", role: "tester" });
   });
 
@@ -57,19 +30,7 @@ describe("parseDevClawSessionKey — legacy subagent format", () => {
     assert.deepStrictEqual(result, { projectName: "a-b-c-d", role: "tester" });
   });
 
-  it("should parse senior developer level", () => {
-    const result = parseDevClawSessionKey("agent:devclaw:subagent:devclaw-developer-senior");
-    assert.deepStrictEqual(result, { projectName: "devclaw", role: "developer" });
-  });
-
-  it("should parse simple project name", () => {
-    const result = parseDevClawSessionKey("agent:devclaw:subagent:api-developer-junior");
-    assert.deepStrictEqual(result, { projectName: "api", role: "developer" });
-  });
-});
-
-describe("parseDevClawSessionKey — non-matching keys", () => {
-  it("should return null for non-worker/non-subagent session keys", () => {
+  it("should return null for non-subagent session keys", () => {
     const result = parseDevClawSessionKey("agent:devclaw:main");
     assert.strictEqual(result, null);
   });
@@ -82,6 +43,16 @@ describe("parseDevClawSessionKey — non-matching keys", () => {
   it("should return null for empty string", () => {
     const result = parseDevClawSessionKey("");
     assert.strictEqual(result, null);
+  });
+
+  it("should parse senior developer level", () => {
+    const result = parseDevClawSessionKey("agent:devclaw:subagent:devclaw-developer-senior");
+    assert.deepStrictEqual(result, { projectName: "devclaw", role: "developer" });
+  });
+
+  it("should parse simple project name", () => {
+    const result = parseDevClawSessionKey("agent:devclaw:subagent:api-developer-junior");
+    assert.deepStrictEqual(result, { projectName: "api", role: "developer" });
   });
 });
 

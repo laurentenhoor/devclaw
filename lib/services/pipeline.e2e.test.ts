@@ -112,11 +112,11 @@ describe("E2E pipeline", () => {
     });
 
     it("should reuse existing session when available", async () => {
-      // Set up worker with existing session (worker agent format)
+      // Set up worker with existing session
       h = await createTestHarness({
         workers: {
           developer: {
-            sessions: { medior: "agent:test-agent-worker:worker:test-project-developer-medior-0" },
+            sessions: { medior: "agent:test-agent:subagent:test-project-developer-medior" },
           },
         },
       });

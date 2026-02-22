@@ -184,6 +184,7 @@ Example:
         toLabel,
         provider,
         pluginConfig,
+        sessionKey: ctx.sessionKey,
         runtime: api.runtime,
       });
 
