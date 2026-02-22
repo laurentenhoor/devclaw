@@ -12,6 +12,102 @@ DevClaw is an OpenClaw plugin for multi-project dev/qa pipeline orchestration wi
 - `lib/setup/` — Agent creation, model fetching, LLM-powered model selection
 - `lib/tools/` — All registered tools (work_start, work_finish, task_create, etc.)
 
+## Defaults Upgrade Strategy
+
+DevClaw defaults (AGENTS.md, workflow.yaml, role prompts, etc.) are externalized in the `defaults/` directory and can be safely upgraded when you update the plugin.
+
+### Two Tools: When to Use Each
+
+#### `upgrade-defaults` — Smart Incremental Updates (Recommended)
+
+Use `upgrade-defaults` for routine plugin updates. It intelligently merges new defaults while preserving your customizations:
+
+```bash
+upgrade-defaults --preview    # See what will change
+upgrade-defaults --auto       # Apply safe changes
+upgrade-defaults --rollback   # Undo if needed
+```
+
+**How it works:**
+- Tracks default file hashes in `.INSTALLED_DEFAULTS` manifest
+- Compares current files to stored hashes to detect customizations
+- Updates files you haven't customized
+- Skips or prompts for files you have customized
+- Enables safe, reversible upgrades
+
+**When to use:**
+- ✅ Monthly/weekly updates
+- ✅ Bug fix releases
+- ✅ New default features you want to adopt
+- ✅ Preserving existing customizations
+
+#### `reset_defaults` — Nuclear Option (Use Sparingly)
+
+Use `reset_defaults` **only** for hard resets. It overwrites all defaults:
+
+```bash
+reset_defaults                           # Backup and replace all defaults
+reset_defaults resetProjectPrompts=true  # Also delete project-level prompt overrides
+```
+
+**How it works:**
+- Overwrites all workspace docs, workflow states, and role prompts
+- Creates `.bak` backups (manual restore required)
+- Clears inactive worker sessions
+- Warns about project-level customizations
+
+**When to use:**
+- ⚠️ Starting completely fresh
+- ⚠️ Clearing corrupted state after troubleshooting
+- ⚠️ Discarding extensive experimental changes
+- ⚠️ **NOT for routine upgrades** — use `upgrade-defaults` instead
+
+### Hash-Based Customization Detection
+
+When you run `upgrade-defaults`, DevClaw:
+
+1. Reads `.INSTALLED_DEFAULTS` manifest (maps file → hash, timestamp)
+2. Computes hash of current file
+3. Compares to stored default hash
+   - **Match** → You haven't customized it → safe to update
+   - **Differ** → You customized it → skip or merge intelligently
+4. Shows preview of conflicts before applying
+
+Example `.INSTALLED_DEFAULTS`:
+```json
+{
+  "AGENTS.md": { "hash": "abc123...", "timestamp": 1708564800 },
+  "devclaw/workflow.yaml": { "hash": "def456...", "timestamp": 1708564800 },
+  "devclaw/prompts/developer.md": { "hash": "ghi789...", "timestamp": 1708564800 }
+}
+```
+
+### Customization Safe
+
+Your customizations are never overwritten without warning:
+
+- **Workspace docs** (AGENTS.md, HEARTBEAT.md, etc.) — Updated only if unchanged
+- **Workflow configuration** (devclaw/workflow.yaml) — Preserved if you edited it
+- **Role prompts** (devclaw/prompts/*.md) — Skipped if customized
+- **Project prompts** (devclaw/projects/<name>/prompts/*.md) — Never touched by `upgrade-defaults`
+
+### Startup Notifications
+
+When new defaults are available, DevClaw notifies you:
+
+```
+⚠️ New defaults available for DevClaw
+Run: upgrade-defaults --preview
+Or: upgrade-defaults --auto (for automatic safe updates)
+Or: reset_defaults (for hard reset)
+```
+
+This allows you to:
+- Check the preview before upgrading
+- Decide whether new features are relevant
+- Ignore if you're happy with current state
+- Upgrade on your schedule
+
 ## Coding Style
 
 - **Separation of concerns** — Each module, function, and class should have a single, clear responsibility. Don't mix I/O with business logic, or UI with data processing.

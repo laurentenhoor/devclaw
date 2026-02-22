@@ -441,7 +441,24 @@ openclaw plugins install @laurentenhoor/devclaw
 openclaw plugins install @laurentenhoor/devclaw
 ```
 
-> **Migrating to v1.4.0?** Default templates and workspace files are now externalized to a `defaults/` directory. Your existing customizations are preserved — run `reset_defaults` through your agent if you want to pick up the latest built-in templates (creates `.bak` backups first).
+After upgrading the plugin, safely merge new defaults into your workspace:
+
+```bash
+# Preview what will change
+upgrade-defaults --preview
+
+# Apply safe changes automatically (preserves your customizations)
+upgrade-defaults --auto
+
+# If something goes wrong, restore previous state
+upgrade-defaults --rollback
+```
+
+The `upgrade-defaults` tool intelligently updates workspace defaults while preserving any customizations you've made. Your workflow configuration, role prompts, and other changes are never overwritten without warning.
+
+**See [UPGRADE.md](UPGRADE.md)** for step-by-step upgrade workflow and troubleshooting.
+
+> **Migrating from v1.4.0?** Default templates and workspace files are now externalized to a `defaults/` directory. Your existing customizations are preserved — use `upgrade-defaults --auto` to safely merge new defaults, or `reset_defaults` if you want a complete hard reset (creates `.bak` backups first).
 
 Or for local development:
 ```bash

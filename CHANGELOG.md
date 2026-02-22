@@ -5,6 +5,26 @@ All notable changes to DevClaw will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-02-22
+
+### Added
+
+- **`upgrade-defaults` tool** — Smart defaults upgrade with conflict detection. Non-destructive incremental updates that preserve user customizations. Includes `--preview`, `--auto`, and `--rollback` options for safe, reversible upgrades.
+- **Hash-based version tracking** — `.INSTALLED_DEFAULTS` manifest tracks default file versions and installation timestamps. Automatically detects user customizations and preserves them during upgrades.
+- **Startup notifications for available upgrades** — Alerts users when new defaults are available, allowing them to preview or apply at their convenience.
+- **Rollback support** — `upgrade-defaults --rollback` restores workspace files to their state before the last upgrade, providing a safety net for problematic updates.
+- **Comprehensive upgrade documentation** — New [UPGRADE.md](UPGRADE.md) guide with step-by-step workflows, examples, and troubleshooting. Updated [AGENTS.md](AGENTS.md) with "Defaults Upgrade Strategy" section explaining both `upgrade-defaults` and `reset_defaults`.
+
+### Changed
+
+- **`reset_defaults` role clarified** — Tool description and documentation now emphasize it's a nuclear option for hard resets only. For routine plugin upgrades, `upgrade-defaults` is the recommended tool.
+- **README upgrade instructions** — Updated with new `upgrade-defaults` workflow and link to [UPGRADE.md](UPGRADE.md) guide.
+- **17 tools** (was 16) — added `upgrade-defaults`
+
+### Migration
+
+First run of `upgrade-defaults` automatically creates `.INSTALLED_DEFAULTS` manifest in the workspace. This enables smart customization detection for all future upgrades. Existing customizations are automatically detected and preserved.
+
 ## [1.4.0] - 2026-02-19
 
 ### Added

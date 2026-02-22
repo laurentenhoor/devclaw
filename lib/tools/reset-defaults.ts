@@ -1,15 +1,26 @@
 /**
- * reset-defaults — Reset workspace files to built-in defaults.
+ * reset-defaults — Reset workspace files to built-in defaults (nuclear option).
  *
  * Overwrites workspace docs (AGENTS.md, HEARTBEAT.md, etc.), the workflow
  * section of workflow.yaml (preserving roles/timeouts), and workspace prompts.
  * Creates .bak backups before each overwrite.
+ *
+ * ⚠️ WARNING: This tool is destructive and overwrites all defaults, even if
+ * you've customized them. For routine plugin upgrades, use `upgrade-defaults`
+ * instead, which intelligently merges new defaults while preserving your
+ * customizations. Only use reset_defaults for:
+ * - Hard resets / starting completely fresh
+ * - Clearing corrupted state after troubleshooting
+ * - Discarding extensive experimental changes
  *
  * Also clears inactive worker sessions from projects.json and deletes them
  * from the gateway, so new dispatches get fresh sessions with updated prompts.
  *
  * Warns about project-level prompts that still override workspace defaults.
  * Pass resetProjectPrompts=true to also backup+delete those.
+ *
+ * See AGENTS.md "Defaults Upgrade Strategy" section for detailed comparison
+ * between reset_defaults and upgrade-defaults.
  */
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -35,7 +46,7 @@ export function createResetDefaultsTool() {
     name: "reset_defaults",
     label: "Reset Defaults",
     description:
-      "Reset workspace files to built-in defaults: docs (AGENTS.md, HEARTBEAT.md, IDENTITY.md, TOOLS.md), workflow states (preserves models/timeouts), and role prompts. Creates .bak backups. Warns about project-level prompts that still override workspace defaults.",
+      "⚠️ Nuclear option: Reset workspace files to built-in defaults (overwrites all customizations). Use `upgrade-defaults` for safe incremental updates. Resets: docs (AGENTS.md, HEARTBEAT.md, IDENTITY.md, TOOLS.md), workflow states (preserves models/timeouts), role prompts. Creates .bak backups. Only use for hard resets or clearing corrupted state.",
     parameters: {
       type: "object",
       properties: {
