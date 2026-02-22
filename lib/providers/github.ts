@@ -172,8 +172,7 @@ export class GitHubProvider implements IssueProvider {
   }
 
   async ensureLabel(name: string, color: string): Promise<void> {
-    try { await this.gh(["label", "create", name, "--color", color.replace(/^#/, "")]); }
-    catch (err) { if (!(err as Error).message?.includes("already exists")) throw err; }
+    await this.gh(["label", "create", name, "--color", color.replace(/^#/, ""), "--force"]);
   }
 
   async ensureAllStateLabels(): Promise<void> {

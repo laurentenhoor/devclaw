@@ -68,8 +68,18 @@ export class GitLabProvider implements IssueProvider {
       ]);
     } catch (err) {
       const msg = (err as Error).message ?? "";
-      // Ignore "already exists" and 409 Conflict errors
-      if (!msg.includes("already exists") && !msg.includes("409")) throw err;
+      if (msg.includes("already exists") || msg.includes("409")) {
+        // Label exists — update its color via PUT
+        await this.glab([
+          "api", `projects/:id/labels`,
+          "--method", "PUT",
+          "--field", `name=${name}`,
+          "--field", `new_name=${name}`,
+          "--field", `color=${color}`,
+        ]);
+      } else {
+        throw err;
+      }
     }
   }
 
