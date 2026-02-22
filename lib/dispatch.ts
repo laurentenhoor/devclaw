@@ -10,9 +10,11 @@ import { runCommand } from "./run-command.js";
 import {
   type Project,
   activateWorker,
-  updateWorker,
+  updateSlot,
   getSessionForLevel,
-  getWorker,
+  getRoleWorker,
+  findSlotByIssue,
+  emptySlot,
 } from "./projects.js";
 import { fetchGatewaySessions, type GatewaySession } from "./services/gateway-sessions.js";
 import { resolveModel, getFallbackEmoji } from "./roles/index.js";
@@ -44,6 +46,8 @@ export type DispatchOpts = {
   sessionKey?: string;
   /** Plugin runtime for direct API access (avoids CLI subprocess timeouts) */
   runtime?: PluginRuntime;
+  /** Slot index within the role's worker slots (defaults to 0 for single-worker compat) */
+  slotIndex?: number;
 };
 
 export type DispatchResult = {
@@ -155,19 +159,22 @@ export async function dispatchTask(
     provider, pluginConfig, runtime,
   } = opts;
 
+  const slotIndex = opts.slotIndex ?? 0;
+
   const resolvedConfig = await loadConfig(workspaceDir, project.name);
   const resolvedRole = resolvedConfig.roles[role];
   const { timeouts } = resolvedConfig;
   const model = resolveModel(role, level, resolvedRole);
-  const worker = getWorker(project, role);
-  let existingSessionKey = getSessionForLevel(worker, level);
+  const roleWorker = getRoleWorker(project, role);
+  const slot = roleWorker.slots[slotIndex] ?? emptySlot();
+  let existingSessionKey = (slot.level === level) ? slot.sessionKey : null;
 
   // Context budget check: clear session if over budget (unless same issue — feedback cycle)
   if (existingSessionKey && timeouts.sessionContextBudget < 1) {
-    const shouldClear = await shouldClearSession(existingSessionKey, worker, issueId, timeouts, workspaceDir, project.name);
+    const shouldClear = await shouldClearSession(existingSessionKey, slot.issueId, issueId, timeouts, workspaceDir, project.name);
     if (shouldClear) {
-      await updateWorker(workspaceDir, project.slug, role, {
-        sessions: { [level]: null },
+      await updateSlot(workspaceDir, project.slug, role, slotIndex, {
+        sessionKey: null,
       });
       existingSessionKey = null;
     }
@@ -176,7 +183,8 @@ export async function dispatchTask(
   const sessionAction = existingSessionKey ? "send" : "spawn";
 
   // Compute session key deterministically (avoids waiting for gateway)
-  const sessionKey = `agent:${agentId ?? "unknown"}:subagent:${project.name}-${role}-${level}`;
+  // Include slotIndex to prevent collisions when multiple workers share role+level
+  const sessionKey = `agent:${agentId ?? "unknown"}:subagent:${project.name}-${role}-${level}-${slotIndex}`;
 
   // Fetch comments to include in task context
   const comments = await provider.listComments(issueId);
@@ -268,14 +276,14 @@ export async function dispatchTask(
 
   // Step 4: Send task to agent (fire-and-forget)
   sendToAgent(sessionKey, taskMessage, {
-    agentId, projectName: project.name, issueId, role, level,
+    agentId, projectName: project.name, issueId, role, level, slotIndex,
     orchestratorSessionKey: opts.sessionKey, workspaceDir,
     dispatchTimeoutMs: timeouts.dispatchMs,
   });
 
   // Step 5: Update worker state
   try {
-    await recordWorkerState(workspaceDir, project.slug, role, {
+    await recordWorkerState(workspaceDir, project.slug, role, slotIndex, {
       issueId, level, sessionKey, sessionAction, fromLabel,
     });
   } catch (err) {
@@ -312,14 +320,14 @@ export async function dispatchTask(
  */
 async function shouldClearSession(
   sessionKey: string,
-  worker: import("./projects.js").WorkerState,
+  slotIssueId: string | null,
   newIssueId: number,
   timeouts: import("./config/types.js").ResolvedTimeouts,
   workspaceDir: string,
   projectName: string,
 ): Promise<boolean> {
   // Don't clear if re-dispatching for the same issue (feedback cycle)
-  if (worker.issueId && String(newIssueId) === String(worker.issueId)) {
+  if (slotIssueId && String(newIssueId) === String(slotIssueId)) {
     return false;
   }
 
@@ -464,10 +472,10 @@ function ensureSessionFireAndForget(sessionKey: string, model: string, workspace
 
 function sendToAgent(
   sessionKey: string, taskMessage: string,
-  opts: { agentId?: string; projectName: string; issueId: number; role: string; level?: string; orchestratorSessionKey?: string; workspaceDir: string; dispatchTimeoutMs?: number },
+  opts: { agentId?: string; projectName: string; issueId: number; role: string; level?: string; slotIndex?: number; orchestratorSessionKey?: string; workspaceDir: string; dispatchTimeoutMs?: number },
 ): void {
   const gatewayParams = JSON.stringify({
-    idempotencyKey: `devclaw-${opts.projectName}-${opts.issueId}-${opts.role}-${opts.level ?? "unknown"}-${sessionKey}`,
+    idempotencyKey: `devclaw-${opts.projectName}-${opts.issueId}-${opts.role}-${opts.level ?? "unknown"}-${opts.slotIndex ?? 0}-${sessionKey}`,
     agentId: opts.agentId ?? "devclaw",
     sessionKey,
     message: taskMessage,
@@ -489,7 +497,7 @@ function sendToAgent(
 }
 
 async function recordWorkerState(
-  workspaceDir: string, slug: string, role: string,
+  workspaceDir: string, slug: string, role: string, slotIndex: number,
   opts: { issueId: number; level: string; sessionKey: string; sessionAction: "spawn" | "send"; fromLabel?: string },
 ): Promise<void> {
   await activateWorker(workspaceDir, slug, role, {
@@ -498,6 +506,7 @@ async function recordWorkerState(
     sessionKey: opts.sessionKey,
     startTime: new Date().toISOString(),
     previousLabel: opts.fromLabel,
+    slotIndex,
   });
 }
 

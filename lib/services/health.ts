@@ -523,7 +523,7 @@ export async function scanOrphanedLabels(opts: {
 // Orphaned session scan
 // ---------------------------------------------------------------------------
 
-/** Subagent session key pattern: agent:{agentId}:subagent:{project}-{role}-{level} */
+/** Subagent session key pattern: agent:{agentId}:subagent:{project}-{role}-{level}-{slotIndex} */
 const SUBAGENT_PATTERN = /^agent:[^:]+:subagent:/;
 
 /**
