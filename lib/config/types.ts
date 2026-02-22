@@ -10,11 +10,14 @@ import type { WorkflowConfig } from "../workflow.js";
  * Role override in workflow.yaml. All fields optional — only override what you need.
  * Set to `false` to disable a role entirely for a project.
  */
+/** Model entry: plain string or object with per-level maxWorkers override. */
+export type ModelEntry = string | { model: string; maxWorkers?: number };
+
 export type RoleOverride = {
-  maxWorkers?: number; // Maximum concurrent workers for this role (default: 1)
+  maxWorkers?: number; // @deprecated — kept for backward compat, ignored by resolver
   levels?: string[];
   defaultLevel?: string;
-  models?: Record<string, string>;
+  models?: Record<string, ModelEntry>;
   emoji?: Record<string, string>;
   completionResults?: string[];
 };
@@ -70,9 +73,11 @@ export type ResolvedConfig = {
  * Fully resolved role config — all fields present.
  */
 export type ResolvedRoleConfig = {
-  maxWorkers: number; // Maximum concurrent workers for this role (always resolved, default: 1)
+  /** Per-level max workers. Resolved from: per-model maxWorkers → workflow maxWorkersPerLevel → default 2. */
+  levelMaxWorkers: Record<string, number>;
   levels: string[];
   defaultLevel: string;
+  /** Flattened model map (string IDs only, for existing consumers). */
   models: Record<string, string>;
   emoji: Record<string, string>;
   completionResults: string[];

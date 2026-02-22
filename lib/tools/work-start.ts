@@ -69,14 +69,7 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
       const role = roleParam ?? detectedRole;
       if (roleParam && roleParam !== detectedRole) throw new Error(`Role mismatch: "${currentLabel}" → ${detectedRole}, requested ${roleParam}`);
 
-      // Check worker availability
-      const configMaxWorkers = resolvedConfig.roles[role]?.maxWorkers ?? 1;
-      const roleWorker = getRoleWorker(project, role);
-      reconcileSlots(roleWorker, configMaxWorkers);
-      const freeSlot = findFreeSlot(roleWorker, configMaxWorkers);
-      if (freeSlot === null) {
-        throw new Error(`${role.toUpperCase()} at capacity (${configMaxWorkers}/${configMaxWorkers} slots active)`);
-      }
+      // Sequential execution check
       if ((workflow.roleExecution ?? ExecutionMode.PARALLEL) === ExecutionMode.SEQUENTIAL) {
         for (const [otherRole, otherWorker] of Object.entries(project.workers)) {
           if (otherRole !== role && countActiveSlots(otherWorker) > 0) {
@@ -102,6 +95,16 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
           const s = selectLevel(issue.title, issue.description ?? "", role);
           selectedLevel = s.level; levelReason = s.reason; levelSource = "heuristic";
         }
+      }
+
+      // Check per-level slot availability
+      const levelMaxWorkers = resolvedConfig.roles[role]?.levelMaxWorkers ?? {};
+      const roleWorker = getRoleWorker(project, role);
+      reconcileSlots(roleWorker, levelMaxWorkers);
+      const freeSlot = findFreeSlot(roleWorker, selectedLevel);
+      if (freeSlot === null) {
+        const max = levelMaxWorkers[selectedLevel] ?? 0;
+        throw new Error(`${role.toUpperCase()} (${selectedLevel}) at capacity (${max}/${max} slots active)`);
       }
 
       // Ensure notify label is on the issue (best-effort — failure must not abort dispatch).

@@ -48,6 +48,7 @@ export function mergeConfig(
       initial: overlay.workflow?.initial ?? base.workflow?.initial,
       reviewPolicy: overlay.workflow?.reviewPolicy ?? base.workflow?.reviewPolicy,
       roleExecution: overlay.workflow?.roleExecution ?? base.workflow?.roleExecution,
+      maxWorkersPerLevel: overlay.workflow?.maxWorkersPerLevel ?? base.workflow?.maxWorkersPerLevel,
       states: {
         ...base.workflow?.states,
         ...overlay.workflow?.states,

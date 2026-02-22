@@ -12,7 +12,7 @@ import path from "node:path";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { getSessionKeyRolePattern } from "./roles/index.js";
 import { DATA_DIR } from "./setup/migrate-layout.js";
-import { WORKER_AGENTS_MD_TEMPLATE } from "./templates.js";
+
 
 /**
  * Parse a DevClaw subagent session key to extract project name and role.
@@ -103,10 +103,10 @@ export async function loadRoleInstructions(
  * 1. Detects it's a DevClaw subagent via session key pattern
  * 2. Extracts project name and role
  * 3. Loads role-specific instructions from workspace
- * 4. Injects them as a virtual workspace file (WORKER_INSTRUCTIONS.md)
+ * 4. Replaces AGENTS.md content with role instructions (workers don't need orchestrator AGENTS.md)
  *
- * OpenClaw automatically includes bootstrap files in the agent's system prompt,
- * so workers receive their instructions without any file-read in dispatch.ts.
+ * OpenClaw automatically includes AGENTS.md in the agent's system prompt (even for subagents),
+ * so replacing its content is all we need — no extra virtual files.
  */
 export function registerBootstrapHook(api: OpenClawPluginApi): void {
   api.registerHook("agent:bootstrap", async (event) => {
@@ -142,14 +142,13 @@ export function registerBootstrapHook(api: OpenClawPluginApi): void {
       return;
     }
 
-    // Replace AGENTS.md with worker-specific version (removes orchestrator section)
     const agentsEntry = bootstrapFiles.find((f) => f.name === "AGENTS.md");
-    if (agentsEntry && WORKER_AGENTS_MD_TEMPLATE) {
-      agentsEntry.content = WORKER_AGENTS_MD_TEMPLATE.trim();
-      api.logger.info(`Bootstrap hook: replaced AGENTS.md with worker version for ${parsed.role}`);
+    if (!agentsEntry) {
+      api.logger.warn(`Bootstrap hook: no AGENTS.md entry in bootstrapFiles for ${sessionKey}`);
+      return;
     }
 
-    // Inject role-specific instructions
+    // Load role-specific instructions and inject as AGENTS.md content
     const { content, source } = await loadRoleInstructions(
       workspaceDir,
       parsed.projectName,
@@ -158,17 +157,15 @@ export function registerBootstrapHook(api: OpenClawPluginApi): void {
     );
 
     if (content) {
-      bootstrapFiles.push({
-        name: "WORKER_INSTRUCTIONS.md" as any,
-        path: `<devclaw:${parsed.projectName}:${parsed.role}>`,
-        content: content.trim(),
-        missing: false,
-      });
+      agentsEntry.content = content.trim();
       api.logger.info(
-        `Bootstrap hook: injected ${parsed.role} instructions for project "${parsed.projectName}" from ${source}`,
+        `Bootstrap hook: replaced AGENTS.md with ${parsed.role} instructions for project "${parsed.projectName}" from ${source}`,
       );
     } else {
-      api.logger.warn(`Bootstrap hook: no role instructions found for ${parsed.role} in project "${parsed.projectName}" (workspace: ${workspaceDir})`);
+      // No role instructions found — strip AGENTS.md so worker doesn't see orchestrator content
+      agentsEntry.content = "";
+      agentsEntry.missing = true;
+      api.logger.warn(`Bootstrap hook: no role instructions found for ${parsed.role} in project "${parsed.projectName}" — AGENTS.md stripped`);
     }
   }, { name: "devclaw-worker-instructions", description: "Injects role-specific instructions into DevClaw worker sessions" } as any);
 }

@@ -10,7 +10,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { initRunCommand } from "../run-command.js";
-import { writeProjects, type ProjectsData, type Project, emptyWorkerState } from "../projects.js";
+import { writeProjects, type ProjectsData, type Project, type RoleWorkerState } from "../projects.js";
 import { DEFAULT_WORKFLOW, type WorkflowConfig } from "../workflow.js";
 import { registerBootstrapHook } from "../bootstrap-hook.js";
 import { TestProvider } from "./test-provider.js";
@@ -163,8 +163,8 @@ export type HarnessOptions = {
   baseBranch?: string;
   /** Workflow config (default: DEFAULT_WORKFLOW). */
   workflow?: WorkflowConfig;
-  /** Initial worker state overrides. */
-  workers?: Record<string, Partial<import("../projects.js").WorkerState>>;
+  /** Initial worker state overrides (level + slot fields). */
+  workers?: Record<string, { level?: string; active?: boolean; issueId?: string | null; sessionKey?: string | null; startTime?: string | null; previousLabel?: string | null }>;
   /** Additional projects to seed. */
   extraProjects?: Record<string, Project>;
 };
@@ -186,31 +186,27 @@ export async function createTestHarness(opts?: HarnessOptions): Promise<TestHarn
   const logDir = path.join(dataDir, "log");
   await fs.mkdir(logDir, { recursive: true });
 
-  // Build project
-  const defaultWorkers: Record<string, import("../projects.js").RoleWorkerState> = {
-    developer: emptyWorkerState(),
-    tester: emptyWorkerState(),
-    architect: emptyWorkerState(),
-    reviewer: emptyWorkerState(),
+  // Build project — empty per-level workers
+  const emptyRW = (): RoleWorkerState => ({ levels: {} });
+  const defaultWorkers: Record<string, RoleWorkerState> = {
+    developer: emptyRW(),
+    tester: emptyRW(),
+    architect: emptyRW(),
+    reviewer: emptyRW(),
   };
 
-  // Apply worker overrides (legacy format: map to slot 0)
+  // Apply worker overrides: places override into levels[level][0]
   if (workerOverrides) {
     for (const [role, overrides] of Object.entries(workerOverrides)) {
-      const rw = defaultWorkers[role] ?? emptyWorkerState();
-      const slot = rw.slots[0]!;
-      if (overrides.active !== undefined) slot.active = overrides.active;
-      if (overrides.issueId !== undefined) slot.issueId = overrides.issueId;
-      if (overrides.level !== undefined) slot.level = overrides.level;
-      if (overrides.startTime !== undefined) slot.startTime = overrides.startTime;
-      if (overrides.previousLabel !== undefined) slot.previousLabel = overrides.previousLabel;
-      if (overrides.sessions) {
-        // Extract sessionKey from sessions
-        const level = overrides.level ?? slot.level;
-        if (level && overrides.sessions[level]) {
-          slot.sessionKey = overrides.sessions[level]!;
-        }
-      }
+      const level = overrides.level ?? "senior";
+      const rw = defaultWorkers[role] ?? emptyRW();
+      rw.levels[level] = [{
+        active: overrides.active ?? false,
+        issueId: overrides.issueId ?? null,
+        sessionKey: overrides.sessionKey ?? null,
+        startTime: overrides.startTime ?? null,
+        previousLabel: overrides.previousLabel ?? null,
+      }];
       defaultWorkers[role] = rw;
     }
   }

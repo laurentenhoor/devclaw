@@ -214,11 +214,11 @@ export function createProjectRegisterTool() {
           existing.repoRemote = repoRemote;
         }
       } else {
-        // Create new project - get maxWorkers from resolved config (already loaded above)
+        // Create new project - get levelMaxWorkers from resolved config (already loaded above)
         const workers: Record<string, import("../projects.js").RoleWorkerState> = {};
         for (const role of getAllRoleIds()) {
-          const maxWorkers = resolvedConfig.roles[role]?.maxWorkers ?? 1;
-          workers[role] = emptyRoleWorkerState(maxWorkers);
+          const levelMaxWorkers = resolvedConfig.roles[role]?.levelMaxWorkers ?? {};
+          workers[role] = emptyRoleWorkerState(levelMaxWorkers);
         }
 
         const newChannel: import("../projects.js").Channel = {

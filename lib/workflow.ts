@@ -97,6 +97,8 @@ export type WorkflowConfig = {
   initial: string;
   reviewPolicy?: ReviewPolicy;
   roleExecution?: ExecutionMode;
+  /** Default max workers per level across all roles. Default: 2. */
+  maxWorkersPerLevel?: number;
   states: Record<string, StateConfig>;
 };
 

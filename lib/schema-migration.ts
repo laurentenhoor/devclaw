@@ -4,9 +4,24 @@
  * Handles detection and migration of legacy projects.json format to new schema.
  * Separated from projects.ts to keep core logic clean.
  */
-import type { ProjectsData, Channel, LegacyProject, WorkerState } from "./projects.js";
+import type { ProjectsData, Channel, LegacyProject } from "./projects.js";
 import { resolveRepoPath } from "./projects.js";
 import { runCommand } from "./run-command.js";
+
+/** Get first start time from a worker state (handles both old slots and new levels format). */
+function getFirstStartTime(worker: any): string | undefined {
+  if (!worker) return undefined;
+  // New per-level format
+  if (worker.levels) {
+    for (const slots of Object.values(worker.levels)) {
+      if (Array.isArray(slots) && slots.length > 0 && (slots[0] as any)?.startTime) {
+        return (slots[0] as any).startTime;
+      }
+    }
+  }
+  // Old slot-based format
+  return worker.slots?.[0]?.startTime ?? undefined;
+}
 
 /**
  * Detect if projects.json is in legacy format (keyed by numeric groupIds).
@@ -61,9 +76,11 @@ export async function migrateLegacySchema(data: any): Promise<ProjectsData> {
   for (const [projectName, { groupIds, legacyProjects: legacyList }] of Object.entries(byName)) {
     const slug = projectName.toLowerCase().replace(/\s+/g, "-");
     const firstProj = legacyList[0];
-    const mostRecent = legacyList.reduce((a, b) =>
-      (a.workers?.developer?.slots?.[0]?.startTime || "") > (b.workers?.developer?.slots?.[0]?.startTime || "") ? a : b
-    );
+    const mostRecent = legacyList.reduce((a, b) => {
+      const aTime = getFirstStartTime(a.workers?.developer);
+      const bTime = getFirstStartTime(b.workers?.developer);
+      return (aTime || "") > (bTime || "") ? a : b;
+    });
 
     // Create channels: first groupId is "primary", rest are "secondary-{n}"
     const channels: Channel[] = groupIds.map((gId, idx) => ({
@@ -77,7 +94,10 @@ export async function migrateLegacySchema(data: any): Promise<ProjectsData> {
     const mergedWorkers = { ...firstProj.workers };
     if (mostRecent !== firstProj) {
       for (const [role, worker] of Object.entries(mostRecent.workers)) {
-        if (worker.slots?.some(s => s.active)) {
+        const hasActive = Object.values((worker as any).levels ?? {}).some(
+          (slots: any) => Array.isArray(slots) && slots.some((s: any) => s.active),
+        ) || (worker as any).slots?.some((s: any) => s.active);
+        if (hasActive) {
           mergedWorkers[role] = worker;
         }
       }

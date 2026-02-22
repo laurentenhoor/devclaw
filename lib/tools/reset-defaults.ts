@@ -19,7 +19,7 @@ import type { ToolContext } from "../types.js";
 import { requireWorkspaceDir } from "../tool-helpers.js";
 import { backupAndWrite, fileExists } from "../setup/workspace.js";
 import { DATA_DIR } from "../setup/migrate-layout.js";
-import { readProjects, updateWorker } from "../projects.js";
+import { readProjects, updateSlot } from "../projects.js";
 import { runCommand } from "../run-command.js";
 import {
   AGENTS_MD_TEMPLATE,
@@ -152,40 +152,38 @@ export function createResetDefaultsTool() {
 
         for (const [slug, project] of Object.entries(data.projects)) {
           for (const [role, rw] of Object.entries(project.workers)) {
-            const hasActive = rw.slots.some(s => s.active);
-            if (hasActive) {
-              // Never touch active workers
-              for (const slot of rw.slots) {
-                if (slot.active && slot.sessionKey && slot.level) {
-                  sessionsSkipped.push(`${slug}/${role}:${slot.level} (active)`);
+            for (const [level, slots] of Object.entries(rw.levels)) {
+              const hasActive = slots.some(s => s.active);
+              if (hasActive) {
+                // Never touch active workers
+                for (const slot of slots) {
+                  if (slot.active && slot.sessionKey) {
+                    sessionsSkipped.push(`${slug}/${role}:${level} (active)`);
+                  }
                 }
+                continue;
               }
-              continue;
-            }
 
-            const keysToDelete: string[] = [];
-            const nulledSessions: Record<string, null> = {};
+              const keysToDelete: string[] = [];
 
-            for (const slot of rw.slots) {
-              if (!slot.sessionKey || !slot.level) continue;
-              keysToDelete.push(slot.sessionKey);
-              nulledSessions[slot.level] = null;
-            }
+              for (let i = 0; i < slots.length; i++) {
+                const slot = slots[i]!;
+                if (!slot.sessionKey) continue;
+                keysToDelete.push(slot.sessionKey);
+                // Clear session reference in projects.json
+                await updateSlot(workspaceDir, slug, role, level, i, { sessionKey: null });
+              }
 
-            if (Object.keys(nulledSessions).length === 0) continue;
-
-            // Clear session references in projects.json
-            await updateWorker(workspaceDir, slug, role, { sessions: nulledSessions });
-
-            // Delete sessions from gateway
-            for (const key of keysToDelete) {
-              try {
-                await runCommand(
-                  ["openclaw", "gateway", "call", "sessions.delete", "--params", JSON.stringify({ key })],
-                  { timeoutMs: 10_000 },
-                );
-              } catch { /* gateway may be down — session ref already cleared */ }
-              sessionsCleared.push(key);
+              // Delete sessions from gateway
+              for (const key of keysToDelete) {
+                try {
+                  await runCommand(
+                    ["openclaw", "gateway", "call", "sessions.delete", "--params", JSON.stringify({ key })],
+                    { timeoutMs: 10_000 },
+                  );
+                } catch { /* gateway may be down — session ref already cleared */ }
+                sessionsCleared.push(key);
+              }
             }
           }
         }

@@ -13,7 +13,7 @@
 import type { OpenClawPluginApi, PluginRuntime } from "openclaw/plugin-sdk";
 import fs from "node:fs";
 import path from "node:path";
-import { readProjects, getProject } from "../projects.js";
+import { readProjects, getProject, type Project } from "../projects.js";
 import { log as auditLog } from "../audit.js";
 import { DATA_DIR } from "../setup/migrate-layout.js";
 import {
@@ -27,6 +27,7 @@ import { projectTick } from "./tick.js";
 import { reviewPass } from "./review.js";
 import { createProvider } from "../providers/index.js";
 import { loadConfig } from "../config/index.js";
+import type { ResolvedConfig } from "../config/types.js";
 import { ExecutionMode, resolveNotifyChannel } from "../workflow.js";
 import { notify, getNotificationConfig } from "../notify.js";
 
@@ -317,96 +318,9 @@ export async function tick(opts: {
       );
 
       // Review pass: transition issues whose PR check condition is met
-      const notifyConfig = getNotificationConfig(pluginConfig);
-      result.totalReviewTransitions += await reviewPass({
-        workspaceDir,
-        projectName: slug,
-        workflow: resolvedConfig.workflow,
-        provider,
-        repoPath: project.repo,
-        gitPullTimeoutMs: resolvedConfig.timeouts.gitPullMs,
-        baseBranch: project.baseBranch,
-        onMerge: (issueId, prUrl, prTitle, sourceBranch) => {
-          provider
-            .getIssue(issueId)
-            .then((issue) => {
-              const target = resolveNotifyChannel(
-                issue.labels,
-                project.channels,
-              );
-              notify(
-                {
-                  type: "prMerged",
-                  project: project.name,
-                  issueId,
-                  issueUrl: issue.web_url,
-                  issueTitle: issue.title,
-                  prUrl: prUrl ?? undefined,
-                  prTitle,
-                  sourceBranch,
-                  mergedBy: "heartbeat",
-                },
-                {
-                  workspaceDir,
-                  config: notifyConfig,
-                  groupId: target?.groupId,
-                  channel: target?.channel ?? "telegram",
-                  runtime,
-                  accountId: target?.accountId,
-                },
-              ).catch(() => {});
-            })
-            .catch(() => {});
-        },
-        onFeedback: (issueId, reason, prUrl, issueTitle, issueUrl) => {
-          const type =
-            reason === "changes_requested"
-              ? ("changesRequested" as const)
-              : ("mergeConflict" as const);
-          // No issue labels available in this callback — fall back to primary channel
-          const target = project.channels[0];
-          notify(
-            {
-              type,
-              project: project.name,
-              issueId,
-              issueUrl,
-              issueTitle,
-              prUrl: prUrl ?? undefined,
-            },
-            {
-              workspaceDir,
-              config: notifyConfig,
-              groupId: target?.groupId,
-              channel: target?.channel ?? "telegram",
-              runtime,
-              accountId: target?.accountId,
-            },
-          ).catch(() => {});
-        },
-        onPrClosed: (issueId, prUrl, issueTitle, issueUrl) => {
-          // No issue labels available in this callback — fall back to primary channel
-          const target = project.channels[0];
-          notify(
-            {
-              type: "prClosed",
-              project: project.name,
-              issueId,
-              issueUrl,
-              issueTitle,
-              prUrl: prUrl ?? undefined,
-            },
-            {
-              workspaceDir,
-              config: notifyConfig,
-              groupId: target?.groupId,
-              channel: target?.channel ?? "telegram",
-              runtime,
-              accountId: target?.accountId,
-            },
-          ).catch(() => {});
-        },
-      });
+      result.totalReviewTransitions += await performReviewPass(
+        workspaceDir, slug, project, provider, resolvedConfig, pluginConfig, runtime,
+      );
 
       // Budget check: stop if we've hit the limit
       const remaining = config.maxPickupsPerTick - result.totalPickups;
@@ -508,6 +422,111 @@ async function performHealthPass(
 }
 
 /**
+ * Run review pass for a project — transition issues whose PR check condition is met.
+ */
+async function performReviewPass(
+  workspaceDir: string,
+  projectSlug: string,
+  project: Project,
+  provider: import("../providers/provider.js").IssueProvider,
+  resolvedConfig: ResolvedConfig,
+  pluginConfig: Record<string, unknown> | undefined,
+  runtime?: PluginRuntime,
+): Promise<number> {
+  const notifyConfig = getNotificationConfig(pluginConfig);
+
+  return reviewPass({
+    workspaceDir,
+    projectName: projectSlug,
+    workflow: resolvedConfig.workflow,
+    provider,
+    repoPath: project.repo,
+    gitPullTimeoutMs: resolvedConfig.timeouts.gitPullMs,
+    baseBranch: project.baseBranch,
+    onMerge: (issueId, prUrl, prTitle, sourceBranch) => {
+      provider
+        .getIssue(issueId)
+        .then((issue) => {
+          const target = resolveNotifyChannel(
+            issue.labels,
+            project.channels,
+          );
+          notify(
+            {
+              type: "prMerged",
+              project: project.name,
+              issueId,
+              issueUrl: issue.web_url,
+              issueTitle: issue.title,
+              prUrl: prUrl ?? undefined,
+              prTitle,
+              sourceBranch,
+              mergedBy: "heartbeat",
+            },
+            {
+              workspaceDir,
+              config: notifyConfig,
+              groupId: target?.groupId,
+              channel: target?.channel ?? "telegram",
+              runtime,
+              accountId: target?.accountId,
+            },
+          ).catch(() => {});
+        })
+        .catch(() => {});
+    },
+    onFeedback: (issueId, reason, prUrl, issueTitle, issueUrl) => {
+      const type =
+        reason === "changes_requested"
+          ? ("changesRequested" as const)
+          : ("mergeConflict" as const);
+      // No issue labels available in this callback — fall back to primary channel
+      const target = project.channels[0];
+      notify(
+        {
+          type,
+          project: project.name,
+          issueId,
+          issueUrl,
+          issueTitle,
+          prUrl: prUrl ?? undefined,
+        },
+        {
+          workspaceDir,
+          config: notifyConfig,
+          groupId: target?.groupId,
+          channel: target?.channel ?? "telegram",
+          runtime,
+          accountId: target?.accountId,
+        },
+      ).catch(() => {});
+    },
+    onPrClosed: (issueId, prUrl, issueTitle, issueUrl) => {
+      // No issue labels available in this callback — fall back to primary channel
+      const target = project.channels[0];
+      notify(
+        {
+          type: "prClosed",
+          project: project.name,
+          issueId,
+          issueUrl,
+          issueTitle,
+          prUrl: prUrl ?? undefined,
+        },
+        {
+          workspaceDir,
+          config: notifyConfig,
+          groupId: target?.groupId,
+          channel: target?.channel ?? "telegram",
+          runtime,
+          accountId: target?.accountId,
+        },
+      ).catch(() => {});
+    },
+  });
+}
+
+/**
  * Check if a project has any active worker.
  */
 async function checkProjectActive(
@@ -517,5 +536,7 @@ async function checkProjectActive(
   const data = await readProjects(workspaceDir);
   const project = getProject(data, slug);
   if (!project) return false;
-  return Object.values(project.workers).some((w) => w.slots.some(s => s.active));
+  return Object.values(project.workers).some((w) =>
+    Object.values(w.levels).some(slots => slots.some(s => s.active)),
+  );
 }

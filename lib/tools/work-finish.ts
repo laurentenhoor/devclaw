@@ -128,22 +128,25 @@ export function createWorkFinishTool(api: OpenClawPluginApi) {
       // Resolve project + worker
       const { project } = await resolveProject(workspaceDir, slug);
       const roleWorker = getRoleWorker(project, role);
-      
-      // Find the active slot for this role
-      // With multi-slot support, we find the first active slot
-      // In the future, this could be enhanced to find by specific issueId from context
+
+      // Find the first active slot across all levels
       let slotIndex: number | null = null;
+      let slotLevel: string | null = null;
       let issueId: number | null = null;
-      
-      for (let i = 0; i < roleWorker.slots.length; i++) {
-        if (roleWorker.slots[i]!.active && roleWorker.slots[i]!.issueId) {
-          slotIndex = i;
-          issueId = Number(roleWorker.slots[i]!.issueId);
-          break;
+
+      for (const [level, slots] of Object.entries(roleWorker.levels)) {
+        for (let i = 0; i < slots.length; i++) {
+          if (slots[i]!.active && slots[i]!.issueId) {
+            slotLevel = level;
+            slotIndex = i;
+            issueId = Number(slots[i]!.issueId);
+            break;
+          }
         }
+        if (issueId !== null) break;
       }
-      
-      if (slotIndex === null || issueId === null) {
+
+      if (slotIndex === null || slotLevel === null || issueId === null) {
         throw new Error(`${role.toUpperCase()} worker not active on ${project.name}`);
       }
 
@@ -166,6 +169,7 @@ export function createWorkFinishTool(api: OpenClawPluginApi) {
         projectName: project.name,
         channels: project.channels,
         pluginConfig,
+        level: slotLevel,
         slotIndex,
         runtime: api.runtime,
         workflow,

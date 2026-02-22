@@ -8,7 +8,7 @@ import type { PluginRuntime } from "openclaw/plugin-sdk";
 import type { Issue, IssueProvider } from "../providers/provider.js";
 import { createProvider } from "../providers/index.js";
 import { selectLevel } from "../model-selector.js";
-import { getRoleWorker, getProject, getSessionForLevel, readProjects, findFreeSlot, countActiveSlots, reconcileSlots } from "../projects.js";
+import { getRoleWorker, getProject, readProjects, findFreeSlot, countActiveSlots, reconcileSlots } from "../projects.js";
 import { dispatchTask } from "../dispatch.js";
 import { getLevelsForRole } from "../roles/index.js";
 import { loadConfig } from "../config/index.js";
@@ -97,14 +97,10 @@ export async function projectTick(opts: {
     const fresh = getProject(await readProjects(workspaceDir), projectSlug);
     if (!fresh) break;
 
-    const configMaxWorkers = resolvedConfig.roles[role]?.maxWorkers ?? 1;
     const roleWorker = getRoleWorker(fresh, role);
-    reconcileSlots(roleWorker, configMaxWorkers);
-    const freeSlot = findFreeSlot(roleWorker, configMaxWorkers);
-    if (freeSlot === null) {
-      skipped.push({ role, reason: `All ${configMaxWorkers} slots full` });
-      continue;
-    }
+    const levelMaxWorkers = resolvedConfig.roles[role]?.levelMaxWorkers ?? {};
+    reconcileSlots(roleWorker, levelMaxWorkers);
+
     // Check sequential role execution: any other role must be inactive
     const otherRoles = enabledRoles.filter((r: string) => r !== role);
     if (roleExecution === ExecutionMode.SEQUENTIAL && otherRoles.some((r: string) => countActiveSlots(getRoleWorker(fresh, r)) > 0)) {
@@ -143,14 +139,22 @@ export async function projectTick(opts: {
       }
     }
 
-    // Level selection: label → heuristic
+    // Level selection: label → heuristic (must happen before free slot check)
     const selectedLevel = resolveLevelForIssue(issue, role);
 
+    // Check per-level slot availability
+    const freeSlot = findFreeSlot(roleWorker, selectedLevel);
+    if (freeSlot === null) {
+      skipped.push({ role, reason: `${selectedLevel} slots full` });
+      continue;
+    }
+
     if (dryRun) {
+      const existingSession = roleWorker.levels[selectedLevel]?.[freeSlot]?.sessionKey;
       pickups.push({
         project: project.name, projectSlug, issueId: issue.iid, issueTitle: issue.title, issueUrl: issue.web_url,
         role, level: selectedLevel,
-        sessionAction: getSessionForLevel(roleWorker, selectedLevel) ? "send" : "spawn",
+        sessionAction: existingSession ? "send" : "spawn",
         announcement: `[DRY RUN] Would pick up #${issue.iid}`,
       });
     } else {

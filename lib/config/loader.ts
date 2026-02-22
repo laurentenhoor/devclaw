@@ -14,7 +14,7 @@ import YAML from "yaml";
 import { ROLE_REGISTRY } from "../roles/registry.js";
 import { DEFAULT_WORKFLOW, type WorkflowConfig } from "../workflow.js";
 import { mergeConfig } from "./merge.js";
-import type { DevClawConfig, ResolvedConfig, ResolvedRoleConfig, ResolvedTimeouts, RoleOverride } from "./types.js";
+import type { DevClawConfig, ResolvedConfig, ResolvedRoleConfig, ResolvedTimeouts, RoleOverride, ModelEntry } from "./types.js";
 import { validateConfig, validateWorkflowIntegrity } from "./schema.js";
 import { DATA_DIR } from "../setup/migrate-layout.js";
 
@@ -91,19 +91,49 @@ function buildDefaultConfig(): DevClawConfig {
 /**
  * Resolve a merged DevClawConfig into a fully-typed ResolvedConfig.
  */
+/** Default max workers per level when no override is set. */
+const DEFAULT_MAX_WORKERS_PER_LEVEL = 2;
+
+/** Flatten a ModelEntry map to string-only model IDs. */
+function flattenModels(entries: Record<string, ModelEntry>): Record<string, string> {
+  const flat: Record<string, string> = {};
+  for (const [level, entry] of Object.entries(entries)) {
+    flat[level] = typeof entry === "string" ? entry : entry.model;
+  }
+  return flat;
+}
+
+/** Resolve per-level maxWorkers from model entries + global default. */
+function resolveLevelMaxWorkers(
+  models: Record<string, ModelEntry>,
+  globalDefault: number,
+): Record<string, number> {
+  const result: Record<string, number> = {};
+  for (const [level, entry] of Object.entries(models)) {
+    if (typeof entry === "object" && entry.maxWorkers !== undefined) {
+      result[level] = entry.maxWorkers;
+    } else {
+      result[level] = globalDefault;
+    }
+  }
+  return result;
+}
+
 function resolve(config: DevClawConfig): ResolvedConfig {
   const roles: Record<string, ResolvedRoleConfig> = {};
+  const globalMaxWorkers = config.workflow?.maxWorkersPerLevel ?? DEFAULT_MAX_WORKERS_PER_LEVEL;
 
   if (config.roles) {
     for (const [id, override] of Object.entries(config.roles)) {
       if (override === false) {
         // Disabled role — include with enabled: false for visibility
         const reg = ROLE_REGISTRY[id];
+        const models: Record<string, ModelEntry> = reg ? { ...reg.models } : {};
         roles[id] = {
-          maxWorkers: 1,
+          levelMaxWorkers: resolveLevelMaxWorkers(models, globalMaxWorkers),
           levels: reg ? [...reg.levels] : [],
           defaultLevel: reg?.defaultLevel ?? "",
-          models: reg ? { ...reg.models } : {},
+          models: flattenModels(models),
           emoji: reg ? { ...reg.emoji } : {},
           completionResults: reg ? [...reg.completionResults] : [],
           enabled: false,
@@ -112,11 +142,15 @@ function resolve(config: DevClawConfig): ResolvedConfig {
       }
 
       const reg = ROLE_REGISTRY[id];
+      const mergedModels: Record<string, ModelEntry> = {
+        ...(reg?.models ?? {}),
+        ...(override.models ?? {}),
+      };
       roles[id] = {
-        maxWorkers: override.maxWorkers ?? 1,
+        levelMaxWorkers: resolveLevelMaxWorkers(mergedModels, globalMaxWorkers),
         levels: override.levels ?? (reg ? [...reg.levels] : []),
         defaultLevel: override.defaultLevel ?? reg?.defaultLevel ?? "",
-        models: { ...(reg?.models ?? {}), ...(override.models ?? {}) },
+        models: flattenModels(mergedModels),
         emoji: { ...(reg?.emoji ?? {}), ...(override.emoji ?? {}) },
         completionResults: override.completionResults ?? (reg ? [...reg.completionResults] : []),
         enabled: true,
@@ -127,11 +161,12 @@ function resolve(config: DevClawConfig): ResolvedConfig {
   // Ensure all built-in roles exist even if not in config
   for (const [id, reg] of Object.entries(ROLE_REGISTRY)) {
     if (!roles[id]) {
+      const models: Record<string, ModelEntry> = { ...reg.models };
       roles[id] = {
-        maxWorkers: 1,
+        levelMaxWorkers: resolveLevelMaxWorkers(models, globalMaxWorkers),
         levels: [...reg.levels],
         defaultLevel: reg.defaultLevel,
-        models: { ...reg.models },
+        models: flattenModels(models),
         emoji: { ...reg.emoji },
         completionResults: [...reg.completionResults],
         enabled: true,

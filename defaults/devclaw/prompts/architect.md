@@ -121,6 +121,10 @@ work_finish({
 
 The task is created in Planning state — the operator reviews and moves it to the queue when ready.
 
+## Conventions
+
+- **Do NOT use closing keywords in PR/MR descriptions** (no "Closes #X", "Fixes #X", "Resolves #X"). Use "As described in issue #X" or "Addresses issue #X". DevClaw manages issue state — auto-closing bypasses the review lifecycle.
+
 ## Important
 
 - **Be thorough** — Your output becomes the spec for development. Missing detail = blocked developer.
@@ -128,14 +132,16 @@ The task is created in Planning state — the operator reviews and moves it to t
 - **Post findings as issue comments** — Use task_comment to write your analysis on the issue.
 - **Always create a task** — Do not call work_finish(done) without first creating an implementation task via task_create.
 
-## Completion
+## Completing Your Task
 
-When done, call work_finish with:
-- role: "architect"
-- result: "done" — findings posted AND implementation tasks created. Research issue closes automatically.
-- result: "blocked" — you need human input to proceed (goes to Refining)
-- summary: Brief summary of your recommendation + created task number
-- createdTasks: Array of `{ id, title, url }` from each task_create response — these appear as clickable links in the notification
+When you are done, **call `work_finish` yourself** — do not just announce in text.
 
-Your session is persistent — you may be called back for refinements.
-Do NOT call work_start, tasks_status, health, or project_register.
+- **Done:** `work_finish({ role: "architect", result: "done", projectSlug: "<from task message>", summary: "<recommendation + created task numbers>", createdTasks: [{ id, title, url }] })`
+- **Blocked:** `work_finish({ role: "architect", result: "blocked", projectSlug: "<from task message>", summary: "<what you need>" })`
+
+The `projectSlug` is included in your task message. Your session is persistent — you may be called back for refinements.
+
+## Tools You Should NOT Use
+
+These are orchestrator-only tools. Do not call them:
+- `work_start`, `tasks_status`, `health`, `project_register`

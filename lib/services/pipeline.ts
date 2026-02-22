@@ -69,7 +69,9 @@ export async function executeCompletion(opts: {
   workflow?: WorkflowConfig;
   /** Tasks created during this work session (e.g. architect implementation tasks) */
   createdTasks?: Array<{ id: number; title: string; url: string }>;
-  /** Slot index for multi-worker support */
+  /** Level of the completing worker */
+  level?: string;
+  /** Slot index within the level's array */
   slotIndex?: number;
 }): Promise<CompletionOutput> {
   const {
@@ -201,7 +203,7 @@ export async function executeCompletion(opts: {
   }
 
   // Deactivate worker last (non-critical — session cleanup)
-  await deactivateWorker(workspaceDir, projectSlug, role, { slotIndex: opts.slotIndex, issueId: String(issueId) });
+  await deactivateWorker(workspaceDir, projectSlug, role, { level: opts.level, slotIndex: opts.slotIndex, issueId: String(issueId) });
 
   // Send review routing notification when developer completes
   if (role === "developer" && result === "done") {

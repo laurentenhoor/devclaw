@@ -16,7 +16,7 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
 import type { StateLabel } from "../providers/provider.js";
-import { getWorker } from "../projects.js";
+import { getRoleWorker, countActiveSlots } from "../projects.js";
 import { dispatchTask } from "../dispatch.js";
 import { log as auditLog } from "../audit.js";
 import { requireWorkspaceDir, resolveProject, resolveProvider, getPluginConfig } from "../tool-helpers.js";
@@ -151,17 +151,21 @@ Example:
         }
       }
 
-      // Check worker availability
-      const worker = getWorker(project, role);
-      if (worker.active) {
+      // Check worker availability across all levels
+      const roleWorker = getRoleWorker(project, role);
+      if (countActiveSlots(roleWorker) > 0) {
         // Architect is busy — issue created in queue, heartbeat will pick it up when free
+        // Find any active slot's issueId for the message
+        const activeIssueId = Object.values(roleWorker.levels)
+          .flat()
+          .find((s) => s.active)?.issueId;
         return jsonResult({
           success: true,
           issue: { id: issue.iid, title: issue.title, url: issue.web_url, label: TO_RESEARCH_LABEL },
           research: {
             level,
             status: "queued",
-            reason: `${role.toUpperCase()} already active on #${worker.issueId}. Research ticket queued — architect will pick it up when current work completes.`,
+            reason: `${role.toUpperCase()} already active on #${activeIssueId}. Research ticket queued — architect will pick it up when current work completes.`,
           },
           announcement: `📐 Created research ticket #${issue.iid}: ${title} (architect busy — queued)\n🔗 [Issue #${issue.iid}](${issue.web_url})`,
         });

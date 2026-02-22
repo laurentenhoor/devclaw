@@ -33,7 +33,7 @@ describe("architect tiers", () => {
   });
 
   it("should resolve architect model from resolved role config", () => {
-    const resolvedRole = { maxWorkers: 1, models: { senior: "custom/model" }, levels: ["junior", "senior"], defaultLevel: "junior", emoji: {}, completionResults: [] as string[], enabled: true };
+    const resolvedRole = { levelMaxWorkers: { junior: 2, senior: 2 }, models: { senior: "custom/model" }, levels: ["junior", "senior"], defaultLevel: "junior", emoji: {}, completionResults: [] as string[], enabled: true };
     assert.strictEqual(resolveModel("architect", "senior", resolvedRole), "custom/model");
   });
 

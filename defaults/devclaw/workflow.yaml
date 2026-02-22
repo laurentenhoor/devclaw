@@ -3,7 +3,6 @@
 
 roles:
   developer:
-    # maxWorkers: 3  # Maximum concurrent developer workers (default: 1)
     models:
       junior: anthropic/claude-haiku-4-5
       medior: anthropic/claude-sonnet-4-5
@@ -24,6 +23,10 @@ roles:
 
 workflow:
   initial: planning
+  # maxWorkersPerLevel: 2 — each level (junior/medior/senior) gets up to this many parallel slots.
+  # With 3 levels × 2 slots = 6 workers per role in parallel at full capacity.
+  # Override per-model with object syntax: senior: { model: anthropic/claude-opus-4-6, maxWorkers: 3 }
+  maxWorkersPerLevel: 2
   reviewPolicy: human  # Options: human (default), agent, auto
   # human — All PRs need human approval on GitHub/GitLab. Heartbeat auto-merges when approved.
   # agent — Agent reviewer checks every PR before merge.

@@ -11,9 +11,7 @@ import {
   type Project,
   activateWorker,
   updateSlot,
-  getSessionForLevel,
   getRoleWorker,
-  findSlotByIssue,
   emptySlot,
 } from "./projects.js";
 import { fetchGatewaySessions, type GatewaySession } from "./services/gateway-sessions.js";
@@ -166,14 +164,14 @@ export async function dispatchTask(
   const { timeouts } = resolvedConfig;
   const model = resolveModel(role, level, resolvedRole);
   const roleWorker = getRoleWorker(project, role);
-  const slot = roleWorker.slots[slotIndex] ?? emptySlot();
-  let existingSessionKey = (slot.level === level) ? slot.sessionKey : null;
+  const slot = roleWorker.levels[level]?.[slotIndex] ?? emptySlot();
+  let existingSessionKey = slot.sessionKey;
 
   // Context budget check: clear session if over budget (unless same issue — feedback cycle)
   if (existingSessionKey && timeouts.sessionContextBudget < 1) {
     const shouldClear = await shouldClearSession(existingSessionKey, slot.issueId, issueId, timeouts, workspaceDir, project.name);
     if (shouldClear) {
-      await updateSlot(workspaceDir, project.slug, role, slotIndex, {
+      await updateSlot(workspaceDir, project.slug, role, level, slotIndex, {
         sessionKey: null,
       });
       existingSessionKey = null;

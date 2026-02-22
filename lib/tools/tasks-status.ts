@@ -91,25 +91,25 @@ export function createTasksStatusTool(api: OpenClawPluginApi) {
           // Load per-project config for maxWorkers and roleExecution
           const projectConfig = await loadConfig(workspaceDir, project.name);
 
-          // Workers summary - show slot utilization
+          // Workers summary - show per-level slot utilization
           const workers: Record<string, {
-            maxWorkers: number;
+            levelMaxWorkers: Record<string, number>;
             activeSlots: number;
-            slots: Array<{ active: boolean; issueId: string | null; level: string | null; startTime: string | null }>;
+            levels: Record<string, Array<{ active: boolean; issueId: string | null; startTime: string | null }>>;
           }> = {};
           for (const [role, rw] of Object.entries(project.workers)) {
-            const configMaxWorkers = projectConfig.roles[role]?.maxWorkers ?? 1;
-            const activeSlots = rw.slots.filter(s => s.active).length;
-            workers[role] = {
-              maxWorkers: configMaxWorkers,
-              activeSlots,
-              slots: rw.slots.map(slot => ({
+            const levelMaxWorkers = projectConfig.roles[role]?.levelMaxWorkers ?? {};
+            let activeSlots = 0;
+            const levels: Record<string, Array<{ active: boolean; issueId: string | null; startTime: string | null }>> = {};
+            for (const [level, slots] of Object.entries(rw.levels)) {
+              levels[level] = slots.map(slot => ({
                 active: slot.active,
                 issueId: slot.issueId,
-                level: slot.level,
                 startTime: slot.startTime,
-              })),
-            };
+              }));
+              activeSlots += slots.filter(s => s.active).length;
+            }
+            workers[role] = { levelMaxWorkers, activeSlots, levels };
           }
 
           return {

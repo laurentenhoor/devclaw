@@ -44,7 +44,6 @@ export const DEFAULT_ROLE_INSTRUCTIONS: Record<string, string> = {
 // ---------------------------------------------------------------------------
 
 export const AGENTS_MD_TEMPLATE = loadDefault("AGENTS.md");
-export const WORKER_AGENTS_MD_TEMPLATE = loadDefault("WORKER_AGENTS.md");
 export const HEARTBEAT_MD_TEMPLATE = loadDefault("HEARTBEAT.md");
 export const IDENTITY_MD_TEMPLATE = loadDefault("IDENTITY.md");
 export const SOUL_MD_TEMPLATE = loadDefault("SOUL.md");

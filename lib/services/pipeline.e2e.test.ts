@@ -16,7 +16,7 @@ import { executeCompletion } from "./pipeline.js";
 import { projectTick } from "./tick.js";
 import { reviewPass } from "./review.js";
 import { DEFAULT_WORKFLOW, ReviewPolicy, type WorkflowConfig } from "../workflow.js";
-import { readProjects, getWorker, getProject } from "../projects.js";
+import { readProjects, getRoleWorker, getProject, countActiveSlots } from "../projects.js";
 
 // ---------------------------------------------------------------------------
 // Test suite
@@ -69,10 +69,10 @@ describe("E2E pipeline", () => {
 
       // Verify worker state updated in projects.json
       const data = await readProjects(h.workspaceDir);
-      const worker = getWorker(getProject(data, h.groupId)!, "developer");
-      assert.strictEqual(worker.active, true);
-      assert.strictEqual(worker.issueId, "42");
-      assert.strictEqual(worker.level, "medior");
+      const rw = getRoleWorker(getProject(data, h.groupId)!, "developer");
+      assert.ok(rw.levels.medior, "should have medior level");
+      assert.strictEqual(rw.levels.medior[0]!.active, true);
+      assert.strictEqual(rw.levels.medior[0]!.issueId, "42");
 
       // Verify gateway commands were fired
       assert.ok(h.commands.sessionPatches().length > 0, "Should have patched session");
@@ -112,11 +112,12 @@ describe("E2E pipeline", () => {
     });
 
     it("should reuse existing session when available", async () => {
-      // Set up worker with existing session
+      // Set up worker with existing session in per-level format
       h = await createTestHarness({
         workers: {
           developer: {
-            sessions: { medior: "agent:test-agent:subagent:test-project-developer-medior" },
+            level: "medior",
+            sessionKey: "agent:test-agent:subagent:test-project-developer-medior-0",
           },
         },
       });
@@ -177,7 +178,7 @@ describe("E2E pipeline", () => {
       assert.ok(!issue.labels.includes("Doing"));
 
       const data = await readProjects(h.workspaceDir);
-      assert.strictEqual(getWorker(getProject(data, h.groupId)!, "developer").active, false);
+      assert.strictEqual(countActiveSlots(getRoleWorker(getProject(data, h.groupId)!, "developer")), 0);
       assert.strictEqual(output.issueClosed, false);
     });
   });

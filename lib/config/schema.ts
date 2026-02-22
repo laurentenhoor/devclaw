@@ -34,16 +34,25 @@ const WorkflowConfigSchema = z.object({
   initial: z.string(),
   reviewPolicy: z.enum(["human", "agent", "auto"]).optional(),
   roleExecution: z.enum(["parallel", "sequential"]).optional(),
+  maxWorkersPerLevel: z.number().int().positive().optional(),
   states: z.record(z.string(), StateConfigSchema),
 });
+
+const ModelEntrySchema = z.union([
+  z.string(),
+  z.object({
+    model: z.string(),
+    maxWorkers: z.number().int().positive().optional(),
+  }),
+]);
 
 const RoleOverrideSchema = z.union([
   z.literal(false),
   z.object({
-    maxWorkers: z.number().int().positive().optional(),
+    maxWorkers: z.number().int().positive().optional(), // deprecated, kept for backward compat
     levels: z.array(z.string()).optional(),
     defaultLevel: z.string().optional(),
-    models: z.record(z.string(), z.string()).optional(),
+    models: z.record(z.string(), ModelEntrySchema).optional(),
     emoji: z.record(z.string(), z.string()).optional(),
     completionResults: z.array(z.string()).optional(),
   }),
