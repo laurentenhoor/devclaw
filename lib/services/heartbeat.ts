@@ -10,7 +10,7 @@
  * Zero LLM tokens — all logic is deterministic code + CLI calls.
  * Workers only consume tokens when they start processing dispatched tasks.
  */
-import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
+import type { OpenClawPluginApi, PluginRuntime } from "openclaw/plugin-sdk";
 import fs from "node:fs";
 import path from "node:path";
 import { readProjects, getProject } from "../projects.js";
@@ -192,7 +192,7 @@ async function runHeartbeatTick(
     const agents = discoverAgents(api.config);
     if (agents.length === 0) return;
 
-    const result = await processAllAgents(agents, config, pluginConfig, logger);
+    const result = await processAllAgents(agents, config, pluginConfig, logger, api.runtime);
     logTickResult(result, logger);
   } catch (err) {
     logger.error(`work_heartbeat tick failed: ${err}`);
@@ -207,6 +207,7 @@ async function processAllAgents(
   config: HeartbeatConfig,
   pluginConfig: Record<string, unknown> | undefined,
   logger: ServiceContext["logger"],
+  runtime?: PluginRuntime,
 ): Promise<TickResult> {
   const result: TickResult = {
     totalPickups: 0,
@@ -226,6 +227,7 @@ async function processAllAgents(
       pluginConfig,
       sessions,
       logger,
+      runtime,
     });
 
     result.totalPickups += agentResult.totalPickups;
@@ -266,8 +268,9 @@ export async function tick(opts: {
   pluginConfig?: Record<string, unknown>;
   sessions: SessionLookup | null;
   logger: { info(msg: string): void; warn(msg: string): void };
+  runtime?: PluginRuntime;
 }): Promise<TickResult> {
-  const { workspaceDir, agentId, config, pluginConfig, sessions } = opts;
+  const { workspaceDir, agentId, config, pluginConfig, sessions, runtime } = opts;
 
   const data = await readProjects(workspaceDir);
   const slugs = Object.keys(data.projects);
@@ -348,6 +351,8 @@ export async function tick(opts: {
                   config: notifyConfig,
                   groupId: target?.groupId,
                   channel: target?.channel ?? "telegram",
+                  runtime,
+                  accountId: target?.accountId,
                 },
               ).catch(() => {});
             })
@@ -374,6 +379,8 @@ export async function tick(opts: {
               config: notifyConfig,
               groupId: target?.groupId,
               channel: target?.channel ?? "telegram",
+              runtime,
+              accountId: target?.accountId,
             },
           ).catch(() => {});
         },
@@ -394,6 +401,8 @@ export async function tick(opts: {
               config: notifyConfig,
               groupId: target?.groupId,
               channel: target?.channel ?? "telegram",
+              runtime,
+              accountId: target?.accountId,
             },
           ).catch(() => {});
         },

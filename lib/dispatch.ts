@@ -253,6 +253,7 @@ export async function dispatchTask(
       groupId: notifyTarget?.groupId,
       channel: notifyTarget?.channel ?? "telegram",
       runtime,
+      accountId: notifyTarget?.accountId,
     },
   ).catch((err) => {
     auditLog(workspaceDir, "dispatch_warning", {
