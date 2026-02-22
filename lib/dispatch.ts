@@ -270,7 +270,8 @@ export async function dispatchTask(
 
   // Step 3: Ensure session exists (fire-and-forget — don't wait for gateway)
   // Session key is deterministic, so we can proceed immediately
-  ensureSessionFireAndForget(sessionKey, model, workspaceDir, timeouts.sessionPatchMs);
+  const sessionLabel = formatSessionLabel(project.name, role, level);
+  ensureSessionFireAndForget(sessionKey, model, workspaceDir, timeouts.sessionPatchMs, sessionLabel);
 
   // Step 4: Send task to agent (fire-and-forget)
   sendToAgent(sessionKey, taskMessage, {
@@ -456,9 +457,11 @@ async function acknowledgeComments(
  * Session key is deterministic, so we don't need to wait for confirmation.
  * If this fails, health check will catch orphaned state later.
  */
-function ensureSessionFireAndForget(sessionKey: string, model: string, workspaceDir: string, timeoutMs = 30_000): void {
+function ensureSessionFireAndForget(sessionKey: string, model: string, workspaceDir: string, timeoutMs = 30_000, label?: string): void {
+  const params: Record<string, unknown> = { key: sessionKey, model };
+  if (label) params.label = label;
   runCommand(
-    ["openclaw", "gateway", "call", "sessions.patch", "--params", JSON.stringify({ key: sessionKey, model })],
+    ["openclaw", "gateway", "call", "sessions.patch", "--params", JSON.stringify(params)],
     { timeoutMs },
   ).catch((err) => {
     auditLog(workspaceDir, "dispatch_warning", {
@@ -466,6 +469,15 @@ function ensureSessionFireAndForget(sessionKey: string, model: string, workspace
       error: (err as Error).message ?? String(err),
     }).catch(() => {});
   });
+}
+
+/**
+ * Build a human-friendly session label from project name, role, and level.
+ * e.g. "my-project", "developer", "medior" → "My Project — Developer (Medior)"
+ */
+function formatSessionLabel(projectName: string, role: string, level: string): string {
+  const titleCase = (s: string) => s.replace(/(^|\s|-)\S/g, (c) => c.toUpperCase()).replace(/-/g, " ");
+  return `${titleCase(projectName)} — ${titleCase(role)} (${titleCase(level)})`;
 }
 
 function sendToAgent(

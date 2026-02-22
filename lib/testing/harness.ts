@@ -37,7 +37,7 @@ export type CapturedCommand = {
   /** Extracted from gateway `agent` call params, if applicable. */
   taskMessage?: string;
   /** Extracted from gateway `sessions.patch` params, if applicable. */
-  sessionPatch?: { key: string; model: string };
+  sessionPatch?: { key: string; model: string; label?: string };
 };
 
 export type CommandInterceptor = {
@@ -48,7 +48,7 @@ export type CommandInterceptor = {
   /** Get all task messages sent via `openclaw gateway call agent`. */
   taskMessages(): string[];
   /** Get all session patches. */
-  sessionPatches(): Array<{ key: string; model: string }>;
+  sessionPatches(): Array<{ key: string; model: string; label?: string }>;
   /** Reset captured commands. */
   reset(): void;
 };
@@ -80,7 +80,7 @@ function createCommandInterceptor(): {
             captured.taskMessage = params.message;
           }
           if (rpcMethod === "sessions.patch") {
-            captured.sessionPatch = { key: params.key, model: params.model };
+            captured.sessionPatch = { key: params.key, model: params.model, label: params.label };
           }
         } catch { /* ignore parse errors */ }
       }
@@ -283,8 +283,16 @@ export async function createTestHarness(opts?: HarnessOptions): Promise<TestHarn
       registerBootstrapHook(mockApi);
       if (!hookCallback) throw new Error("registerBootstrapHook did not register a callback");
 
-      // Build a bootstrap event matching what OpenClaw sends
-      const bootstrapFiles: BootstrapFile[] = [];
+      // Build a bootstrap event matching what OpenClaw sends.
+      // OpenClaw always includes the workspace AGENTS.md in bootstrapFiles.
+      const bootstrapFiles: BootstrapFile[] = [
+        {
+          name: "AGENTS.md",
+          path: path.join(workspaceDir, "AGENTS.md"),
+          content: "# Orchestrator instructions\nThis content should be replaced by the bootstrap hook.",
+          missing: false,
+        },
+      ];
       await hookCallback({
         sessionKey,
         context: {

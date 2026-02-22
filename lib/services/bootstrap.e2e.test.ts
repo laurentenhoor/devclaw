@@ -47,18 +47,17 @@ describe("E2E bootstrap — hook injection", () => {
     // Fire the actual bootstrap hook with the dispatch session key
     const files = await h.simulateBootstrap(result.sessionKey);
 
-    // Should have exactly one injected file
+    // AGENTS.md entry should have its content replaced with role instructions
     assert.strictEqual(files.length, 1, `Expected 1 bootstrap file, got ${files.length}`);
-    assert.strictEqual(files[0].name, "WORKER_INSTRUCTIONS.md");
+    assert.strictEqual(files[0].name, "AGENTS.md");
     assert.strictEqual(files[0].missing, false);
-    assert.ok(files[0].path.includes("my-app"), `Path should reference project: ${files[0].path}`);
-    assert.ok(files[0].path.includes("developer"), `Path should reference role: ${files[0].path}`);
 
-    // Content should be project-specific, NOT default
+    // Content should be project-specific, NOT default or orchestrator
     const content = files[0].content!;
     assert.ok(content.includes("My App Developer"), `Got: ${content}`);
     assert.ok(content.includes("Use React"));
     assert.ok(!content.includes("Generic instructions"));
+    assert.ok(!content.includes("Orchestrator"), "Should not contain orchestrator content");
   });
 
   it("should fall back to default instructions when no project override exists", async () => {
@@ -128,7 +127,9 @@ describe("E2E bootstrap — hook injection", () => {
       "agent:main:subagent:custom-app-investigator-medior",
     );
 
-    assert.strictEqual(files.length, 0, "Should not inject files for unknown roles");
+    // AGENTS.md entry is still present but should be unmodified (hook is a no-op)
+    assert.strictEqual(files.length, 1);
+    assert.ok(files[0].content!.includes("Orchestrator"), "Should keep original orchestrator content");
   });
 
   it("should resolve tester instructions independently from developer", async () => {
@@ -198,7 +199,7 @@ describe("E2E bootstrap — hook injection", () => {
 
     assert.strictEqual(files.length, 1);
     assert.ok(files[0].content!.includes("Hyphenated Project"));
-    assert.ok(files[0].path.includes("my-cool-project"));
+    assert.ok(!files[0].content!.includes("Orchestrator"), "Should not contain orchestrator content");
   });
 
   it("should resolve architect instructions with project override", async () => {
@@ -234,8 +235,9 @@ describe("E2E bootstrap — hook injection", () => {
   it("should not inject when session key is not a DevClaw subagent", async () => {
     h = await createTestHarness();
 
-    // Non-DevClaw session key — hook should no-op
+    // Non-DevClaw session key — hook should no-op, AGENTS.md stays unmodified
     const files = await h.simulateBootstrap("agent:main:orchestrator");
-    assert.strictEqual(files.length, 0);
+    assert.strictEqual(files.length, 1);
+    assert.ok(files[0].content!.includes("Orchestrator"), "Should keep original orchestrator content");
   });
 });
