@@ -125,7 +125,6 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
         role, level: selectedLevel, fromLabel: currentLabel, toLabel: targetLabel,
         provider,
         pluginConfig,
-        sessionKey: ctx.sessionKey,
         runtime: api.runtime,
         slotIndex: freeSlot,
       });

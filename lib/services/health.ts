@@ -508,11 +508,11 @@ export async function scanOrphanedLabels(opts: {
 // Orphaned session scan
 // ---------------------------------------------------------------------------
 
-/** Subagent session key pattern: agent:{agentId}:subagent:{project}-{role}-{level}-{slotIndex} */
-const SUBAGENT_PATTERN = /^agent:[^:]+:subagent:/;
+/** Worker session key pattern (current + legacy subagent) */
+const WORKER_SESSION_PATTERN = /^agent:[^:]+:(worker|subagent):/;
 
 /**
- * Scan for gateway subagent sessions that are NOT tracked in any project's
+ * Scan for gateway worker sessions that are NOT tracked in any project's
  * worker sessions map. These are leftover from previous dispatches at
  * different levels and waste resources / contribute to session cap pressure.
  *
@@ -554,10 +554,10 @@ export async function scanOrphanedSessions(opts: {
     }
   }
 
-  // 2. Find subagent sessions in gateway that aren't tracked
+  // 2. Find worker sessions in gateway that aren't tracked
   for (const [key, _session] of sessions) {
-    // Only consider subagent sessions
-    if (!SUBAGENT_PATTERN.test(key)) continue;
+    // Only consider DevClaw worker sessions (current + legacy subagent)
+    if (!WORKER_SESSION_PATTERN.test(key)) continue;
 
     // Skip if tracked in projects.json
     if (knownKeys.has(key)) continue;
