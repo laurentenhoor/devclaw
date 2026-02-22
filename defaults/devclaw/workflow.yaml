@@ -23,15 +23,15 @@ roles:
 
 workflow:
   initial: planning
-  # maxWorkersPerLevel: 2 — each level (junior/medior/senior) gets up to this many parallel slots.
-  # With 3 levels × 2 slots = 6 workers per role in parallel at full capacity.
-  # Override per-model with object syntax: senior: { model: anthropic/claude-opus-4-6, maxWorkers: 3 }
   maxWorkersPerLevel: 2
-  reviewPolicy: human  # Options: human (default), agent, auto
+  # maxWorkersPerLevel: 2 — each level (junior/medior/senior) gets up to this many parallel slots.
+  # With 3 levels × 2 slots = 6 workers per role in parallel per project at full capacity.
+  # Override per-model with object syntax: senior: { model: anthropic/claude-opus-4-6, maxWorkers: 3 }
+  reviewPolicy: human # Options: human (default), agent, auto
   # human — All PRs need human approval on GitHub/GitLab. Heartbeat auto-merges when approved.
   # agent — Agent reviewer checks every PR before merge.
   # auto  — Junior/medior → agent review, senior → human review.
-  # roleExecution: parallel  # Options: parallel (default), sequential
+  roleExecution: parallel # Options: parallel (default), sequential
   # parallel   — Different roles can work simultaneously (e.g. developer + tester).
   # sequential — Only one role active at a time.
   states:
@@ -89,11 +89,11 @@ workflow:
       on:
         PICKUP: reviewing
         APPROVED:
-          target: done  # change to "toTest" to enable test phase
+          target: done # change to "toTest" to enable test phase
           actions:
             - mergePr
             - gitPull
-            - closeIssue  # remove when using test phase (tester closes)
+            - closeIssue # remove when using test phase (tester closes)
         MERGE_FAILED: toImprove
         CHANGES_REQUESTED: toImprove
         MERGE_CONFLICT: toImprove
@@ -104,11 +104,11 @@ workflow:
       color: "#c5def5"
       on:
         APPROVE:
-          target: done  # change to "toTest" to enable test phase
+          target: done # change to "toTest" to enable test phase
           actions:
             - mergePr
             - gitPull
-            - closeIssue  # remove when using test phase (tester closes)
+            - closeIssue # remove when using test phase (tester closes)
         REJECT: toImprove
         BLOCKED: refining
     # --- Test phase (uncomment to enable) ------------------------------------
