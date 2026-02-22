@@ -1,0 +1,46 @@
+{
+  "version": "1.4.0",
+  "createdAt": "2026-02-22T04:27:31.224Z",
+  "files": {
+    "AGENTS.md": {
+      "hash": "5127b19b3c279535d498b4c6b39cfc851c5272510f2d8083ec4e4be6a3ce3c2e",
+      "updatedAt": "2026-02-22T04:26:47.770Z"
+    },
+    "HEARTBEAT.md": {
+      "hash": "dab958f26eb78042fae69154a782c8227c0f2f26f4a0fcd52dff7e2d13c378a0",
+      "updatedAt": "2026-02-22T04:26:47.771Z"
+    },
+    "IDENTITY.md": {
+      "hash": "3372ec728f72231cba23856c6c79771eee97007570c4fb9ad82a0f090ca9fe61",
+      "updatedAt": "2026-02-22T04:26:47.771Z"
+    },
+    "SOUL.md": {
+      "hash": "a8a36bd35cc4a46dcf269695d2d1681e7cafc403bf83721c90894bcd009645c2",
+      "updatedAt": "2026-02-22T04:26:47.771Z"
+    },
+    "TOOLS.md": {
+      "hash": "b70a2c3bc3f6d5761ea4686c7dd003b01a97e9dc59f03e701fd2cafc1a9e5823",
+      "updatedAt": "2026-02-22T04:26:47.771Z"
+    },
+    "devclaw/workflow.yaml": {
+      "hash": "544c02ee57d6a5405bec90b627078f9fd6d8b41c6a61d876f9eaf704dfb0494a",
+      "updatedAt": "2026-02-22T04:26:47.771Z"
+    },
+    "devclaw/prompts/architect.md": {
+      "hash": "aea3949f0f8c91375f14fc81c17738a71a585b8509b5c341a66f845e80d5a972",
+      "updatedAt": "2026-02-22T04:26:47.771Z"
+    },
+    "devclaw/prompts/developer.md": {
+      "hash": "49bd7b035677ec0f557106dc43945f3a7dc2583d5fdf218e7ac36681b21a9292",
+      "updatedAt": "2026-02-22T04:26:47.771Z"
+    },
+    "devclaw/prompts/reviewer.md": {
+      "hash": "d8c44aa12f5cfc19a85f51eb0136b0ca47afdb15c55a1a0e3982159a27109e68",
+      "updatedAt": "2026-02-22T04:26:47.771Z"
+    },
+    "devclaw/prompts/tester.md": {
+      "hash": "e65eac7f07c9cc165e60d881faa5fac361bbec91607c0aab211682a6fbaf5638",
+      "updatedAt": "2026-02-22T04:26:47.771Z"
+    }
+  }
+}
