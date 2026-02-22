@@ -46,21 +46,66 @@ What exists today? Current limitations? Relevant code paths.
 ### References
 - [Code paths, docs, prior art, related issues]
 
-## MANDATORY: Create Implementation Task
+## MANDATORY: Create ONE Implementation Task
 
-After posting your findings, you MUST create **one implementation task** for the recommended approach before calling work_finish. Keep it as a single task — do not split unless the research explicitly covers independent, unrelated changes.
+After posting your findings, you MUST create **exactly one comprehensive implementation task** for the recommended approach before calling work_finish.
+
+**⚠️ CRITICAL: Always create ONE task, never multiple.** Do not split work into separate issues. A single developer will pick up the task and work through the checklist. This keeps scope clear, reduces issue noise, and makes tracking easy.
+
+### Task Description Format
+
+The task description must include a detailed breakdown with phases, checklist items, effort estimates, and dependencies. Use this structure:
+
+```markdown
+From research #<issue-number>
+
+## Overview
+Brief summary of what needs to be implemented and why.
+
+## Implementation Checklist
+
+### Phase 1: [Name] (~X days)
+- [ ] First concrete step (mention specific files/modules)
+- [ ] Second concrete step
+- [ ] Third concrete step
+
+### Phase 2: [Name] (~X days)
+- [ ] First concrete step
+- [ ] Second concrete step
+- [ ] Tests for this phase
+
+### Phase 3: [Name] (~X days)
+- [ ] First concrete step
+- [ ] Second concrete step
+- [ ] Update docs/config as needed
+
+## Dependencies & Blockers
+- List any prerequisites or risks
+
+## Estimated Total: X-Y days
+```
+
+**Guidelines for the checklist:**
+- Include **5-15 checklist items** total, grouped into logical phases
+- Each item should be a **concrete, actionable step** (not vague like "implement feature")
+- Reference **specific files, modules, or functions** where changes are needed
+- Include **effort estimates** per phase
+- Include items for **tests, docs, and config changes** — not just code
+- The developer will check items off as they progress and comment with updates
+
+### How to Create
 
 1. Call `task_create` with:
    - `projectSlug`: same as your task message
-   - `title`: clear, actionable title (e.g. "Refactor session store to use SQLite")
-   - `description`: include "From research #<issue-number>" on the first line, then your full recommendation as the spec — enough detail for a developer to start immediately
+   - `title`: clear, actionable title (e.g. "Implement SQLite session persistence")
+   - `description`: use the format above — detailed enough for a developer to start immediately
 
 2. Collect the returned issue `id`, `title`, and `url` from the `task_create` response
 3. Pass the created task to `work_finish` in the `createdTasks` array — this makes it show up as a clickable link in the notification
 
 **Example:**
 ```
-task_create({ projectSlug: "my-app", title: "Refactor session store to SQLite", description: "From research #42\n\nReplace in-memory Map with SQLite..." })
+task_create({ projectSlug: "my-app", title: "Implement SQLite session persistence", description: "From research #42\n\n## Overview\nReplace in-memory Map with SQLite...\n\n## Implementation Checklist\n\n### Phase 1: Schema & Migration (~1 day)\n- [ ] Create sessions table schema in db/schema.sql\n- [ ] Add migration logic in db/migrate.ts\n..." })
 // → returns issue id: 43, url: "https://github.com/.../43"
 
 work_finish({
@@ -69,7 +114,7 @@ work_finish({
   projectSlug: "my-app",
   summary: "Recommended SQLite approach. Created task #43.",
   createdTasks: [
-    { id: 43, title: "Refactor session store to SQLite", url: "https://github.com/.../43" }
+    { id: 43, title: "Implement SQLite session persistence", url: "https://github.com/.../43" }
   ]
 })
 ```
