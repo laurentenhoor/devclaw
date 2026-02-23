@@ -435,7 +435,7 @@ Everything. A project workflow.yaml has the same structure as the workspace one.
 ### Different review policy for one project
 \`\`\`yaml
 workflow:
-  reviewPolicy: auto
+  reviewPolicy: skip
 \`\`\`
 
 ### Upgrade models for a critical project

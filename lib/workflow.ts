@@ -33,7 +33,7 @@ export type ExecutionMode = (typeof ExecutionMode)[keyof typeof ExecutionMode];
 export const ReviewPolicy = {
   HUMAN: "human",
   AGENT: "agent",
-  AUTO: "auto",
+  SKIP: "skip",
 } as const;
 export type ReviewPolicy = (typeof ReviewPolicy)[keyof typeof ReviewPolicy];
 
@@ -162,6 +162,7 @@ export const DEFAULT_WORKFLOW: WorkflowConfig = {
       on: {
         [WorkflowEvent.PICKUP]: "reviewing",
         [WorkflowEvent.APPROVED]: { target: "toTest", actions: [Action.MERGE_PR, Action.GIT_PULL] },
+        [WorkflowEvent.SKIP]: { target: "toTest", actions: [Action.MERGE_PR, Action.GIT_PULL] },
         [WorkflowEvent.MERGE_FAILED]: "toImprove",
         [WorkflowEvent.CHANGES_REQUESTED]: "toImprove",
         [WorkflowEvent.MERGE_CONFLICT]: "toImprove",
@@ -418,12 +419,13 @@ export function isOwnedByOrUnclaimed(
  * Called during developer dispatch to persist the routing decision as a label.
  */
 export function resolveReviewRouting(
-  policy: ReviewPolicy, level: string,
-): "review:human" | "review:agent" {
+  policy: ReviewPolicy, _level: string,
+): "review:human" | "review:agent" | "review:skip" {
   if (policy === ReviewPolicy.HUMAN) return "review:human";
   if (policy === ReviewPolicy.AGENT) return "review:agent";
-  // AUTO: senior → human, else agent
-  return level === "senior" ? "review:human" : "review:agent";
+  if (policy === ReviewPolicy.SKIP) return "review:skip";
+  // Fallback: treat unknown as human
+  return "review:human";
 }
 
 // ---------------------------------------------------------------------------

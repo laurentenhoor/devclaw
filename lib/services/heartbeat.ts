@@ -25,6 +25,7 @@ import {
 } from "./health.js";
 import { projectTick } from "./tick.js";
 import { reviewPass } from "./review.js";
+import { reviewSkipPass } from "./review-skip.js";
 import { testSkipPass } from "./test-skip.js";
 import { createProvider } from "../providers/index.js";
 import { loadConfig } from "../config/index.js";
@@ -52,6 +53,7 @@ type TickResult = {
   totalHealthFixes: number;
   totalSkipped: number;
   totalReviewTransitions: number;
+  totalReviewSkipTransitions: number;
   totalTestSkipTransitions: number;
 };
 
@@ -217,6 +219,7 @@ async function processAllAgents(
     totalHealthFixes: 0,
     totalSkipped: 0,
     totalReviewTransitions: 0,
+    totalReviewSkipTransitions: 0,
     totalTestSkipTransitions: 0,
   };
 
@@ -238,6 +241,7 @@ async function processAllAgents(
     result.totalHealthFixes += agentResult.totalHealthFixes;
     result.totalSkipped += agentResult.totalSkipped;
     result.totalReviewTransitions += agentResult.totalReviewTransitions;
+    result.totalReviewSkipTransitions += agentResult.totalReviewSkipTransitions;
     result.totalTestSkipTransitions += agentResult.totalTestSkipTransitions;
   }
 
@@ -255,10 +259,11 @@ function logTickResult(
     result.totalPickups > 0 ||
     result.totalHealthFixes > 0 ||
     result.totalReviewTransitions > 0 ||
+    result.totalReviewSkipTransitions > 0 ||
     result.totalTestSkipTransitions > 0
   ) {
     logger.info(
-      `work_heartbeat tick: ${result.totalPickups} pickups, ${result.totalHealthFixes} health fixes, ${result.totalReviewTransitions} review transitions, ${result.totalTestSkipTransitions} test skips, ${result.totalSkipped} skipped`,
+      `work_heartbeat tick: ${result.totalPickups} pickups, ${result.totalHealthFixes} health fixes, ${result.totalReviewTransitions} review transitions, ${result.totalReviewSkipTransitions} review skips, ${result.totalTestSkipTransitions} test skips, ${result.totalSkipped} skipped`,
     );
   }
 }
@@ -291,6 +296,7 @@ export async function tick(opts: {
       totalHealthFixes: 0,
       totalSkipped: 0,
       totalReviewTransitions: 0,
+      totalReviewSkipTransitions: 0,
       totalTestSkipTransitions: 0,
     };
   }
@@ -300,6 +306,7 @@ export async function tick(opts: {
     totalHealthFixes: 0,
     totalSkipped: 0,
     totalReviewTransitions: 0,
+    totalReviewSkipTransitions: 0,
     totalTestSkipTransitions: 0,
   };
 
@@ -331,6 +338,11 @@ export async function tick(opts: {
 
       // Review pass: transition issues whose PR check condition is met
       result.totalReviewTransitions += await performReviewPass(
+        workspaceDir, slug, project, provider, resolvedConfig, pluginConfig, runtime,
+      );
+
+      // Review skip pass: auto-merge and transition review:skip issues through the review queue
+      result.totalReviewSkipTransitions += await performReviewSkipPass(
         workspaceDir, slug, project, provider, resolvedConfig, pluginConfig, runtime,
       );
 
@@ -382,6 +394,7 @@ export async function tick(opts: {
     projectsScanned: slugs.length,
     healthFixes: result.totalHealthFixes,
     reviewTransitions: result.totalReviewTransitions,
+    reviewSkipTransitions: result.totalReviewSkipTransitions,
     testSkipTransitions: result.totalTestSkipTransitions,
     pickups: result.totalPickups,
     skipped: result.totalSkipped,
@@ -535,6 +548,62 @@ async function performReviewPass(
           accountId: target?.accountId,
         },
       ).catch(() => {});
+    },
+  });
+}
+
+/**
+ * Run review skip pass for a project — auto-merge and transition review:skip issues through the review queue.
+ */
+async function performReviewSkipPass(
+  workspaceDir: string,
+  projectSlug: string,
+  project: Project,
+  provider: import("../providers/provider.js").IssueProvider,
+  resolvedConfig: ResolvedConfig,
+  pluginConfig: Record<string, unknown> | undefined,
+  runtime?: PluginRuntime,
+): Promise<number> {
+  const notifyConfig = getNotificationConfig(pluginConfig);
+
+  return reviewSkipPass({
+    workspaceDir,
+    projectName: projectSlug,
+    workflow: resolvedConfig.workflow,
+    provider,
+    repoPath: project.repo,
+    gitPullTimeoutMs: resolvedConfig.timeouts.gitPullMs,
+    onMerge: (issueId, prUrl, prTitle, sourceBranch) => {
+      provider
+        .getIssue(issueId)
+        .then((issue) => {
+          const target = resolveNotifyChannel(
+            issue.labels,
+            project.channels,
+          );
+          notify(
+            {
+              type: "prMerged",
+              project: project.name,
+              issueId,
+              issueUrl: issue.web_url,
+              issueTitle: issue.title,
+              prUrl: prUrl ?? undefined,
+              prTitle,
+              sourceBranch,
+              mergedBy: "heartbeat",
+            },
+            {
+              workspaceDir,
+              config: notifyConfig,
+              groupId: target?.groupId,
+              channel: target?.channel ?? "telegram",
+              runtime,
+              accountId: target?.accountId,
+            },
+          ).catch(() => {});
+        })
+        .catch(() => {});
     },
   });
 }

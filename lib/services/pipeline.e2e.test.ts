@@ -992,7 +992,7 @@ describe("E2E pipeline", () => {
       assert.strictEqual(result.pickups[0].role, "reviewer");
     });
 
-    it("reviewPolicy: auto should dispatch reviewer for junior-level issues", async () => {
+    it("reviewPolicy: skip should never dispatch reviewer", async () => {
       h = await createTestHarness();
       h.provider.seedIssue({ iid: 82, title: "Small fix", labels: ["To Review"] });
 
@@ -1001,31 +1001,14 @@ describe("E2E pipeline", () => {
         projectSlug: h.project.slug,
         agentId: "test-agent",
         targetRole: "reviewer",
-        workflow: workflowWithPolicy(ReviewPolicy.AUTO),
+        workflow: workflowWithPolicy(ReviewPolicy.SKIP),
         provider: h.provider,
       });
 
-      // Junior/medior should be dispatched under auto policy
-      assert.strictEqual(result.pickups.length, 1, "Should dispatch reviewer for non-senior");
-    });
-
-    it("reviewPolicy: auto should skip reviewer for senior-level issues (review:human label)", async () => {
-      h = await createTestHarness();
-      // dispatch applies review:human for senior developers (via resolveReviewRouting)
-      h.provider.seedIssue({ iid: 83, title: "Architecture rework", labels: ["To Review", "developer:senior", "review:human"] });
-
-      const result = await projectTick({
-        workspaceDir: h.workspaceDir,
-        projectSlug: h.project.slug,
-        targetRole: "reviewer",
-        workflow: workflowWithPolicy(ReviewPolicy.AUTO),
-        provider: h.provider,
-      });
-
-      assert.strictEqual(result.pickups.length, 0, "Should NOT dispatch reviewer for review:human");
+      assert.strictEqual(result.pickups.length, 0, "Should NOT dispatch reviewer under skip policy");
       const reviewerSkip = result.skipped.find((s) => s.role === "reviewer");
       assert.ok(reviewerSkip, "Should have skipped reviewer");
-      assert.ok(reviewerSkip!.reason.includes("review:human"), `Skip reason: ${reviewerSkip!.reason}`);
+      assert.ok(reviewerSkip!.reason.includes("skip"), `Skip reason: ${reviewerSkip!.reason}`);
     });
 
     it("reviewPolicy: human should still allow developer and tester dispatch", async () => {
@@ -1137,7 +1120,7 @@ describe("E2E pipeline", () => {
         workspaceDir: h.workspaceDir,
         projectSlug: h.project.slug,
         targetRole: "reviewer",
-        workflow: { ...DEFAULT_WORKFLOW, reviewPolicy: ReviewPolicy.AUTO },
+        workflow: { ...DEFAULT_WORKFLOW, reviewPolicy: ReviewPolicy.AGENT },
         provider: h.provider,
       });
 
@@ -1156,7 +1139,7 @@ describe("E2E pipeline", () => {
         projectSlug: h.project.slug,
         agentId: "test-agent",
         targetRole: "reviewer",
-        workflow: { ...DEFAULT_WORKFLOW, reviewPolicy: ReviewPolicy.AUTO },
+        workflow: { ...DEFAULT_WORKFLOW, reviewPolicy: ReviewPolicy.AGENT },
         provider: h.provider,
       });
 

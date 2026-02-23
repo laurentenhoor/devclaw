@@ -118,6 +118,10 @@ export async function projectTick(opts: {
         skipped.push({ role, reason: "Review policy: human (heartbeat handles via PR polling)" });
         continue;
       }
+      if (policy === ReviewPolicy.SKIP) {
+        skipped.push({ role, reason: "Review policy: skip (heartbeat handles via review-skip pass)" });
+        continue;
+      }
     }
 
     // Test policy gate: fallback for issues dispatched before test routing labels existed

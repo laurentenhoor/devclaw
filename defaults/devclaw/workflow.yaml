@@ -27,10 +27,11 @@ workflow:
   # maxWorkersPerLevel: 2 — each level (junior/medior/senior) gets up to this many parallel slots.
   # With 3 levels × 2 slots = 6 workers per role in parallel per project at full capacity.
   # Override per-model with object syntax: senior: { model: anthropic/claude-opus-4-6, maxWorkers: 3 }
-  reviewPolicy: human # Options: human (default), agent, auto
+  reviewPolicy: human # Options: human (default), agent, skip
   # human — All PRs need human approval on GitHub/GitLab. Heartbeat auto-merges when approved.
   # agent — Agent reviewer checks every PR before merge.
-  # auto  — Junior/medior → agent review, senior → human review.
+  # skip  — Review phase is skipped. PRs are auto-merged after development.
+  #          If both review and test are skipped, PRs auto-merge to the base branch.
   testPolicy: skip # Options: skip (default), agent
   # skip  — Testing phase is skipped. Issues go straight from review to done.
   #          To enable testing for a specific issue, remove the test:skip label.
@@ -95,6 +96,11 @@ workflow:
       on:
         PICKUP: reviewing
         APPROVED:
+          target: toTest
+          actions:
+            - mergePr
+            - gitPull
+        SKIP:
           target: toTest
           actions:
             - mergePr

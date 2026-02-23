@@ -122,12 +122,9 @@ describe("resolveReviewRouting", () => {
     assert.strictEqual(resolveReviewRouting(ReviewPolicy.AGENT, "senior"), "review:agent");
   });
 
-  it("should return review:human for AUTO + senior", () => {
-    assert.strictEqual(resolveReviewRouting(ReviewPolicy.AUTO, "senior"), "review:human");
-  });
-
-  it("should return review:agent for AUTO + non-senior", () => {
-    assert.strictEqual(resolveReviewRouting(ReviewPolicy.AUTO, "junior"), "review:agent");
-    assert.strictEqual(resolveReviewRouting(ReviewPolicy.AUTO, "medior"), "review:agent");
+  it("should return review:skip for SKIP policy", () => {
+    assert.strictEqual(resolveReviewRouting(ReviewPolicy.SKIP, "junior"), "review:skip");
+    assert.strictEqual(resolveReviewRouting(ReviewPolicy.SKIP, "medior"), "review:skip");
+    assert.strictEqual(resolveReviewRouting(ReviewPolicy.SKIP, "senior"), "review:skip");
   });
 });
