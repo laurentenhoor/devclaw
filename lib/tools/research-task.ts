@@ -139,9 +139,9 @@ Example:
       // Mark as system-managed (best-effort).
       provider.reactToIssue(issue.iid, "eyes").catch(() => {});
 
-      // Apply notify:{groupId} label for notification routing (best-effort)
-      const primaryGroupId = project.channels[0]?.groupId;
-      const notifyLabel = primaryGroupId ? getNotifyLabel(primaryGroupId) : null;
+      // Apply notify label for notification routing (best-effort)
+      const primaryChannel = project.channels[0];
+      const notifyLabel = primaryChannel ? getNotifyLabel(primaryChannel.channel, primaryChannel.name ?? "0") : null;
       if (notifyLabel) {
         const hasNotify = issue.labels.some((l) => l.startsWith(NOTIFY_LABEL_PREFIX));
         if (!hasNotify) {

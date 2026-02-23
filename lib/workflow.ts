@@ -303,7 +303,8 @@ export const STEP_ROUTING_COLOR = "#d93f0b";
 
 /**
  * Prefix for notify labels.
- * Format: "notify:{groupId}" (e.g., "notify:-5176490302").
+ * Format: "notify:{channel}:{name}" (e.g., "notify:telegram:primary").
+ * Legacy format: "notify:{groupId}" (e.g., "notify:-5176490302") — still parsed for backward compat.
  * Purpose: routes notifications to the channel that owns the issue.
  * Style: light grey — low visual weight, informational only.
  */
@@ -312,24 +313,34 @@ export const NOTIFY_LABEL_PREFIX = "notify:";
 /** Light grey color for notify labels — low prominence. */
 export const NOTIFY_LABEL_COLOR = "#e4e4e4";
 
-/** Build the notify label for a given group ID. */
-export function getNotifyLabel(groupId: string): string {
-  return `${NOTIFY_LABEL_PREFIX}${groupId}`;
+/** Build the notify label for a channel endpoint. Falls back to index if name is missing. */
+export function getNotifyLabel(channel: string, nameOrIndex: string): string {
+  return `${NOTIFY_LABEL_PREFIX}${channel}:${nameOrIndex}`;
 }
 
 /**
  * Resolve which channel should receive notifications for an issue.
- * Reads the `notify:{groupId}` label to find the owning channel.
+ * Parses both new format (`notify:{channel}:{name}`) and legacy (`notify:{groupId}`).
  * Falls back to channels[0] (primary) if no notify label is present.
  */
 export function resolveNotifyChannel(
   issueLabels: string[],
-  channels: Array<{ groupId: string; channel: string; accountId?: string }>,
+  channels: Array<{ groupId: string; channel: string; name?: string; accountId?: string }>,
 ): { groupId: string; channel: string; accountId?: string } | undefined {
   const notifyLabel = issueLabels.find((l) => l.startsWith(NOTIFY_LABEL_PREFIX));
   if (notifyLabel) {
-    const taggedGroupId = notifyLabel.slice(NOTIFY_LABEL_PREFIX.length);
-    return channels.find((ch) => ch.groupId === taggedGroupId) ?? channels[0];
+    const value = notifyLabel.slice(NOTIFY_LABEL_PREFIX.length);
+    const colonIdx = value.indexOf(":");
+    if (colonIdx !== -1) {
+      // New format: notify:{channel}:{name}
+      const channelType = value.slice(0, colonIdx);
+      const channelName = value.slice(colonIdx + 1);
+      return channels.find(
+        (ch) => ch.channel === channelType && (ch.name === channelName || String(channels.indexOf(ch)) === channelName),
+      ) ?? channels[0];
+    }
+    // Legacy format: notify:{groupId}
+    return channels.find((ch) => ch.groupId === value) ?? channels[0];
   }
   return channels[0];
 }

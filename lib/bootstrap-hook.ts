@@ -2,20 +2,18 @@
  * bootstrap-hook.ts — Bootstrap support for DevClaw worker sessions.
  *
  * Provides:
- *   1. agent:bootstrap (internal hook) — strips orchestrator AGENTS.md so
- *      the worker doesn't see the orchestrator's instructions. Requires
- *      hooks.internal.enabled in config. If unavailable, workers still
- *      receive role instructions via extraSystemPrompt (just also see AGENTS.md).
+ *   1. agent:bootstrap (internal hook) — replaces the orchestrator's AGENTS.md
+ *      with role-specific instructions so the worker sees its own prompt on
+ *      every turn. Requires hooks.internal.enabled in config.
  *   2. loadRoleInstructions() — loads role-specific prompt files from workspace.
- *      Used by dispatch.ts to pass instructions as extraSystemPrompt in the
- *      gateway agent call, which injects them into the worker's system prompt.
+ *      Used by both the bootstrap hook (persistent per-turn injection) and
+ *      dispatch.ts (extraSystemPrompt fallback for the dispatch turn).
  */
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { getSessionKeyRolePattern } from "./roles/index.js";
 import { DATA_DIR } from "./setup/migrate-layout.js";
-
 
 /**
  * Parse a DevClaw subagent session key to extract project name and role.
@@ -35,10 +33,14 @@ export function parseDevClawSessionKey(
 ): { projectName: string; role: string } | null {
   const rolePattern = getSessionKeyRolePattern();
   // Named/numeric format: ...-{role}-{level}-{slotNameOrIndex}
-  const newMatch = sessionKey.match(new RegExp(`:subagent:(.+)-(${rolePattern})-[^-]+-[^-]+$`));
+  const newMatch = sessionKey.match(
+    new RegExp(`:subagent:(.+)-(${rolePattern})-[^-]+-[^-]+$`),
+  );
   if (newMatch) return { projectName: newMatch[1], role: newMatch[2] };
   // Legacy format fallback: ...-{role}-{level} (for in-flight sessions during migration)
-  const legacyMatch = sessionKey.match(new RegExp(`:subagent:(.+)-(${rolePattern})-[^-]+$`));
+  const legacyMatch = sessionKey.match(
+    new RegExp(`:subagent:(.+)-(${rolePattern})-[^-]+$`),
+  );
   if (legacyMatch) return { projectName: legacyMatch[1], role: legacyMatch[2] };
   return null;
 }
@@ -94,7 +96,9 @@ export async function loadRoleInstructions(
       const content = await fs.readFile(filePath, "utf-8");
       if (opts?.withSource) return { content, source: filePath };
       return content;
-    } catch { /* not found, try next */ }
+    } catch {
+      /* not found, try next */
+    }
   }
 
   if (opts?.withSource) return { content: "", source: null };
@@ -104,38 +108,78 @@ export async function loadRoleInstructions(
 /**
  * Register the agent:bootstrap hook for DevClaw worker sessions.
  *
- * Strips AGENTS.md content so the worker doesn't see orchestrator instructions.
- * Requires hooks.internal.enabled in config. If it doesn't fire, the worker
- * still gets role instructions via extraSystemPrompt — just also sees AGENTS.md.
+ * Replaces the orchestrator's AGENTS.md with role-specific instructions
+ * loaded from the workspace. This ensures workers see their own prompt on
+ * every turn — not just the dispatch turn (where extraSystemPrompt is used).
  *
- * Role instruction injection is handled by dispatch.ts via the gateway's
- * extraSystemPrompt parameter (injected into the worker's system prompt).
+ * If role instructions are found, AGENTS.md content is replaced entirely.
+ * If none are found, AGENTS.md is still stripped to avoid orchestrator bleed.
+ *
+ * Requires hooks.internal.enabled in config. If the hook doesn't fire,
+ * dispatch.ts still passes instructions via extraSystemPrompt (single-turn).
  */
 export function registerBootstrapHook(api: OpenClawPluginApi): void {
-  api.registerHook("agent:bootstrap", async (event) => {
-    const sessionKey = event.sessionKey;
-    if (!sessionKey) return;
+  api.registerHook(
+    "agent:bootstrap",
+    async (event) => {
+      const sessionKey = event.sessionKey;
+      if (!sessionKey) return;
 
-    const parsed = parseDevClawSessionKey(sessionKey);
-    if (!parsed) return;
+      const parsed = parseDevClawSessionKey(sessionKey);
+      if (!parsed) return;
 
-    const context = event.context as {
-      bootstrapFiles?: Array<{
-        name: string;
-        path: string;
-        content?: string;
-        missing: boolean;
-      }>;
-    };
+      const context = event.context as {
+        workspaceDir?: string;
+        bootstrapFiles?: Array<{
+          name: string;
+          path: string;
+          content?: string;
+          missing: boolean;
+        }>;
+      };
 
-    const bootstrapFiles = context.bootstrapFiles;
-    if (!Array.isArray(bootstrapFiles)) return;
+      const bootstrapFiles = context.bootstrapFiles;
+      if (!Array.isArray(bootstrapFiles)) return;
 
-    const agentsEntry = bootstrapFiles.find((f) => f.name === "AGENTS.md");
-    if (agentsEntry) {
-      agentsEntry.content = "";
-      agentsEntry.missing = true;
-      api.logger.info(`agent:bootstrap: stripped AGENTS.md for ${parsed.role} worker in "${parsed.projectName}"`);
-    }
-  }, { name: "devclaw-strip-agents-md", description: "Strips orchestrator AGENTS.md from DevClaw worker sessions" } as any);
+      const agentsEntry = bootstrapFiles.find((f) => f.name === "AGENTS.md");
+      if (!agentsEntry) return;
+
+      // Load role instructions from workspace (project-specific → default fallback)
+      const workspaceDir = context.workspaceDir;
+      if (!workspaceDir) {
+        agentsEntry.content = "";
+        agentsEntry.missing = true;
+        api.logger.info(
+          `agent:bootstrap: stripped AGENTS.md for ${parsed.role} worker in "${parsed.projectName}" (no workspaceDir)`,
+        );
+        return;
+      }
+
+      const { content, source } = await loadRoleInstructions(
+        workspaceDir,
+        parsed.projectName,
+        parsed.role,
+        { withSource: true },
+      );
+
+      if (content.trim()) {
+        agentsEntry.content = content;
+        agentsEntry.missing = false;
+        api.logger.info(
+          `agent:bootstrap: injected ${parsed.role} instructions for "${parsed.projectName}" from ${source}`,
+        );
+      } else {
+        agentsEntry.content = "";
+        agentsEntry.missing = true;
+        api.logger.info(
+          `agent:bootstrap: stripped AGENTS.md for ${parsed.role} worker in "${parsed.projectName}" (no role instructions found)`,
+        );
+      }
+    },
+    {
+      name: "devclaw-bootstrap-role-instructions",
+      description:
+        "Replaces orchestrator AGENTS.md with role-specific instructions for DevClaw workers",
+    } as any,
+  );
 }

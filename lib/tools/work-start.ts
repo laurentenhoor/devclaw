@@ -111,9 +111,9 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
 
       // Ensure notify label is on the issue (best-effort — failure must not abort dispatch).
       // Routes notifications to the primary channel for this project.
-      const primaryGroupId = project.channels[0]?.groupId;
-      if (primaryGroupId) {
-        const notifyLabel = getNotifyLabel(primaryGroupId);
+      const primaryChannel = project.channels[0];
+      if (primaryChannel) {
+        const notifyLabel = getNotifyLabel(primaryChannel.channel, primaryChannel.name ?? "0");
         const hasNotify = issue.labels.some(l => l.startsWith(NOTIFY_LABEL_PREFIX));
         if (!hasNotify) {
           provider.ensureLabel(notifyLabel, NOTIFY_LABEL_COLOR)
