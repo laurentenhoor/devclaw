@@ -5,7 +5,7 @@
  */
 import type { PluginRuntime } from "openclaw/plugin-sdk";
 import type { StateLabel, IssueProvider } from "../providers/provider.js";
-import { deactivateWorker } from "../projects.js";
+import { deactivateWorker, loadProjectBySlug, getRoleWorker } from "../projects.js";
 import { runCommand } from "../run-command.js";
 import { notify, getNotificationConfig } from "../notify.js";
 import { log as auditLog } from "../audit.js";
@@ -137,6 +137,19 @@ export async function executeCompletion(opts: {
   // Get next state description from workflow
   const nextState = getNextStateDescription(workflow, role, result);
 
+  // Retrieve worker name from project state (best-effort)
+  let workerName: string | undefined;
+  try {
+    const project = await loadProjectBySlug(workspaceDir, projectSlug);
+    if (project && opts.level !== undefined && opts.slotIndex !== undefined) {
+      const roleWorker = getRoleWorker(project, role);
+      const slot = roleWorker.levels[opts.level]?.[opts.slotIndex];
+      workerName = slot?.name;
+    }
+  } catch {
+    // Best-effort — don't fail notification if name retrieval fails
+  }
+
   // Send notification early (before deactivation and label transition which can fail)
   const notifyConfig = getNotificationConfig(pluginConfig);
   notify(
@@ -146,6 +159,8 @@ export async function executeCompletion(opts: {
       issueId,
       issueUrl: issue.web_url,
       role,
+      level: opts.level,
+      name: workerName,
       result: result as "done" | "pass" | "fail" | "refine" | "blocked",
       summary,
       nextState,

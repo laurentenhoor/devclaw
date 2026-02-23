@@ -24,6 +24,7 @@ export type NotifyEvent =
       issueUrl: string;
       role: string;
       level: string;
+      name?: string;
       sessionAction: "spawn" | "send";
     }
   | {
@@ -32,6 +33,8 @@ export type NotifyEvent =
       issueId: number;
       issueUrl: string;
       role: string;
+      level?: string;
+      name?: string;
       result: "done" | "pass" | "fail" | "refine" | "blocked";
       summary?: string;
       nextState?: string;
@@ -113,7 +116,8 @@ function buildMessage(event: NotifyEvent): string {
   switch (event.type) {
     case "workerStart": {
       const action = event.sessionAction === "spawn" ? "🚀 Started" : "▶️ Resumed";
-      return `${action} ${event.role.toUpperCase()} (${event.level}) on #${event.issueId}: ${event.issueTitle}\n🔗 [Issue #${event.issueId}](${event.issueUrl})`;
+      const workerName = event.name ? ` ${event.name}` : "";
+      return `${action} ${event.role.toUpperCase()}${workerName} (${event.level}) on #${event.issueId}: ${event.issueTitle}\n🔗 [Issue #${event.issueId}](${event.issueUrl})`;
     }
 
     case "workerComplete": {
@@ -134,7 +138,9 @@ function buildMessage(event: NotifyEvent): string {
       };
       const text = resultText[event.result] ?? event.result;
       // Header: status + issue reference
-      let msg = `${icon} ${event.role.toUpperCase()} ${text} #${event.issueId}`;
+      const workerName = event.name ? ` ${event.name}` : "";
+      const levelInfo = event.level ? ` (${event.level})` : "";
+      let msg = `${icon} ${event.role.toUpperCase()}${workerName}${levelInfo} ${text} #${event.issueId}`;
       // Summary: on its own line for readability
       if (event.summary) {
         msg += `\n${event.summary}`;
