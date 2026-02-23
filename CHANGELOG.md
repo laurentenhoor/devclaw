@@ -5,6 +5,44 @@ All notable changes to DevClaw will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-02-23
+
+### Added
+
+- **Smart prompt upgrades with customization detection** — On version change, DevClaw auto-upgrades default role prompts while preserving user customizations. A SHA-256 hash manifest (`.prompt-hashes.json`) tracks what DevClaw last wrote; unmodified files are safely overwritten, customized files are skipped with a warning. First upgrade force-overwrites all prompts to establish the baseline.
+- **Auto-upgrade on heartbeat startup** — Workspace files (docs, prompts, workflow states) are automatically upgraded on the first heartbeat tick after a version change. No manual `upgrade` tool call needed — the version stamp gates execution so it runs exactly once per version.
+- **Stale prompt health warnings** — When customized prompt files are skipped during upgrade, a persistent `.stale-prompts.json` marker drives recurring warnings in heartbeat logs until the user runs `reset_defaults`.
+- **Project prompt backup on upgrade** — All project-specific prompt overrides (`devclaw/projects/<name>/prompts/*.md`) are backed up (`.bak`) during both first install and upgrades as a safety net. Backed-up files are reported in upgrade logs.
+- **Attachment support** — Upload images and files to issues via Telegram, GitHub, and GitLab. Channel-agnostic attachment hook detects media in incoming messages and associates them with referenced issues (#397).
+- **`task_attach` tool** — Attach files to issues programmatically from worker sessions.
+- **`claim_ownership` tool** — Workers can claim ownership of tasks with deterministic name generation for identification.
+- **Review skip policy** — Auto-merge PRs that match configurable skip criteria (e.g., auto-generated PRs, trivial changes) without requiring human review.
+- **Test policy for automated testing** — Configurable test phase workflow with skip conditions and auto-transition rules.
+- **Orphan scan with smart label revert** — Health check detects orphaned labels and reverts to the correct prior state based on PR status (merged, open, or none).
+- **Closed issue detection in health checks** — Health pass detects issues that were closed externally and cleans up worker state accordingly.
+- **Owner label auto-assignment** — Task modifications automatically assign an owner label for tracking (#421).
+- **PR seen marking** — PRs are automatically marked as seen when detected by the heartbeat, preventing duplicate processing (#409).
+
+### Changed
+
+- **Worker names use unique-names-generator** — Replaced hardcoded name pool with the `unique-names-generator` library for more distinct, memorable worker names (#424).
+- **Standardized worker name in notifications** — All task notifications consistently include worker name and level (#412, #416).
+- **Enhanced feedback cycle task messages** — Feedback dispatches now prioritize PR review comments for clearer context to developers.
+- **`reset_defaults` writes hash manifest** — Running `reset_defaults` now writes `.prompt-hashes.json` and clears the `.stale-prompts.json` marker, establishing a clean baseline for future upgrades.
+- **`upgrade` tool surfaces skipped prompts** — Tool response now includes a `skippedPrompts` section listing customized files that were not updated, with guidance to run `reset_defaults`.
+- **First install writes version stamp** — `ensureDefaultFiles()` writes `.plugin-version` to prevent the heartbeat auto-upgrade from re-running immediately after fresh setup.
+- **20 tools** (was 18) — added `task_attach`, `claim_ownership`
+
+### Fixed
+
+- **Workflow actions for PR approval and skip states** — Corrected transition actions that were missing or misconfigured for approval and skip workflows.
+- **To Do label color contrast** — Improved label color for better readability (#423).
+- **GitHub attachment uploads** — Fixed `gh` CLI syntax for file uploads (#410).
+
+### Removed
+
+- **WELCOME.md** — Removed in favor of streamlined onboarding (#407).
+
 ## [1.5.1] - 2026-02-22
 
 ### Changed
@@ -280,6 +318,7 @@ openclaw chat "Hey, can you help me set up DevClaw?"
 
 ---
 
+[1.6.0]: https://github.com/laurentenhoor/devclaw/compare/v1.5.2...v1.6.0
 [1.5.1]: https://github.com/laurentenhoor/devclaw/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/laurentenhoor/devclaw/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/laurentenhoor/devclaw/compare/v1.3.6...v1.4.0
