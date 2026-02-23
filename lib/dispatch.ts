@@ -93,12 +93,24 @@ export function buildTaskMessage(opts: {
   const results = opts.resolvedRole?.completionResults ?? [];
   const availableResults = results.map((r: string) => `"${r}"`).join(", ");
 
+  const isFeedbackCycle = !!opts.prFeedback;
+
   const parts = [
     `${role.toUpperCase()} task for project "${projectName}" — Issue #${issueId}`,
     ``,
     issueTitle,
     issueDescription ? `\n${issueDescription}` : "",
   ];
+
+  if (isFeedbackCycle) {
+    parts.push(
+      ``,
+      `> **⚠️ FEEDBACK CYCLE — This issue is returning from review.**`,
+      `> The original description above is for context only.`,
+      `> Your job is to address the PR Review Feedback and Comments below.`,
+      `> When feedback conflicts with the original description, follow the feedback.`,
+    );
+  }
 
   // Include comments if present
   if (opts.comments && opts.comments.length > 0) {

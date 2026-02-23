@@ -53,6 +53,8 @@ Use `gh pr create` to open a PR against the base branch. **Do NOT use closing ke
 
 When your task message includes a **PR Feedback** section, it means a reviewer requested changes on an existing PR. You must update that PR — **do NOT create a new one**.
 
+**Important:** During feedback cycles, PR review feedback and issue comments take precedence over the original issue description. The reviewer or stakeholder may have refined, amended, or changed the requirements. Do NOT revert your work to match the original issue description — only address what the feedback asks for.
+
 1. Check out the existing branch from the PR (the branch name is in the feedback context)
 2. If a worktree already exists for that branch, `cd` into it
 3. If not, create a worktree from the existing remote branch:
@@ -64,7 +66,7 @@ When your task message includes a **PR Feedback** section, it means a reviewer r
    git worktree add "$WORKTREE" "origin/$BRANCH"
    cd "$WORKTREE"
    ```
-4. Address the reviewer's comments
+4. Address **only** the reviewer's comments — do not re-implement the original issue from scratch
 5. Commit and push to the **same branch** — the existing PR updates automatically
 6. Call `work_finish` as usual
 
