@@ -1,33 +1,27 @@
 /**
  * names.ts — Deterministic fun name generator for instances and slots.
  *
- * Uses the `unique-names-generator` names dictionary (~4,940 first names)
- * for a collision-resistant pool. Names are deterministic: same seed
- * always produces the same name.
+ * Uses the `unique-names-generator` package's names dictionary (~4,940 names)
+ * with seed-based generation for deterministic, collision-resistant naming.
+ * Names are deterministic: same seed always produces the same name.
  */
-import { names as NAME_POOL } from "unique-names-generator";
 
-/** Re-export for testing / introspection. */
-export const NAMES: readonly string[] = NAME_POOL;
+import { uniqueNamesGenerator, names as namesDictionary } from "unique-names-generator";
 
-/**
- * djb2 hash — fast, deterministic string hash.
- * Returns a positive integer.
- */
-function djb2(str: string): number {
-  let hash = 5381;
-  for (let i = 0; i < str.length; i++) {
-    hash = ((hash << 5) + hash + str.charCodeAt(i)) | 0;
-  }
-  return Math.abs(hash);
-}
+/** Re-export the names dictionary for testing / introspection. */
+export const NAMES = namesDictionary;
 
 /**
  * Generate a deterministic name from a seed string.
  * Same seed always returns the same name.
+ * Uses the unique-names-generator library's built-in seed support
+ * to avoid correlation issues with similar/comparable input seeds.
  */
 export function nameFromSeed(seed: string): string {
-  return NAMES[djb2(seed) % NAMES.length]!;
+  return uniqueNamesGenerator({
+    dictionaries: [NAMES],
+    seed,
+  });
 }
 
 /**
