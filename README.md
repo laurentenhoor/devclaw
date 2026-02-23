@@ -161,23 +161,48 @@ Planning → To Research → Researching → Planning (architect findings)
 ```mermaid
 stateDiagram-v2
     [*] --> Planning
+
+    %% Planning routes
     Planning --> ToDo: Ready for development
     Planning --> ToResearch: Needs investigation
 
+    %% Research pipeline
     ToResearch --> Researching: Architect picks up
-    Researching --> Planning: Architect done (findings posted)
+    Researching --> Done: Architect done (creates tasks)
     Researching --> Refining: Architect blocked
 
+    %% Main development pipeline
     ToDo --> Doing: DEV picks up
     Doing --> ToReview: DEV done (opens PR)
     Doing --> Refining: DEV blocked
-    Refining --> ToDo: Human decides
 
-    ToReview --> Done: PR approved (auto-merge + close)
-    ToReview --> ToImprove: Changes requested / merge conflict
-    ToImprove --> Doing: Scheduler picks up DEV fix
+    %% Review flow (human or agent)
+    ToReview --> Reviewing: Reviewer picks up
+    ToReview --> ToTest: PR approved (auto-merge)
+    ToReview --> ToImprove: Changes requested
+    ToReview --> ToImprove: Merge conflict
+    ToReview --> Rejected: PR closed
 
+    Reviewing --> ToTest: Reviewer approves (merge)
+    Reviewing --> ToImprove: Reviewer rejects
+    Reviewing --> Refining: Reviewer blocked
+
+    %% Test phase (optional - skipped by default)
+    ToTest --> Testing: Tester picks up
+    ToTest --> Done: Skip test (default)
+    Testing --> Done: Tests pass
+    Testing --> ToImprove: Tests fail
+    Testing --> Refining: Tester blocked
+
+    %% Improvement loop
+    ToImprove --> Doing: DEV picks up fix
+
+    %% Human decision point
+    Refining --> ToDo: Human approves
+
+    %% Terminal states
     Done --> [*]
+    Rejected --> [*]
 ```
 
 By default, PRs go through **human review** on GitHub/GitLab. The heartbeat polls for approvals and auto-merges. You can switch to agent review or enable an [optional test phase](docs/WORKFLOW.md#test-phase-optional) in `workflow.yaml`.
