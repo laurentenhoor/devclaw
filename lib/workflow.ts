@@ -138,7 +138,7 @@ export const DEFAULT_WORKFLOW: WorkflowConfig = {
       type: StateType.QUEUE,
       role: "developer",
       label: "To Do",
-      color: "#428bca",
+      color: "#0366d6",
       priority: 1,
       on: { [WorkflowEvent.PICKUP]: "doing" },
     },
