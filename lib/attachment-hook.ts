@@ -1,14 +1,18 @@
 /**
- * attachment-hook.ts — Register message_received hook for Telegram attachment capture.
+ * attachment-hook.ts — Register message_received hook for attachment capture.
  *
- * Listens for incoming Telegram messages with media and issue references (#N).
- * When both are present, downloads the file and associates it with the issue.
+ * Channel-agnostic: works with any OpenClaw channel (Telegram, Discord,
+ * WhatsApp, Signal, Slack, etc.) since all channels normalize media into
+ * MediaPath/MediaPaths in the message metadata.
+ *
+ * Listens for incoming messages with media and issue references (#N).
+ * When both are present, reads the local file and associates it with the issue.
  */
 import { homedir } from "node:os";
 import path from "node:path";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import {
-  extractTelegramAttachments,
+  extractMediaAttachments,
   extractIssueReferences,
   processAttachmentMessage,
 } from "./attachments.js";
@@ -17,8 +21,8 @@ import { createProvider } from "./providers/index.js";
 import { log as auditLog } from "./audit.js";
 
 /**
- * Resolve which project a Telegram group maps to.
- * Looks up the conversationId (group/chat ID) in registered projects' channels.
+ * Resolve which project a group/conversation maps to.
+ * Looks up the conversationId in registered projects' channels.
  */
 async function resolveProjectFromGroup(
   workspaceDir: string,
@@ -51,38 +55,31 @@ async function resolveProjectFromGroup(
 function resolveWorkspaceDir(config: Record<string, unknown>): string | null {
   const agents = config.agents as { defaults?: { workspace?: string }; list?: Array<{ id: string; workspace?: string }> } | undefined;
   if (agents?.defaults?.workspace) return agents.defaults.workspace;
-  // Check agent list for a devclaw agent
   const devclaw = agents?.list?.find((a) => a.id === "devclaw");
   if (devclaw?.workspace) return devclaw.workspace;
-  // Fallback to standard path
-  const fallback = path.join(homedir(), ".openclaw", "workspace-devclaw");
-  return fallback;
+  return path.join(homedir(), ".openclaw", "workspace-devclaw");
 }
 
 /**
- * Register the message_received hook for Telegram attachment handling.
+ * Register the message_received hook for attachment handling.
+ *
+ * Channel-agnostic: OpenClaw downloads media from all channels and stores
+ * it locally, exposing MediaPath/MediaPaths in the message metadata.
  */
 export function registerAttachmentHook(api: OpenClawPluginApi): void {
   api.on("message_received", async (event, ctx) => {
-    // Only process Telegram messages
-    if (ctx.channelId !== "telegram") return;
-
     const metadata = event.metadata;
     if (!metadata || typeof metadata !== "object") return;
 
-    // Check for attachments in the message
-    const attachments = extractTelegramAttachments(metadata as Record<string, unknown>);
+    // Check for media in the message (channel-agnostic)
+    const attachments = extractMediaAttachments(metadata as Record<string, unknown>);
     if (attachments.length === 0) return;
 
     // Check for issue references in the message text
     const issueIds = extractIssueReferences(event.content ?? "");
-    if (issueIds.length === 0) {
-      // No explicit issue reference — check if this is a reply to an issue thread
-      // (future enhancement: thread tracking)
-      return;
-    }
+    if (issueIds.length === 0) return;
 
-    // Resolve workspace directory from plugin config
+    // Resolve workspace directory
     const workspaceDir = resolveWorkspaceDir(api.config as unknown as Record<string, unknown>);
     if (!workspaceDir) return;
 
@@ -93,8 +90,6 @@ export function registerAttachmentHook(api: OpenClawPluginApi): void {
     if (!project) return;
 
     // Process each referenced issue
-    const { type: providerType } = await createProvider({ repo: project.repo, provider: project.provider });
-
     for (const issueId of issueIds) {
       try {
         const { provider } = await createProvider({ repo: project.repo, provider: project.provider });
@@ -104,14 +99,12 @@ export function registerAttachmentHook(api: OpenClawPluginApi): void {
           projectSlug: project.slug,
           issueId,
           provider,
-          providerType: providerType as "github" | "gitlab",
-          repoPath: project.repo,
           uploader: event.from ?? "unknown",
-          telegramAttachments: attachments,
+          mediaAttachments: attachments,
         });
 
         api.logger.info(
-          `Attachment hook: ${attachments.length} file(s) attached to #${issueId} in "${project.name}"`,
+          `Attachment hook: ${attachments.length} file(s) attached to #${issueId} in "${project.name}" via ${ctx.channelId}`,
         );
       } catch (err) {
         api.logger.warn(
@@ -120,6 +113,7 @@ export function registerAttachmentHook(api: OpenClawPluginApi): void {
         await auditLog(workspaceDir, "attachment_hook_error", {
           project: project.name,
           issueId,
+          channel: ctx.channelId,
           error: (err as Error).message ?? String(err),
         }).catch(() => {});
       }

@@ -1,5 +1,5 @@
 /**
- * Tests for attachments.ts — Telegram attachment extraction, storage, and formatting.
+ * Tests for attachments.ts — media extraction, storage, and formatting.
  * Run with: npx tsx --test lib/attachments.test.ts
  */
 import { describe, it } from "node:test";
@@ -8,7 +8,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import {
-  extractTelegramAttachments,
+  extractMediaAttachments,
   extractIssueReferences,
   saveAttachment,
   listAttachments,
@@ -17,76 +17,60 @@ import {
   formatAttachmentsForTask,
 } from "./attachments.js";
 
-describe("extractTelegramAttachments", () => {
-  it("extracts photo (picks largest)", () => {
-    const metadata = {
-      photo: [
-        { file_id: "small", file_unique_id: "s1", file_size: 100, width: 90, height: 90 },
-        { file_id: "large", file_unique_id: "l1", file_size: 5000, width: 800, height: 600 },
-        { file_id: "medium", file_unique_id: "m1", file_size: 1000, width: 320, height: 240 },
-      ],
-    };
-    const result = extractTelegramAttachments(metadata);
+describe("extractMediaAttachments", () => {
+  it("extracts single MediaPath", () => {
+    const result = extractMediaAttachments({
+      MediaPath: "/tmp/media/photo.jpg",
+      MediaType: "image/jpeg",
+    });
     assert.strictEqual(result.length, 1);
-    assert.strictEqual(result[0].file_id, "large");
-    assert.strictEqual(result[0].mime_type, "image/jpeg");
+    assert.strictEqual(result[0].localPath, "/tmp/media/photo.jpg");
+    assert.strictEqual(result[0].mimeType, "image/jpeg");
+    assert.strictEqual(result[0].filename, "photo.jpg");
   });
 
-  it("extracts document", () => {
-    const metadata = {
-      document: {
-        file_id: "doc1",
-        file_unique_id: "du1",
-        file_name: "report.pdf",
-        mime_type: "application/pdf",
-        file_size: 12345,
-      },
-    };
-    const result = extractTelegramAttachments(metadata);
-    assert.strictEqual(result.length, 1);
-    assert.strictEqual(result[0].file_name, "report.pdf");
-    assert.strictEqual(result[0].mime_type, "application/pdf");
-  });
-
-  it("extracts video", () => {
-    const metadata = {
-      video: { file_id: "vid1", file_unique_id: "vu1", file_size: 50000 },
-    };
-    const result = extractTelegramAttachments(metadata);
-    assert.strictEqual(result.length, 1);
-    assert.strictEqual(result[0].mime_type, "video/mp4");
-  });
-
-  it("extracts audio", () => {
-    const metadata = {
-      audio: { file_id: "aud1", file_unique_id: "au1", mime_type: "audio/mp3", file_size: 3000 },
-    };
-    const result = extractTelegramAttachments(metadata);
-    assert.strictEqual(result.length, 1);
-    assert.strictEqual(result[0].mime_type, "audio/mp3");
-  });
-
-  it("extracts voice", () => {
-    const metadata = {
-      voice: { file_id: "voi1", file_unique_id: "vo1", file_size: 2000 },
-    };
-    const result = extractTelegramAttachments(metadata);
-    assert.strictEqual(result.length, 1);
-    assert.strictEqual(result[0].mime_type, "audio/ogg");
-  });
-
-  it("extracts multiple attachment types", () => {
-    const metadata = {
-      document: { file_id: "doc1", file_unique_id: "du1", file_name: "file.txt", mime_type: "text/plain", file_size: 100 },
-      audio: { file_id: "aud1", file_unique_id: "au1", mime_type: "audio/mp3", file_size: 3000 },
-    };
-    const result = extractTelegramAttachments(metadata);
+  it("extracts multiple MediaPaths", () => {
+    const result = extractMediaAttachments({
+      MediaPaths: ["/tmp/a.png", "/tmp/b.pdf"],
+      MediaTypes: ["image/png", "application/pdf"],
+    });
     assert.strictEqual(result.length, 2);
+    assert.strictEqual(result[0].localPath, "/tmp/a.png");
+    assert.strictEqual(result[0].mimeType, "image/png");
+    assert.strictEqual(result[1].localPath, "/tmp/b.pdf");
+    assert.strictEqual(result[1].mimeType, "application/pdf");
   });
 
-  it("returns empty for no attachments", () => {
-    const result = extractTelegramAttachments({});
+  it("handles MediaPath + MediaPaths combined", () => {
+    const result = extractMediaAttachments({
+      MediaPath: "/tmp/single.jpg",
+      MediaType: "image/jpeg",
+      MediaPaths: ["/tmp/multi1.png", "/tmp/multi2.pdf"],
+      MediaTypes: ["image/png", "application/pdf"],
+    });
+    assert.strictEqual(result.length, 3);
+  });
+
+  it("returns empty for no media", () => {
+    const result = extractMediaAttachments({});
     assert.strictEqual(result.length, 0);
+  });
+
+  it("handles missing mime types gracefully", () => {
+    const result = extractMediaAttachments({
+      MediaPath: "/tmp/file.bin",
+    });
+    assert.strictEqual(result.length, 1);
+    assert.strictEqual(result[0].mimeType, undefined);
+    assert.strictEqual(result[0].filename, "file.bin");
+  });
+
+  it("skips empty/invalid paths", () => {
+    const result = extractMediaAttachments({
+      MediaPaths: ["", null as any, "/tmp/valid.jpg"],
+    });
+    assert.strictEqual(result.length, 1);
+    assert.strictEqual(result[0].localPath, "/tmp/valid.jpg");
   });
 });
 
@@ -119,7 +103,6 @@ describe("saveAttachment / listAttachments", () => {
         filename: "test.txt",
         mimeType: "text/plain",
         uploader: "user123",
-        telegramFileId: "tg_file_123",
       });
 
       assert.ok(meta.id);
@@ -128,7 +111,6 @@ describe("saveAttachment / listAttachments", () => {
       assert.strictEqual(meta.mimeType, "text/plain");
       assert.strictEqual(meta.size, 11);
       assert.strictEqual(meta.uploader, "user123");
-      assert.strictEqual(meta.telegramFileId, "tg_file_123");
 
       // Verify file exists on disk
       const fullPath = getAttachmentPath(tmpDir, "test-project", 42, meta.localPath);

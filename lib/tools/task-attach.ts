@@ -113,9 +113,11 @@ Use cases:
         const buffer = await fs.readFile(resolvedPath);
         const filename = path.basename(resolvedPath);
 
-        // Detect mime type from extension
-        const { extensionForMime, detectMime } = await import("openclaw/plugin-sdk");
+        // Detect mime type
+        const { detectMime } = await import("openclaw/plugin-sdk");
         const mimeType = await detectMime({ filePath: resolvedPath, buffer }) ?? "application/octet-stream";
+
+        const { provider } = await resolveProvider(project);
 
         const meta = await saveAttachment(workspaceDir, project.slug, issueId, {
           buffer,
@@ -124,8 +126,11 @@ Use cases:
           uploader: "manual",
         });
 
+        // Upload via provider and update metadata
+        const publicUrl = await provider.uploadAttachment(issueId, { filename, buffer, mimeType });
+        if (publicUrl) meta.publicUrl = publicUrl;
+
         // Post comment on issue
-        const { provider } = await resolveProvider(project);
         const comment = formatAttachmentComment([meta]);
         await provider.addComment(issueId, comment);
 
