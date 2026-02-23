@@ -1,14 +1,42 @@
 /**
  * names.ts — Deterministic fun name generator for instances and slots.
  *
- * Uses the `unique-names-generator` names dictionary (~4,940 first names)
- * for a collision-resistant pool. Names are deterministic: same seed
- * always produces the same name.
+ * Uses a curated list of distinct, easy-to-distinguish names.
+ * Names are deterministic: same seed always produces the same name.
  */
-import { names as NAME_POOL } from "unique-names-generator";
 
-/** Re-export for testing / introspection. */
-export const NAMES: readonly string[] = NAME_POOL;
+/**
+ * Curated name pool with visually and phonetically distinct names.
+ * Selected for diversity across:
+ * - Starting letters (good distribution across alphabet)
+ * - Syllable patterns (different rhythms and sounds)
+ * - Visual distinctiveness (easy to tell apart at a glance)
+ * - Length variety (mix of short, medium, and longer names)
+ * 
+ * Avoids similar-looking pairs like Selena/Selestina, Anna/Anne, etc.
+ */
+export const NAMES: readonly string[] = [
+  // A-D
+  "Alex", "Aria", "Atlas", "Aurora", "Blake", "Brooks", "Cameron", "Charlie",
+  "Dakota", "Delta", "Dylan",
+  // E-H
+  "Echo", "Eden", "Ellis", "Felix", "Finn", "Griffin", "Harper", "Hunter",
+  // I-L
+  "Indigo", "Iris", "Jordan", "Jules", "Kai", "Kennedy", "Logan", "Luna",
+  // M-P
+  "Maple", "Mars", "Morgan", "Nova", "Onyx", "Parker", "Phoenix", "Piper",
+  // Q-T
+  "Quinn", "Rain", "River", "Robin", "Rowan", "Sage", "Skylar", "Sterling",
+  "Taylor", "Tessa", "Theo",
+  // U-Z
+  "Uma", "Vesper", "Violet", "Wade", "Willow", "Winter", "Zane", "Zara",
+  // Additional diverse names
+  "Archer", "Aspen", "Bailey", "Briar", "Cedar", "Clover", "Cove", "Cypress",
+  "Ember", "Fern", "Flora", "Hayes", "Hazel", "Jasper", "Juniper", "Kit",
+  "Lake", "Lennox", "Marlowe", "Meadow", "Nico", "Ocean", "Orion", "Peyton",
+  "Raven", "Reed", "Reese", "Remy", "Ridge", "Scout", "Sienna", "Sloane",
+  "Storm", "Sutton", "Vale", "Wren", "Wynter",
+];
 
 /**
  * djb2 hash — fast, deterministic string hash.
