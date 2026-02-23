@@ -70,6 +70,18 @@ async function validatePrExistsForDeveloper(
     // url is set — an open or merged PR exists and is linked to this issue.
     // getPrStatus locates PRs via the issue tracker's linked-PR API, so any
     // non-null url already implies the PR references the issue.
+
+    // Mark PR as "seen" (with eyes emoji) if not already marked.
+    // This helps distinguish system-created PRs from human responses.
+    // Best-effort — don't block completion if this fails.
+    try {
+      const hasEyes = await provider.prHasReaction(issueId, "eyes");
+      if (!hasEyes) {
+        await provider.reactToPr(issueId, "eyes");
+      }
+    } catch {
+      // Ignore errors — marking is cosmetic
+    }
   } catch (err) {
     // Re-throw our own validation errors; swallow provider/network errors.
     // Swallowing keeps work_finish unblocked when the API is unreachable.
