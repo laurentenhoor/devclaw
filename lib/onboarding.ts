@@ -182,9 +182,9 @@ You can also register a project from this admin session if you want, but it's be
 After project registration, briefly tell the user about their active workflow:
 
 - **Review policy**: human (default) — PRs need human approval on GitHub/GitLab, heartbeat auto-merges when approved.
-- **Test phase**: disabled by default — approved PRs go straight to Done.
-- **Customization**: They can change the review policy (human/agent/auto), enable a test phase with automated QA, or override settings per project. Point them to \`workflow.yaml\` in the devclaw data directory.
-- Say: "Your workflow is set up with **human review** and no test phase. If you'd like to change the review policy or enable automated testing, just ask and I'll walk you through it."
+- **Test phase**: skipped by default — the testing step is in the workflow but issues bypass it automatically. To enable testing for a specific issue, remove the \`test:skip\` label. To enable globally, set \`testPolicy: agent\` in workflow.yaml.
+- **Customization**: They can change the review policy (human/agent/auto), enable testing (testPolicy: agent), or override settings per project. Point them to \`workflow.yaml\` in the devclaw data directory.
+- Say: "Your workflow is set up with **human review** and **testing skipped** by default. You can enable testing per-issue by removing the \`test:skip\` label, or globally by setting \`testPolicy: agent\` in your workflow.yaml."
 
 ## Guidelines
 - Be conversational and friendly. Ask one question at a time.

@@ -37,6 +37,13 @@ export const ReviewPolicy = {
 } as const;
 export type ReviewPolicy = (typeof ReviewPolicy)[keyof typeof ReviewPolicy];
 
+/** Test policy for automated testing after review. */
+export const TestPolicy = {
+  SKIP: "skip",
+  AGENT: "agent",
+} as const;
+export type TestPolicy = (typeof TestPolicy)[keyof typeof TestPolicy];
+
 /** Role identifier. Built-in: "developer", "tester", "architect". Extensible via config. */
 export type Role = string;
 /** Action identifier. Built-in actions listed in `Action`; custom actions are also valid strings. */
@@ -69,6 +76,7 @@ export const WorkflowEvent = {
   MERGE_CONFLICT: "MERGE_CONFLICT",
   PASS: "PASS",
   FAIL: "FAIL",
+  SKIP: "SKIP",
   REFINE: "REFINE",
   BLOCKED: "BLOCKED",
   APPROVE: "APPROVE",
@@ -96,6 +104,7 @@ export type StateConfig = {
 export type WorkflowConfig = {
   initial: string;
   reviewPolicy?: ReviewPolicy;
+  testPolicy?: TestPolicy;
   roleExecution?: ExecutionMode;
   /** Default max workers per level across all roles. Default: 2. */
   maxWorkersPerLevel?: number;
@@ -115,6 +124,7 @@ export type CompletionRule = {
 export const DEFAULT_WORKFLOW: WorkflowConfig = {
   initial: "planning",
   reviewPolicy: ReviewPolicy.HUMAN,
+  testPolicy: TestPolicy.SKIP,
   roleExecution: ExecutionMode.PARALLEL,
   states: {
     // ── Main pipeline (happy path) ──────────────────────────────
@@ -151,7 +161,7 @@ export const DEFAULT_WORKFLOW: WorkflowConfig = {
       check: ReviewCheck.PR_APPROVED,
       on: {
         [WorkflowEvent.PICKUP]: "reviewing",
-        [WorkflowEvent.APPROVED]: { target: "done", actions: [Action.MERGE_PR, Action.GIT_PULL, Action.CLOSE_ISSUE] },
+        [WorkflowEvent.APPROVED]: { target: "toTest", actions: [Action.MERGE_PR, Action.GIT_PULL] },
         [WorkflowEvent.MERGE_FAILED]: "toImprove",
         [WorkflowEvent.CHANGES_REQUESTED]: "toImprove",
         [WorkflowEvent.MERGE_CONFLICT]: "toImprove",
@@ -164,8 +174,32 @@ export const DEFAULT_WORKFLOW: WorkflowConfig = {
       label: "Reviewing",
       color: "#c5def5",
       on: {
-        [WorkflowEvent.APPROVE]: { target: "done", actions: [Action.MERGE_PR, Action.GIT_PULL, Action.CLOSE_ISSUE] },
+        [WorkflowEvent.APPROVE]: { target: "toTest", actions: [Action.MERGE_PR, Action.GIT_PULL] },
         [WorkflowEvent.REJECT]: "toImprove",
+        [WorkflowEvent.BLOCKED]: "refining",
+      },
+    },
+    // ── Test phase (skipped by default via testPolicy: skip) ────
+    toTest: {
+      type: StateType.QUEUE,
+      role: "tester",
+      label: "To Test",
+      color: "#5bc0de",
+      priority: 2,
+      on: {
+        [WorkflowEvent.PICKUP]: "testing",
+        [WorkflowEvent.SKIP]: { target: "done", actions: [Action.CLOSE_ISSUE] },
+      },
+    },
+    testing: {
+      type: StateType.ACTIVE,
+      role: "tester",
+      label: "Testing",
+      color: "#9b59b6",
+      on: {
+        [WorkflowEvent.PASS]: { target: "done", actions: [Action.CLOSE_ISSUE] },
+        [WorkflowEvent.FAIL]: { target: "toImprove", actions: [Action.REOPEN_ISSUE] },
+        [WorkflowEvent.REFINE]: "refining",
         [WorkflowEvent.BLOCKED]: "refining",
       },
     },
@@ -390,6 +424,30 @@ export function resolveReviewRouting(
   if (policy === ReviewPolicy.AGENT) return "review:agent";
   // AUTO: senior → human, else agent
   return level === "senior" ? "review:human" : "review:agent";
+}
+
+// ---------------------------------------------------------------------------
+// Test routing
+// ---------------------------------------------------------------------------
+
+/**
+ * Determine test routing label for an issue based on project policy.
+ * Called during developer dispatch to persist the routing decision as a label.
+ */
+export function resolveTestRouting(
+  policy: TestPolicy, _level: string,
+): "test:skip" | "test:agent" {
+  if (policy === TestPolicy.AGENT) return "test:agent";
+  return "test:skip";
+}
+
+/**
+ * Check if the workflow has a test phase (any queue state with role=tester).
+ */
+export function hasTestPhase(workflow: WorkflowConfig): boolean {
+  return Object.values(workflow.states).some(
+    (s) => s.role === "tester" && s.type === StateType.QUEUE,
+  );
 }
 
 /** Default colors per role for role:level labels. */

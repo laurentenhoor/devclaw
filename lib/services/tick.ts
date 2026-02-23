@@ -15,6 +15,7 @@ import { loadConfig } from "../config/index.js";
 import {
   ExecutionMode,
   ReviewPolicy,
+  TestPolicy,
   getActiveLabel,
   type WorkflowConfig,
   type Role,
@@ -115,6 +116,15 @@ export async function projectTick(opts: {
       const policy = workflow.reviewPolicy ?? ReviewPolicy.HUMAN;
       if (policy === ReviewPolicy.HUMAN) {
         skipped.push({ role, reason: "Review policy: human (heartbeat handles via PR polling)" });
+        continue;
+      }
+    }
+
+    // Test policy gate: fallback for issues dispatched before test routing labels existed
+    if (role === "tester") {
+      const policy = workflow.testPolicy ?? TestPolicy.SKIP;
+      if (policy === TestPolicy.SKIP) {
+        skipped.push({ role, reason: "Test policy: skip (heartbeat handles via test-skip pass)" });
         continue;
       }
     }

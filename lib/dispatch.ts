@@ -18,7 +18,7 @@ import { fetchGatewaySessions, type GatewaySession } from "./services/gateway-se
 import { resolveModel, getFallbackEmoji } from "./roles/index.js";
 import { notify, getNotificationConfig } from "./notify.js";
 import { loadConfig, type ResolvedRoleConfig } from "./config/index.js";
-import { ReviewPolicy, resolveReviewRouting, resolveNotifyChannel, isFeedbackState, hasReviewCheck, producesReviewableWork, detectOwner, getOwnerLabel, OWNER_LABEL_COLOR, getRoleLabelColor, STEP_ROUTING_COLOR } from "./workflow.js";
+import { ReviewPolicy, TestPolicy, resolveReviewRouting, resolveTestRouting, resolveNotifyChannel, isFeedbackState, hasReviewCheck, producesReviewableWork, hasTestPhase, detectOwner, getOwnerLabel, OWNER_LABEL_COLOR, getRoleLabelColor, STEP_ROUTING_COLOR } from "./workflow.js";
 import { fetchPrFeedback, fetchPrContext, formatPrContext, formatPrFeedback, type PrFeedback, type PrContext } from "./pr-context.js";
 import { formatAttachmentsForTask } from "./attachments.js";
 import { loadRoleInstructions } from "./bootstrap-hook.js";
@@ -265,6 +265,17 @@ export async function dispatchTask(
       if (oldRouting.length > 0) await provider.removeLabels(issueId, oldRouting);
       await provider.ensureLabel(reviewLabel, STEP_ROUTING_COLOR);
       await provider.addLabel(issueId, reviewLabel);
+    }
+
+    // Step 1e: Apply test routing label when workflow has a test phase (best-effort)
+    if (hasTestPhase(workflow)) {
+      const testLabel = resolveTestRouting(
+        workflow.testPolicy ?? TestPolicy.SKIP, level,
+      );
+      const oldTestRouting = issue.labels.filter((l) => l.startsWith("test:"));
+      if (oldTestRouting.length > 0) await provider.removeLabels(issueId, oldTestRouting);
+      await provider.ensureLabel(testLabel, STEP_ROUTING_COLOR);
+      await provider.addLabel(issueId, testLabel);
     }
 
     // Step 1d: Apply owner label if issue is unclaimed (auto-claim on pickup)

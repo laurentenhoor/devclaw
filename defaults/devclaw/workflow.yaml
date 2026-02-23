@@ -31,6 +31,12 @@ workflow:
   # human — All PRs need human approval on GitHub/GitLab. Heartbeat auto-merges when approved.
   # agent — Agent reviewer checks every PR before merge.
   # auto  — Junior/medior → agent review, senior → human review.
+  testPolicy: skip # Options: skip (default), agent
+  # skip  — Testing phase is skipped. Issues go straight from review to done.
+  #          To enable testing for a specific issue, remove the test:skip label.
+  # agent — Agent tester runs automated QA on every issue after review.
+  #          Requires tester prompts: devclaw/prompts/tester.md
+  #          (or per-project: devclaw/projects/<name>/prompts/tester.md)
   roleExecution: parallel # Options: parallel (default), sequential
   # parallel   — Different roles can work simultaneously (e.g. developer + tester).
   # sequential — Only one role active at a time.
@@ -89,11 +95,10 @@ workflow:
       on:
         PICKUP: reviewing
         APPROVED:
-          target: done # change to "toTest" to enable test phase
+          target: toTest
           actions:
             - mergePr
             - gitPull
-            - closeIssue # remove when using test phase (tester closes)
         MERGE_FAILED: toImprove
         CHANGES_REQUESTED: toImprove
         MERGE_CONFLICT: toImprove
@@ -108,44 +113,45 @@ workflow:
       color: "#c5def5"
       on:
         APPROVE:
-          target: done # change to "toTest" to enable test phase
+          target: toTest
           actions:
             - mergePr
             - gitPull
-            - closeIssue # remove when using test phase (tester closes)
         REJECT: toImprove
         BLOCKED: refining
-    # --- Test phase (uncomment to enable) ------------------------------------
-    # Adds automated QA after review. To enable:
-    #   1. Uncomment toTest and testing below
-    #   2. Change APPROVED/APPROVE targets above from "done" to "toTest"
-    #   3. Remove closeIssue from APPROVED/APPROVE actions above
-    #   4. Add tester prompts: devclaw/prompts/tester.md
-    #      (or per-project: devclaw/projects/<name>/prompts/tester.md)
-    # toTest:
-    #   type: queue
-    #   role: tester
-    #   label: To Test
-    #   color: "#5bc0de"
-    #   priority: 2
-    #   on:
-    #     PICKUP: testing
-    # testing:
-    #   type: active
-    #   role: tester
-    #   label: Testing
-    #   color: "#9b59b6"
-    #   on:
-    #     PASS:
-    #       target: done
-    #       actions:
-    #         - closeIssue
-    #     FAIL:
-    #       target: toImprove
-    #       actions:
-    #         - reopenIssue
-    #     REFINE: refining
-    #     BLOCKED: refining
+    # --- Test phase (skipped by default via testPolicy: skip) -----------------
+    # Issues arrive here after review. With testPolicy: skip (default), the
+    # heartbeat auto-transitions them to done. To enable testing per-issue,
+    # remove the test:skip label before it reaches this state.
+    # To enable testing globally, set testPolicy: agent above.
+    toTest:
+      type: queue
+      role: tester
+      label: To Test
+      color: "#5bc0de"
+      priority: 2
+      on:
+        PICKUP: testing
+        SKIP:
+          target: done
+          actions:
+            - closeIssue
+    testing:
+      type: active
+      role: tester
+      label: Testing
+      color: "#9b59b6"
+      on:
+        PASS:
+          target: done
+          actions:
+            - closeIssue
+        FAIL:
+          target: toImprove
+          actions:
+            - reopenIssue
+        REFINE: refining
+        BLOCKED: refining
     done:
       type: terminal
       label: Done

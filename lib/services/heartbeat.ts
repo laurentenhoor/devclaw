@@ -25,6 +25,7 @@ import {
 } from "./health.js";
 import { projectTick } from "./tick.js";
 import { reviewPass } from "./review.js";
+import { testSkipPass } from "./test-skip.js";
 import { createProvider } from "../providers/index.js";
 import { loadConfig } from "../config/index.js";
 import type { ResolvedConfig } from "../config/types.js";
@@ -51,6 +52,7 @@ type TickResult = {
   totalHealthFixes: number;
   totalSkipped: number;
   totalReviewTransitions: number;
+  totalTestSkipTransitions: number;
 };
 
 type ServiceContext = {
@@ -215,6 +217,7 @@ async function processAllAgents(
     totalHealthFixes: 0,
     totalSkipped: 0,
     totalReviewTransitions: 0,
+    totalTestSkipTransitions: 0,
   };
 
   // Fetch gateway sessions once for all agents/projects
@@ -235,6 +238,7 @@ async function processAllAgents(
     result.totalHealthFixes += agentResult.totalHealthFixes;
     result.totalSkipped += agentResult.totalSkipped;
     result.totalReviewTransitions += agentResult.totalReviewTransitions;
+    result.totalTestSkipTransitions += agentResult.totalTestSkipTransitions;
   }
 
   return result;
@@ -250,10 +254,11 @@ function logTickResult(
   if (
     result.totalPickups > 0 ||
     result.totalHealthFixes > 0 ||
-    result.totalReviewTransitions > 0
+    result.totalReviewTransitions > 0 ||
+    result.totalTestSkipTransitions > 0
   ) {
     logger.info(
-      `work_heartbeat tick: ${result.totalPickups} pickups, ${result.totalHealthFixes} health fixes, ${result.totalReviewTransitions} review transitions, ${result.totalSkipped} skipped`,
+      `work_heartbeat tick: ${result.totalPickups} pickups, ${result.totalHealthFixes} health fixes, ${result.totalReviewTransitions} review transitions, ${result.totalTestSkipTransitions} test skips, ${result.totalSkipped} skipped`,
     );
   }
 }
@@ -286,6 +291,7 @@ export async function tick(opts: {
       totalHealthFixes: 0,
       totalSkipped: 0,
       totalReviewTransitions: 0,
+      totalTestSkipTransitions: 0,
     };
   }
 
@@ -294,6 +300,7 @@ export async function tick(opts: {
     totalHealthFixes: 0,
     totalSkipped: 0,
     totalReviewTransitions: 0,
+    totalTestSkipTransitions: 0,
   };
 
   const projectExecution =
@@ -325,6 +332,11 @@ export async function tick(opts: {
       // Review pass: transition issues whose PR check condition is met
       result.totalReviewTransitions += await performReviewPass(
         workspaceDir, slug, project, provider, resolvedConfig, pluginConfig, runtime,
+      );
+
+      // Test skip pass: auto-transition test:skip issues through the test queue
+      result.totalTestSkipTransitions += await performTestSkipPass(
+        workspaceDir, slug, provider, resolvedConfig,
       );
 
       // Budget check: stop if we've hit the limit
@@ -370,6 +382,7 @@ export async function tick(opts: {
     projectsScanned: slugs.length,
     healthFixes: result.totalHealthFixes,
     reviewTransitions: result.totalReviewTransitions,
+    testSkipTransitions: result.totalTestSkipTransitions,
     pickups: result.totalPickups,
     skipped: result.totalSkipped,
   });
@@ -523,6 +536,23 @@ async function performReviewPass(
         },
       ).catch(() => {});
     },
+  });
+}
+
+/**
+ * Run test skip pass for a project — auto-transition test:skip issues through the test queue.
+ */
+async function performTestSkipPass(
+  workspaceDir: string,
+  projectSlug: string,
+  provider: import("../providers/provider.js").IssueProvider,
+  resolvedConfig: ResolvedConfig,
+): Promise<number> {
+  return testSkipPass({
+    workspaceDir,
+    projectName: projectSlug,
+    workflow: resolvedConfig.workflow,
+    provider,
   });
 }
 
