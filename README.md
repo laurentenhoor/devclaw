@@ -2,6 +2,11 @@
   <img src="assets/DevClaw.png" width="300" alt="DevClaw Logo">
 </p>
 
+<p align="center">
+  <a href="https://discord.gg/BSEafj4m"><img src="https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge" alt="License: MIT"></a>
+</p>
+
 # DevClaw — Development Plugin for OpenClaw
 
 **Turn any group chat into a dev team that ships.**
