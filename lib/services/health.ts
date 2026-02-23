@@ -61,7 +61,8 @@ export type HealthIssue = {
     | "stale_worker"         // Case 3: active for >2h
     | "stuck_label"          // Case 4: inactive but issue still has active label
     | "orphan_issue_id"      // Case 5: inactive but issueId set
-    | "issue_gone"           // Case 6: active but issue deleted/closed
+    | "issue_gone"           // Case 6: active but issue deleted/inaccessible
+    | "issue_closed"         // Case 6b: active but issue closed externally
     | "orphaned_label"        // Case 7: active label but no worker tracking it
     | "context_overflow";    // Case 1c: active worker but session hit context limit (abortedLastRun)
   severity: "critical" | "warning";
@@ -102,6 +103,11 @@ async function fetchIssue(
   } catch {
     return null; // Issue deleted, closed, or inaccessible
   }
+}
+
+/** Check if an issue is closed (GitHub returns "CLOSED", GitLab returns "closed"). */
+function isIssueClosed(issue: Issue): boolean {
+  return issue.state.toLowerCase() === "closed";
 }
 
 // ---------------------------------------------------------------------------
@@ -197,6 +203,32 @@ export async function checkWorkerHealth(opts: {
             issueId: slot.issueId,
             slotIndex,
             message: `${role.toUpperCase()} ${level}[${slotIndex}] active but issue #${issueIdNum} no longer exists or is closed`,
+          },
+          fixed: false,
+        };
+        if (autoFix) {
+          await deactivateSlot();
+          fix.fixed = true;
+        }
+        fixes.push(fix);
+        continue;
+      }
+
+      // Case 6b: Active but issue is closed (externally or by another process)
+      // getIssue() returns closed issues on GitHub/GitLab, so Case 6 doesn't catch this.
+      if (slot.active && issue && isIssueClosed(issue)) {
+        const fix: HealthFix = {
+          issue: {
+            type: "issue_closed",
+            severity: "critical",
+            project: project.name,
+            projectSlug,
+            role,
+            level,
+            sessionKey,
+            issueId: slot.issueId,
+            slotIndex,
+            message: `${role.toUpperCase()} ${level}[${slotIndex}] active but issue #${issueIdNum} is closed`,
           },
           fixed: false,
         };
