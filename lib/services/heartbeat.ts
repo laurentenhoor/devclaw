@@ -16,6 +16,8 @@ import path from "node:path";
 import { readProjects, getProject, type Project } from "../projects.js";
 import { log as auditLog } from "../audit.js";
 import { DATA_DIR } from "../setup/migrate-layout.js";
+import { upgradeWorkspaceIfNeeded } from "../upgrade.js";
+import { readStalePrompts } from "../prompt-hashes.js";
 import { loadInstanceName } from "../instance.js";
 import {
   checkWorkerHealth,
@@ -222,6 +224,33 @@ async function processAllAgents(
     totalReviewSkipTransitions: 0,
     totalTestSkipTransitions: 0,
   };
+
+  // Auto-upgrade workspaces on version change (runs once per version stamp mismatch)
+  const upgradedWorkspaces = new Set<string>();
+  for (const { workspace } of agents) {
+    if (upgradedWorkspaces.has(workspace)) continue;
+    upgradedWorkspaces.add(workspace);
+    try {
+      const upgradeResult = await upgradeWorkspaceIfNeeded(workspace, logger);
+      if (upgradeResult.upgraded) {
+        logger.info(`Auto-upgraded workspace ${workspace}`);
+      }
+    } catch (err) {
+      logger.warn(`Auto-upgrade failed for ${workspace}: ${(err as Error).message}`);
+    }
+  }
+
+  // Check for stale prompt warnings (customized files not updated)
+  for (const workspace of upgradedWorkspaces) {
+    try {
+      const stale = await readStalePrompts(path.join(workspace, DATA_DIR));
+      if (stale && stale.length > 0) {
+        logger.warn(
+          `Customized prompt files not updated: ${stale.map(r => `${r}.md`).join(", ")}. Run reset_defaults to get the latest.`,
+        );
+      }
+    } catch { /* ignore read errors */ }
+  }
 
   // Fetch gateway sessions once for all agents/projects
   const sessions = await fetchGatewaySessions();

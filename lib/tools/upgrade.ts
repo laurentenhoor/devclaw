@@ -57,16 +57,22 @@ export function createUpgradeTool() {
       }
 
       // 2. Upgrade workspace files if version stamp differs
-      const upgraded = await upgradeWorkspaceIfNeeded(workspaceDir, logCapture);
+      const result = await upgradeWorkspaceIfNeeded(workspaceDir, logCapture);
 
       return jsonResult({
         currentVersion: PLUGIN_VERSION,
         npmUpdate: npmUpdate
           ? { installed: npmUpdate, note: "Restart the gateway to activate the new version." }
           : { status: "up to date" },
-        workspaceUpgrade: upgraded
+        workspaceUpgrade: result.upgraded
           ? { status: "upgraded", details: messages.filter(m => !m.includes("npm") && !m.includes("Installing")) }
           : { status: "already up to date" },
+        skippedPrompts: result.skippedPrompts.length > 0
+          ? {
+            files: result.skippedPrompts.map(r => `devclaw/prompts/${r}.md`),
+            note: "These prompt files were customized and NOT updated. Run reset_defaults to get the latest defaults (creates .bak backups).",
+          }
+          : undefined,
         messages,
       });
     },

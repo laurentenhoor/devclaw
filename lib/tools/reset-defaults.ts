@@ -29,6 +29,7 @@ import {
   WORKFLOW_YAML_TEMPLATE,
   DEFAULT_ROLE_INSTRUCTIONS,
 } from "../templates.js";
+import { hashContent, writePromptHashes, clearStalePrompts } from "../prompt-hashes.js";
 
 export function createResetDefaultsTool() {
   return (ctx: ToolContext) => ({
@@ -96,12 +97,18 @@ export function createResetDefaultsTool() {
       const promptsDir = path.join(dataDir, "prompts");
       await fs.mkdir(promptsDir, { recursive: true });
 
+      const promptHashes: Record<string, string> = {};
       for (const [role, content] of Object.entries(DEFAULT_ROLE_INSTRUCTIONS)) {
         const filePath = path.join(promptsDir, `${role}.md`);
         if (await fileExists(filePath)) backedUp.push(`devclaw/prompts/${role}.md.bak`);
         await backupAndWrite(filePath, content);
         reset.push(`devclaw/prompts/${role}.md`);
+        promptHashes[role] = hashContent(content);
       }
+
+      // Update hash manifest and clear stale-prompts marker
+      await writePromptHashes(dataDir, promptHashes);
+      await clearStalePrompts(dataDir);
 
       // --- Project-level prompt scan -----------------------------------------
 

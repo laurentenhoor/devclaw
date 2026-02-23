@@ -16,10 +16,13 @@ import {
 } from "../templates.js";
 import { getAllRoleIds } from "../roles/index.js";
 import { migrateWorkspaceLayout, DATA_DIR } from "./migrate-layout.js";
+import { hashContent, writePromptHashes, backupProjectPrompts } from "../prompt-hashes.js";
+import { PLUGIN_VERSION } from "../upgrade.js";
 
 /**
  * Ensure default data files exist in the workspace.
- * Only creates files that are missing — never overwrites existing ones.
+ * Structural files (workflow.yaml, projects.json) are created only if missing.
+ * Prompt files are always overwritten with backups (same as workspace docs).
  * Called automatically after migration (via ensureWorkspaceMigrated).
  */
 export async function ensureDefaultFiles(workspacePath: string): Promise<void> {
@@ -42,19 +45,30 @@ export async function ensureDefaultFiles(workspacePath: string): Promise<void> {
   // devclaw/projects/ directory
   await fs.mkdir(path.join(dataDir, "projects"), { recursive: true });
 
-  // devclaw/prompts/ — default role instructions
+  // devclaw/prompts/ — default role instructions (backup + overwrite)
   const promptsDir = path.join(dataDir, "prompts");
   await fs.mkdir(promptsDir, { recursive: true });
+  const hashes: Record<string, string> = {};
   for (const role of getAllRoleIds()) {
     const rolePath = path.join(promptsDir, `${role}.md`);
-    if (!await fileExists(rolePath)) {
-      const content = DEFAULT_ROLE_INSTRUCTIONS[role] ?? `# ${role.toUpperCase()} Worker Instructions\n\nAdd role-specific instructions here.\n`;
-      await fs.writeFile(rolePath, content, "utf-8");
-    }
+    const content = DEFAULT_ROLE_INSTRUCTIONS[role] ?? `# ${role.toUpperCase()} Worker Instructions\n\nAdd role-specific instructions here.\n`;
+    await backupAndWrite(rolePath, content);
+    hashes[role] = hashContent(content);
   }
+  await writePromptHashes(dataDir, hashes);
+
+  // Backup project-specific prompt overrides (safety net during re-setup)
+  await backupProjectPrompts(dataDir);
 
   // devclaw/log/ directory (audit.log created on first write)
   await fs.mkdir(path.join(dataDir, "log"), { recursive: true });
+
+  // Version stamp — prevents the heartbeat auto-upgrade from re-running
+  // immediately after a fresh install.
+  const versionPath = path.join(dataDir, ".plugin-version");
+  if (!await fileExists(versionPath)) {
+    await fs.writeFile(versionPath, PLUGIN_VERSION + "\n", "utf-8");
+  }
 }
 
 /**
