@@ -439,6 +439,48 @@ The orchestrator saying "I'll just make this quick fix myself" is like a manager
 openclaw plugins install @laurentenhoor/devclaw
 ```
 
+### Telegram Attachments
+
+DevClaw supports attaching files and media directly from Telegram. Send files in your group chat along with an issue reference, and they'll automatically attach to the issue on GitHub/GitLab.
+
+#### How to use it
+
+Simply send a file or media in Telegram alongside an issue reference:
+
+```
+You:   "Here's a screenshot showing the bug #42"
+[sends image.png]
+
+Agent: "✅ Attachment saved to issue #42"
+```
+
+Or reply to a previous message about an issue:
+
+```
+Previous:  "⚡ Sending DEV (medior) for #42: Fix login bug"
+You:       [replies with error-log.txt]
+Agent:     "✅ Attachment saved to issue #42"
+```
+
+#### Supported file types
+
+- **Images**: PNG, JPG, GIF, WebP
+- **Documents**: PDF, TXT, MD, JSON, XML
+- **Archives**: ZIP, TAR, GZ
+- **Media**: MP4, MP3, MOV
+- **Other**: Any file type is supported — metadata is captured and stored
+
+File metadata including filename, size, upload time, and uploader is maintained for full audit trail.
+
+#### Use cases
+
+- **QA**: Testers attach screenshots, error logs, and test results to issues
+- **Design**: Designers share mockups and assets
+- **Developers**: Include error stack traces and debug logs in implementation tasks
+- **Architects**: Attach research findings and documentation
+
+For more details, see [issue #397](https://github.com/laurentenhoor/devclaw/issues/397).
+
 ### Upgrade
 
 The easiest way to upgrade is through your agent:
