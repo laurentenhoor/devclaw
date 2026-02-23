@@ -670,16 +670,13 @@ export class GitHubProvider implements IssueProvider {
       }
 
       // Upload via Contents API
-      const payload = JSON.stringify({
-        message: `attachment: ${file.filename} for issue #${issueId}`,
-        content: base64Content,
-        branch,
-      });
-      await runCommand(
-        ["gh", "api", `repos/${repo.owner}/${repo.name}/contents/${filePath}`,
-          "--method", "PUT", "--input", "-"],
-        { timeoutMs: 30_000, cwd: this.repoPath, input: payload },
-      );
+      await this.gh([
+        "api", `repos/${repo.owner}/${repo.name}/contents/${filePath}`,
+        "--method", "PUT",
+        "--field", `message=attachment: ${file.filename} for issue #${issueId}`,
+        "--field", `content=${base64Content}`,
+        "--field", `branch=${branch}`,
+      ]);
 
       return `https://raw.githubusercontent.com/${repo.owner}/${repo.name}/${branch}/${filePath}`;
     } catch {
