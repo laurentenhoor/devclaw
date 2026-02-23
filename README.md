@@ -24,6 +24,16 @@ Then start onboarding by chatting with your agent in any channel:
 
 ---
 
+## 👋 Hello from the DevClaw Team!
+
+We built DevClaw because we wanted our AI agents to ship code while we sleep — and we think you'll love it too.
+
+Whether you're managing one project or ten, DevClaw turns your group chats into autonomous dev teams that follow your process, use the right models for each task, and keep your issue tracker as the single source of truth.
+
+We're excited to have you here. If you run into any issues or have ideas for making DevClaw better, don't hesitate to open an issue or start a discussion. Happy shipping! 🚀
+
+---
+
 ## What it looks like
 
 You have two projects in two Telegram groups. You go to bed. You wake up:
