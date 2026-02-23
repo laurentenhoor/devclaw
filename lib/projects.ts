@@ -318,6 +318,18 @@ export function getProject(
 }
 
 /**
+ * Read projects.json and return a single project by slug.
+ * Convenience wrapper around readProjects + getProject.
+ */
+export async function loadProjectBySlug(
+  workspaceDir: string,
+  slug: string,
+): Promise<Project | undefined> {
+  const data = await readProjects(workspaceDir);
+  return getProject(data, slug);
+}
+
+/**
  * Get the RoleWorkerState for a given role.
  * Returns an empty state if the role has no workers configured.
  */

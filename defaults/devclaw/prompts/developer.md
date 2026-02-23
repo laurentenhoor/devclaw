@@ -49,6 +49,25 @@ Conventional commits: `feat:`, `fix:`, `chore:`, `refactor:`, `test:`, `docs:`
 
 Use `gh pr create` to open a PR against the base branch. **Do NOT use closing keywords** in the description (no "Closes #X", "Fixes #X"). Use "Addresses issue #X" instead — DevClaw manages issue lifecycle.
 
+### Handling PR Feedback (changes requested / To Improve)
+
+When your task message includes a **PR Feedback** section, it means a reviewer requested changes on an existing PR. You must update that PR — **do NOT create a new one**.
+
+1. Check out the existing branch from the PR (the branch name is in the feedback context)
+2. If a worktree already exists for that branch, `cd` into it
+3. If not, create a worktree from the existing remote branch:
+   ```bash
+   REPO_ROOT="$(git rev-parse --show-toplevel)"
+   BRANCH="<branch-from-pr>"
+   WORKTREE="${REPO_ROOT}.worktrees/${BRANCH}"
+   git fetch origin "$BRANCH"
+   git worktree add "$WORKTREE" "origin/$BRANCH"
+   cd "$WORKTREE"
+   ```
+4. Address the reviewer's comments
+5. Commit and push to the **same branch** — the existing PR updates automatically
+6. Call `work_finish` as usual
+
 ### 5. Call work_finish
 
 ```
