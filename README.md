@@ -2,6 +2,12 @@
   <img src="assets/DevClaw.png" width="300" alt="DevClaw Logo">
 </p>
 
+# Hello, World! 👋
+
+Welcome to DevClaw! This is a test task to add a simple hello message to the README.
+
+---
+
 # DevClaw — Development Plugin for OpenClaw
 
 **Turn any group chat into a dev team that ships.**
