@@ -25,8 +25,11 @@
  *   - abortedLastRun: indicates session hit context limit (#287, #290) — triggers immediate healing.
  */
 import type { StateLabel, IssueProvider, Issue } from "../providers/provider.js";
+import { PrState } from "../providers/provider.js";
 import {
   getRoleWorker,
+  readProjects,
+  getProject,
   updateSlot,
   deactivateWorker,
   type Project,
@@ -36,9 +39,11 @@ import {
   DEFAULT_WORKFLOW,
   getActiveLabel,
   getRevertLabel,
+  getQueueLabels,
   hasWorkflowStates,
   getCurrentStateLabel,
   isOwnedByOrUnclaimed,
+  isFeedbackState,
   type WorkflowConfig,
   type Role,
 } from "../workflow.js";
@@ -108,6 +113,40 @@ async function fetchIssue(
 /** Check if an issue is closed (GitHub returns "CLOSED", GitLab returns "closed"). */
 function isIssueClosed(issue: Issue): boolean {
   return issue.state.toLowerCase() === "closed";
+}
+
+/**
+ * Determine the correct revert label for an orphaned issue.
+ *
+ * If the issue has an open PR with feedback (changes requested, comments),
+ * revert to the feedback queue ("To Improve") instead of the default queue ("To Do").
+ * This prevents feedback cycles from being re-dispatched as fresh tasks.
+ */
+async function resolveOrphanRevertLabel(
+  provider: IssueProvider,
+  issueId: number,
+  role: Role,
+  defaultQueueLabel: string,
+  workflow: WorkflowConfig,
+): Promise<string> {
+  try {
+    const prStatus = await provider.getPrStatus(issueId);
+    // If a PR exists (open, approved, changes requested, or has comments),
+    // the issue was in a feedback cycle — revert to the feedback queue.
+    if (prStatus.url && (
+      prStatus.state === PrState.OPEN ||
+      prStatus.state === PrState.APPROVED ||
+      prStatus.state === PrState.CHANGES_REQUESTED ||
+      prStatus.state === PrState.HAS_COMMENTS
+    )) {
+      const queueLabels = getQueueLabels(workflow, role);
+      const feedbackLabel = queueLabels.find((l) => isFeedbackState(workflow, l));
+      if (feedbackLabel) return feedbackLabel;
+    }
+  } catch {
+    // Best-effort — fall back to default queue on API failure
+  }
+  return defaultQueueLabel;
 }
 
 // ---------------------------------------------------------------------------
@@ -481,7 +520,19 @@ export async function scanOrphanedLabels(opts: {
   // Skip roles without workflow states (e.g. architect — tool-triggered only)
   if (!hasWorkflowStates(workflow, role)) return fixes;
 
-  const roleWorker = getRoleWorker(project, role);
+  // Re-read projects.json from disk to avoid stale snapshot.
+  // The heartbeat reads projects once per tick, but work_finish may have
+  // deactivated a slot between then and now — using the stale snapshot
+  // causes false-positive orphan detection.
+  let freshProject: Project;
+  try {
+    const data = await readProjects(workspaceDir);
+    freshProject = getProject(data, projectSlug) ?? project;
+  } catch {
+    freshProject = project; // Fall back to stale snapshot on read failure
+  }
+
+  const roleWorker = getRoleWorker(freshProject, role);
 
   // Get labels from workflow config
   const activeLabel = getActiveLabel(workflow, role);
@@ -532,9 +583,13 @@ export async function scanOrphanedLabels(opts: {
 
       if (autoFix) {
         try {
-          await provider.transitionLabel(issue.iid, activeLabel, queueLabel);
+          const revertTarget = await resolveOrphanRevertLabel(
+            provider, issue.iid, role, queueLabel, workflow,
+          );
+          await provider.transitionLabel(issue.iid, activeLabel, revertTarget);
           fix.fixed = true;
-          fix.labelReverted = `${activeLabel} → ${queueLabel}`;
+          fix.labelReverted = `${activeLabel} → ${revertTarget}`;
+          fix.issue.expectedLabel = revertTarget;
         } catch {
           fix.labelRevertFailed = true;
         }
