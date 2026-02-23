@@ -336,6 +336,13 @@ export class TestProvider implements IssueProvider {
     return issue;
   }
 
+  async uploadAttachment(
+    _issueId: number,
+    _file: { filename: string; buffer: Buffer; mimeType: string },
+  ): Promise<string | null> {
+    return null;
+  }
+
   async healthCheck(): Promise<boolean> {
     this.calls.push({ method: "healthCheck", args: {} });
     return true;

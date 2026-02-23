@@ -631,6 +631,62 @@ export class GitHubProvider implements IssueProvider {
     } catch { return false; }
   }
 
+  async uploadAttachment(
+    issueId: number,
+    file: { filename: string; buffer: Buffer; mimeType: string },
+  ): Promise<string | null> {
+    try {
+      const branch = "devclaw-attachments";
+      const safeFilename = file.filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const filePath = `attachments/${issueId}/${Date.now()}-${safeFilename}`;
+      const base64Content = file.buffer.toString("base64");
+
+      // Get repo owner/name
+      const repo = await this.getRepoInfo();
+      if (!repo) return null;
+
+      // Ensure branch exists
+      let branchExists = false;
+      try {
+        await this.gh(["api", `repos/${repo.owner}/${repo.name}/git/ref/heads/${branch}`]);
+        branchExists = true;
+      } catch { /* doesn't exist */ }
+
+      if (!branchExists) {
+        const raw = await this.gh([
+          "repo", "view", "--json", "defaultBranchRef", "--jq", ".defaultBranchRef.name",
+        ]);
+        const defaultBranch = raw.trim();
+        const shaRaw = await this.gh([
+          "api", `repos/${repo.owner}/${repo.name}/git/ref/heads/${defaultBranch}`,
+          "--jq", ".object.sha",
+        ]);
+        await this.gh([
+          "api", `repos/${repo.owner}/${repo.name}/git/refs`,
+          "--method", "POST",
+          "--field", `ref=refs/heads/${branch}`,
+          "--field", `sha=${shaRaw.trim()}`,
+        ]);
+      }
+
+      // Upload via Contents API
+      const payload = JSON.stringify({
+        message: `attachment: ${file.filename} for issue #${issueId}`,
+        content: base64Content,
+        branch,
+      });
+      await runCommand(
+        ["gh", "api", `repos/${repo.owner}/${repo.name}/contents/${filePath}`,
+          "--method", "PUT", "--input", "-"],
+        { timeoutMs: 30_000, cwd: this.repoPath, input: payload },
+      );
+
+      return `https://raw.githubusercontent.com/${repo.owner}/${repo.name}/${branch}/${filePath}`;
+    } catch {
+      return null;
+    }
+  }
+
   async healthCheck(): Promise<boolean> {
     try { await this.gh(["auth", "status"]); return true; } catch { return false; }
   }

@@ -20,6 +20,7 @@ import { notify, getNotificationConfig } from "./notify.js";
 import { loadConfig, type ResolvedRoleConfig } from "./config/index.js";
 import { ReviewPolicy, resolveReviewRouting, resolveNotifyChannel, isFeedbackState, hasReviewCheck, producesReviewableWork } from "./workflow.js";
 import { fetchPrFeedback, fetchPrContext, formatPrContext, formatPrFeedback, type PrFeedback, type PrContext } from "./pr-context.js";
+import { formatAttachmentsForTask } from "./attachments.js";
 
 export type DispatchOpts = {
   workspaceDir: string;
@@ -77,6 +78,8 @@ export function buildTaskMessage(opts: {
   resolvedRole?: ResolvedRoleConfig;
   prContext?: PrContext;
   prFeedback?: PrFeedback;
+  /** Pre-formatted attachment context string (from formatAttachmentsForTask) */
+  attachmentContext?: string;
 }): string {
   const {
     projectName, projectSlug, role, issueId, issueTitle,
@@ -106,6 +109,7 @@ export function buildTaskMessage(opts: {
 
   if (opts.prContext) parts.push(...formatPrContext(opts.prContext));
   if (opts.prFeedback) parts.push(...formatPrFeedback(opts.prFeedback, baseBranch));
+  if (opts.attachmentContext) parts.push(opts.attachmentContext);
 
   parts.push(
     ``,
@@ -194,11 +198,17 @@ export async function dispatchTask(
   const prContext = hasReviewCheck(workflow, role)
     ? await fetchPrContext(provider, issueId) : undefined;
 
+  // Fetch attachment context (best-effort — never blocks dispatch)
+  let attachmentContext: string | undefined;
+  try {
+    attachmentContext = await formatAttachmentsForTask(workspaceDir, project.slug, issueId) || undefined;
+  } catch { /* best-effort */ }
+
   const taskMessage = buildTaskMessage({
     projectName: project.name, projectSlug: project.slug, role, issueId,
     issueTitle, issueDescription, issueUrl,
     repo: project.repo, baseBranch: project.baseBranch,
-    comments, resolvedRole, prContext, prFeedback,
+    comments, resolvedRole, prContext, prFeedback, attachmentContext,
   });
 
   // Mark issue + PR as managed and all consumed comments as seen (fire-and-forget)

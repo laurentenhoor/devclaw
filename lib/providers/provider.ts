@@ -156,5 +156,17 @@ export interface IssueProvider {
   /** Add a comment to an issue. Returns the new comment's ID. */
   addComment(issueId: number, body: string): Promise<number>;
   editIssue(issueId: number, updates: { title?: string; body?: string }): Promise<Issue>;
+  /**
+   * Upload a file attachment and return a public URL for embedding in issues.
+   * Returns null if the provider doesn't support uploads or the upload fails.
+   *
+   * GitHub: commits file to a `devclaw-attachments` branch, returns raw URL.
+   * GitLab: uses the native project uploads API.
+   */
+  uploadAttachment(issueId: number, file: {
+    filename: string;
+    buffer: Buffer;
+    mimeType: string;
+  }): Promise<string | null>;
   healthCheck(): Promise<boolean>;
 }
