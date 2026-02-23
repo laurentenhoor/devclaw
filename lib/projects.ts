@@ -89,7 +89,7 @@ export type SlotState = {
   startTime: string | null;
   previousLabel?: string | null;
   /** Deterministic fun name for this slot (e.g. "Ada", "Grace"). */
-  slotName?: string;
+  name?: string;
 };
 
 /** Per-level worker state: levels map instead of flat slots array. */
@@ -387,7 +387,7 @@ export async function activateWorker(
     /** Slot index within the level's array. If omitted, finds first free slot. */
     slotIndex?: number;
     /** Deterministic fun name for this slot. */
-    slotName?: string;
+    name?: string;
   },
 ): Promise<ProjectsData> {
   await acquireLock(workspaceDir);
@@ -416,7 +416,7 @@ export async function activateWorker(
       sessionKey: params.sessionKey ?? slots[idx]!.sessionKey,
       startTime: params.startTime ?? new Date().toISOString(),
       previousLabel: params.previousLabel ?? null,
-      slotName: params.slotName ?? slots[idx]!.slotName,
+      name: params.name ?? slots[idx]!.name,
     };
 
     project.workers[role] = rw;
@@ -474,7 +474,7 @@ export async function deactivateWorker(
           sessionKey: slot.sessionKey,
           startTime: null,
           previousLabel: null,
-          slotName: slot.slotName,
+          name: slot.name,
         };
       }
     }

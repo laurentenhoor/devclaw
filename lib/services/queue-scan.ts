@@ -54,7 +54,7 @@ export function detectLevelFromLabels(labels: string[]): string | null {
  */
 export function detectRoleLevelFromLabels(
   labels: string[],
-): { role: string; level: string; slotName?: string } | null {
+): { role: string; level: string; name?: string } | null {
   for (const label of labels) {
     const parts = label.split(":");
     if (parts.length < 2) continue;
@@ -62,7 +62,7 @@ export function detectRoleLevelFromLabels(
     const level = parts[1]!.toLowerCase();
     const roleLevels = getLevelsForRole(role);
     if (roleLevels.includes(level)) {
-      return { role, level, slotName: parts[2] };
+      return { role, level, name: parts[2] };
     }
   }
   return null;

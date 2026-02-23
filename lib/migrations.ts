@@ -113,6 +113,7 @@ function parseLegacyFlatState(worker: Record<string, unknown>, role: string): Ro
     sessionKey,
     startTime: worker.startTime as string | null,
     previousLabel: (worker.previousLabel as string | null) ?? null,
+    name: (worker.name ?? worker.slotName) as string | undefined,
   };
 
   return { levels: { [migratedLevel]: [slot] } };
@@ -137,6 +138,7 @@ function parseOldSlotState(worker: Record<string, unknown>, role: string): RoleW
       sessionKey: s.sessionKey as string | null,
       startTime: s.startTime as string | null,
       previousLabel: (s.previousLabel as string | null) ?? null,
+      name: (s.name ?? s.slotName) as string | undefined,
     });
   }
 
@@ -165,6 +167,7 @@ function parseLevelState(worker: Record<string, unknown>, role: string): RoleWor
         sessionKey: s.sessionKey as string | null,
         startTime: s.startTime as string | null,
         previousLabel: (s.previousLabel as string | null) ?? null,
+        name: (s.name ?? s.slotName) as string | undefined,
       });
     }
   }

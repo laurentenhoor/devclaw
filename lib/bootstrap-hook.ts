@@ -18,13 +18,13 @@ import { DATA_DIR } from "./setup/migrate-layout.js";
 /**
  * Parse a DevClaw subagent session key to extract project name and role.
  *
- * Session key format (named): `agent:{agentId}:subagent:{projectName}-{role}-{level}-{slotName}`
+ * Session key format (named): `agent:{agentId}:subagent:{projectName}-{role}-{level}-{name}` (name is lowercase)
  * Session key format (numeric): `agent:{agentId}:subagent:{projectName}-{role}-{level}-{slotIndex}`
  * Session key format (legacy): `agent:{agentId}:subagent:{projectName}-{role}-{level}`
  * Examples:
- *   - `agent:devclaw:subagent:my-project-developer-medior-Ada` → { projectName: "my-project", role: "developer" }
- *   - `agent:devclaw:subagent:my-project-developer-medior-0`   → { projectName: "my-project", role: "developer" }
- *   - `agent:devclaw:subagent:webapp-tester-medior`             → { projectName: "webapp", role: "tester" } (legacy)
+ *   - `agent:devclaw:subagent:my-project-developer-medior-ada`  → { projectName: "my-project", role: "developer" }
+ *   - `agent:devclaw:subagent:my-project-developer-medior-0`    → { projectName: "my-project", role: "developer" }
+ *   - `agent:devclaw:subagent:webapp-tester-medior`              → { projectName: "webapp", role: "tester" } (legacy)
  *
  * Note: projectName may contain hyphens, so we match role from the end.
  */
@@ -32,7 +32,7 @@ export function parseDevClawSessionKey(
   sessionKey: string,
 ): { projectName: string; role: string } | null {
   const rolePattern = getSessionKeyRolePattern();
-  // Named/numeric format: ...-{role}-{level}-{slotNameOrIndex}
+  // Named/numeric format: ...-{role}-{level}-{nameOrIndex}
   const newMatch = sessionKey.match(
     new RegExp(`:subagent:(.+)-(${rolePattern})-[^-]+-[^-]+$`),
   );

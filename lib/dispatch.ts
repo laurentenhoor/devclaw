@@ -189,7 +189,7 @@ export async function dispatchTask(
   // Compute session key deterministically (avoids waiting for gateway)
   // Slot name provides both collision prevention and human-readable identity
   const botName = slotName(project.name, role, level, slotIndex);
-  const sessionKey = `agent:${agentId ?? "unknown"}:subagent:${project.name}-${role}-${level}-${botName}`;
+  const sessionKey = `agent:${agentId ?? "unknown"}:subagent:${project.name}-${role}-${level}-${botName.toLowerCase()}`;
 
   // Clear stale session key if it doesn't match the current deterministic key
   // (handles migration from old numeric format like ...-0 to name-based ...-Cordelia)
@@ -334,7 +334,7 @@ export async function dispatchTask(
   // Step 5: Update worker state
   try {
     await recordWorkerState(workspaceDir, project.slug, role, slotIndex, {
-      issueId, level, sessionKey, sessionAction, fromLabel, slotName: botName,
+      issueId, level, sessionKey, sessionAction, fromLabel, name: botName,
     });
   } catch (err) {
     // Session is already dispatched — log warning but don't fail
@@ -561,7 +561,7 @@ function sendToAgent(
 
 async function recordWorkerState(
   workspaceDir: string, slug: string, role: string, slotIndex: number,
-  opts: { issueId: number; level: string; sessionKey: string; sessionAction: "spawn" | "send"; fromLabel?: string; slotName?: string },
+  opts: { issueId: number; level: string; sessionKey: string; sessionAction: "spawn" | "send"; fromLabel?: string; name?: string },
 ): Promise<void> {
   await activateWorker(workspaceDir, slug, role, {
     issueId: String(opts.issueId),
@@ -570,7 +570,7 @@ async function recordWorkerState(
     startTime: new Date().toISOString(),
     previousLabel: opts.fromLabel,
     slotIndex,
-    slotName: opts.slotName,
+    name: opts.name,
   });
 }
 
