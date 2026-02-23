@@ -301,6 +301,7 @@ export async function dispatchTask(
       issueUrl,
       role,
       level,
+      name: botName,
       sessionAction,
     },
     {
