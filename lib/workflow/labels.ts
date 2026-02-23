@@ -153,19 +153,3 @@ export function getRoleLabelColor(role: string): string {
   return ROLE_LABEL_COLORS[role] ?? "#cccccc";
 }
 
-// ---------------------------------------------------------------------------
-// Sync helper
-// ---------------------------------------------------------------------------
-
-/**
- * Ensure all workflow state labels exist in the issue tracker.
- */
-export async function ensureWorkflowLabels(
-  workflow: WorkflowConfig,
-  ensureLabel: (name: string, color: string) => Promise<void>,
-): Promise<void> {
-  const colors = getLabelColors(workflow);
-  for (const [label, color] of Object.entries(colors)) {
-    await ensureLabel(label, color);
-  }
-}

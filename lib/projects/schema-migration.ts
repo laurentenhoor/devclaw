@@ -116,8 +116,6 @@ export async function migrateLegacySchema(data: any, runCommand?: RunCommand): P
       deployBranch: firstProj.deployBranch,
       channels,
       provider: firstProj.provider,
-      maxDevWorkers: firstProj.maxDevWorkers,
-      maxQaWorkers: firstProj.maxQaWorkers,
       workers: mergedWorkers,
     };
   }

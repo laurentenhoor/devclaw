@@ -23,6 +23,8 @@ import type { Agent } from "./agent-discovery.js";
 import { discoverAgents } from "./agent-discovery.js";
 import { HEARTBEAT_DEFAULTS, resolveHeartbeatConfig } from "./config.js";
 import type { HeartbeatConfig } from "./config.js";
+
+export { HEARTBEAT_DEFAULTS };
 import { tick } from "./tick-runner.js";
 import type { TickResult } from "./tick-runner.js";
 
@@ -197,9 +199,3 @@ function logTickResult(
   }
 }
 
-// ---------------------------------------------------------------------------
-// Barrel re-exports
-// ---------------------------------------------------------------------------
-
-export { type HeartbeatConfig, HEARTBEAT_DEFAULTS, resolveHeartbeatConfig } from "./config.js";
-export { tick, type TickResult } from "./tick-runner.js";

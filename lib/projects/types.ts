@@ -23,18 +23,6 @@ export type RoleWorkerState = {
 };
 
 /**
- * Legacy WorkerState — kept for migration detection only.
- */
-export type LegacyWorkerState = {
-  active: boolean;
-  issueId: string | null;
-  startTime: string | null;
-  level: string | null;
-  sessions: Record<string, string | null>;
-  previousLabel?: string | null;
-};
-
-/**
  * Channel registration: maps a groupId to messaging endpoint with event filters.
  */
 export type Channel = {
@@ -61,8 +49,6 @@ export type Project = {
   channels: Channel[];
   /** Issue tracker provider type (github or gitlab). Auto-detected at registration, stored for reuse. */
   provider?: "github" | "gitlab";
-  maxDevWorkers?: number;
-  maxQaWorkers?: number;
   /** Worker state per role (developer, tester, architect, or custom roles). Shared across all channels. */
   workers: Record<string, RoleWorkerState>;
 };
@@ -79,8 +65,6 @@ export type LegacyProject = {
   deployBranch: string;
   channel?: string;
   provider?: "github" | "gitlab";
-  maxDevWorkers?: number;
-  maxQaWorkers?: number;
   workers: Record<string, RoleWorkerState>;
 };
 

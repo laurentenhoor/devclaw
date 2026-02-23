@@ -320,7 +320,3 @@ async function auditDispatch(
   });
 }
 
-// Re-export sub-modules for consumers that import from dispatch
-export { buildTaskMessage, buildAnnouncement, formatSessionLabel } from "./message-builder.js";
-export { ensureSessionFireAndForget, sendToAgent, shouldClearSession } from "./session.js";
-export { acknowledgeComments, EYES_EMOJI } from "./acknowledge.js";

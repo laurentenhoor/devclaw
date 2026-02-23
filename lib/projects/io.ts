@@ -61,7 +61,7 @@ export async function releaseLock(workspaceDir: string): Promise<void> {
 // Read / Write
 // ---------------------------------------------------------------------------
 
-export function projectsPath(workspaceDir: string): string {
+function projectsPath(workspaceDir: string): string {
   return path.join(workspaceDir, DATA_DIR, "projects.json");
 }
 

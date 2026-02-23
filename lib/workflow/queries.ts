@@ -106,23 +106,6 @@ export function detectRoleFromLabel(workflow: WorkflowConfig, label: string): Ro
   return null;
 }
 
-/**
- * Check if a label is a queue label.
- */
-export function isQueueLabel(workflow: WorkflowConfig, label: string): boolean {
-  return Object.values(workflow.states).some(
-    (s) => s.label === label && s.type === StateType.QUEUE,
-  );
-}
-
-/**
- * Check if a label is an active label.
- */
-export function isActiveLabel(workflow: WorkflowConfig, label: string): boolean {
-  return Object.values(workflow.states).some(
-    (s) => s.label === label && s.type === StateType.ACTIVE,
-  );
-}
 
 /**
  * Find state config by label.
