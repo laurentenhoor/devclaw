@@ -20,6 +20,8 @@ import { createUpgradeTool } from "./lib/tools/upgrade.js";
 import { registerCli } from "./lib/cli.js";
 import { registerHeartbeatService } from "./lib/services/heartbeat.js";
 import { registerBootstrapHook } from "./lib/bootstrap-hook.js";
+import { createTaskAttachTool } from "./lib/tools/task-attach.js";
+import { registerAttachmentHook } from "./lib/attachment-hook.js";
 import { initRunCommand } from "./lib/run-command.js";
 
 const plugin = {
@@ -83,6 +85,7 @@ const plugin = {
     api.registerTool(createTaskUpdateTool(api), { names: ["task_update"] });
     api.registerTool(createTaskCommentTool(api), { names: ["task_comment"] });
     api.registerTool(createTaskEditBodyTool(api), { names: ["task_edit_body"] });
+    api.registerTool(createTaskAttachTool(api), { names: ["task_attach"] });
 
     // Architect
     api.registerTool(createResearchTaskTool(api), { names: ["research_task"] });
@@ -123,9 +126,10 @@ const plugin = {
 
     // Bootstrap hooks for worker instruction injection (hybrid: internal + lifecycle)
     registerBootstrapHook(api);
+    registerAttachmentHook(api);
 
     api.logger.info(
-      "DevClaw plugin registered (18 tools, 1 CLI command group, 1 service, 2 hooks)",
+      "DevClaw plugin registered (19 tools, 1 CLI command group, 1 service, 3 hooks)",
     );
   },
 };
