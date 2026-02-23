@@ -19,7 +19,7 @@ import type { StateLabel } from "../providers/provider.js";
 import { getRoleWorker, countActiveSlots } from "../projects.js";
 import { dispatchTask } from "../dispatch.js";
 import { log as auditLog } from "../audit.js";
-import { requireWorkspaceDir, resolveProject, resolveProvider, getPluginConfig } from "../tool-helpers.js";
+import { requireWorkspaceDir, resolveProject, resolveProvider, getPluginConfig, autoAssignOwnerLabel } from "../tool-helpers.js";
 import { loadConfig } from "../config/index.js";
 import { getNotifyLabel, NOTIFY_LABEL_COLOR, NOTIFY_LABEL_PREFIX, getActiveLabel } from "../workflow.js";
 import { selectLevel } from "../model-selector.js";
@@ -150,6 +150,9 @@ Example:
             .catch(() => {});
         }
       }
+
+      // Auto-assign owner label to this instance (best-effort).
+      autoAssignOwnerLabel(workspaceDir, provider, issue.iid, project).catch(() => {});
 
       // Check worker availability across all levels
       const roleWorker = getRoleWorker(project, role);

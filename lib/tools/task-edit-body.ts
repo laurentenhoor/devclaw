@@ -14,7 +14,7 @@ import type { ToolContext } from "../types.js";
 import { log as auditLog } from "../audit.js";
 import { loadConfig } from "../config/index.js";
 import { getInitialStateLabel, getCurrentStateLabel } from "../workflow.js";
-import { requireWorkspaceDir, resolveProject, resolveProvider } from "../tool-helpers.js";
+import { requireWorkspaceDir, resolveProject, resolveProvider, autoAssignOwnerLabel } from "../tool-helpers.js";
 
 export function createTaskEditBodyTool(_api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
@@ -128,6 +128,9 @@ Examples:
         ...(newTitle !== undefined ? { title: newTitle } : {}),
         ...(newBody !== undefined ? { body: newBody } : {}),
       });
+
+      // Auto-assign owner label to this instance (best-effort).
+      autoAssignOwnerLabel(workspaceDir, provider, issueId, project).catch(() => {});
 
       // Post auto-comment for traceability (best-effort — must not abort on failure)
       if (addComment) {

@@ -10,7 +10,7 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
 import { log as auditLog } from "../audit.js";
-import { requireWorkspaceDir, resolveProject, resolveProvider } from "../tool-helpers.js";
+import { requireWorkspaceDir, resolveProject, resolveProvider, autoAssignOwnerLabel } from "../tool-helpers.js";
 import { getAllRoleIds, getFallbackEmoji } from "../roles/index.js";
 
 /** Valid author roles for attribution — all registry roles + orchestrator */
@@ -81,6 +81,9 @@ Examples:
 
       // Mark as system-managed (best-effort).
       provider.reactToIssueComment(issueId, commentId, "eyes").catch(() => {});
+
+      // Auto-assign owner label to this instance (best-effort).
+      autoAssignOwnerLabel(workspaceDir, provider, issueId, project).catch(() => {});
 
       await auditLog(workspaceDir, "task_comment", {
         project: project.name, issueId,

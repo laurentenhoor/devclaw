@@ -8,6 +8,9 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import type { ToolContext } from "./types.js";
 import { readProjects, getProject, type Project, type ProjectsData } from "./projects.js";
 import { createProvider, type ProviderWithType } from "./providers/index.js";
+import { loadConfig } from "./config/index.js";
+import { loadInstanceName } from "./instance.js";
+import { getOwnerLabel, OWNER_LABEL_COLOR } from "./workflow.js";
 
 /**
  * Require workspaceDir from context or throw a clear error.
@@ -48,4 +51,36 @@ export async function resolveProvider(project: Project): Promise<ProviderWithTyp
  */
 export function getPluginConfig(api: OpenClawPluginApi): Record<string, unknown> | undefined {
   return api.pluginConfig as Record<string, unknown> | undefined;
+}
+
+/**
+ * Auto-assign owner label to an issue based on the current instance.
+ *
+ * This ensures that when a task tool creates or modifies an issue,
+ * it automatically claims ownership for the executing instance.
+ * Best-effort: failures are logged but don't block the operation.
+ */
+export async function autoAssignOwnerLabel(
+  workspaceDir: string,
+  provider: ProviderWithType["provider"],
+  issueId: number,
+  project: Project,
+): Promise<void> {
+  try {
+    const resolvedConfig = await loadConfig(workspaceDir, project.name);
+    const instanceName = await loadInstanceName(
+      workspaceDir,
+      resolvedConfig.instanceName,
+    );
+    const ownerLabel = getOwnerLabel(instanceName);
+
+    // Ensure the owner label exists in the issue tracker
+    await provider.ensureLabel(ownerLabel, OWNER_LABEL_COLOR);
+
+    // Add the owner label to the issue
+    await provider.addLabel(issueId, ownerLabel);
+  } catch (error) {
+    // Log but don't block: auto-assigning owner label is best-effort
+    console.warn(`Failed to auto-assign owner label to issue #${issueId}:`, error);
+  }
 }
