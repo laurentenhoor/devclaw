@@ -95,12 +95,12 @@ workflow:
       check: prApproved
       on:
         PICKUP: reviewing
-        APPROVED:
+        SKIP:
           target: toTest
           actions:
             - mergePr
             - gitPull
-        SKIP:
+        APPROVED:
           target: toTest
           actions:
             - mergePr
