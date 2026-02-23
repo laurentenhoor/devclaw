@@ -14,6 +14,7 @@
  */
 import fs from "node:fs/promises";
 import path from "node:path";
+import os from "node:os";
 import crypto from "node:crypto";
 import { DATA_DIR } from "./setup/migrate-layout.js";
 import type { IssueProvider } from "./providers/provider.js";
@@ -326,123 +327,154 @@ function formatSize(bytes: number): string {
 }
 
 // ---------------------------------------------------------------------------
-// GitHub upload via repository content API
+// Platform upload — GitHub and GitLab
 // ---------------------------------------------------------------------------
 
 /**
- * Upload a file to GitHub as a repository asset and return the raw URL.
- * Uses a dedicated `devclaw-attachments` branch to avoid polluting main.
- * Falls back gracefully if upload fails (attachment is still stored locally).
+ * Upload a file to the issue tracker and return a public URL.
+ *
+ * GitHub strategy: Use the Contents API to commit the file to a dedicated
+ * `devclaw-attachments` orphan branch, then return the raw content URL.
+ * This keeps attachments out of the main branch history.
+ *
+ * GitLab strategy: Use the native project uploads API (POST /projects/:id/uploads)
+ * which returns a markdown-ready URL. glab CLI is used for auth token resolution.
+ *
+ * Both return null on failure — the caller falls back to local-only storage.
  */
-export async function uploadToGitHub(
+export async function uploadToProvider(
+  repoPath: string,
+  providerType: "github" | "gitlab",
+  projectSlug: string,
+  issueId: number,
+  attachment: AttachmentMeta,
+  fileBuffer: Buffer,
+): Promise<string | null> {
+  if (providerType === "github") {
+    return uploadToGitHub(repoPath, projectSlug, issueId, attachment, fileBuffer);
+  }
+  if (providerType === "gitlab") {
+    return uploadToGitLab(repoPath, attachment, fileBuffer);
+  }
+  return null;
+}
+
+async function uploadToGitHub(
   repoPath: string,
   projectSlug: string,
   issueId: number,
   attachment: AttachmentMeta,
   fileBuffer: Buffer,
 ): Promise<string | null> {
+  const { runCommand } = await import("./run-command.js");
+
+  const branch = "devclaw-attachments";
+  const filePath = `attachments/${projectSlug}/${issueId}/${attachment.localPath}`;
+  const base64Content = fileBuffer.toString("base64");
+
+  // Step 1: Get repo owner/name for constructing the raw URL
+  const repoInfoRaw = await runCommand(
+    ["gh", "repo", "view", "--json", "owner,name,defaultBranchRef", "--jq",
+      '{owner: .owner.login, name: .name, defaultBranch: .defaultBranchRef.name}'],
+    { timeoutMs: 15_000, cwd: repoPath },
+  );
+  const repoInfo = JSON.parse(repoInfoRaw.stdout.trim());
+
+  // Step 2: Ensure the attachments branch exists
+  let branchExists = false;
   try {
-    const { runCommand } = await import("./run-command.js");
-
-    // Use the GitHub API to upload via issue comment (most reliable cross-platform method)
-    // GitHub allows file references in issue comments. We use the repository content API
-    // to store the file on a special branch and link to the raw content.
-    const branch = "devclaw-attachments";
-    const filePath = `attachments/${projectSlug}/${issueId}/${attachment.localPath}`;
-    const base64Content = fileBuffer.toString("base64");
-
-    // Ensure branch exists (create from default branch if not)
-    try {
-      await runCommand(
-        ["gh", "api", "repos/:owner/:repo/git/ref/heads/" + branch],
-        { timeoutMs: 15_000, cwd: repoPath },
-      );
-    } catch {
-      // Branch doesn't exist — create it from default branch
-      try {
-        const defaultBranchRaw = await runCommand(
-          ["gh", "repo", "view", "--json", "defaultBranchRef", "--jq", ".defaultBranchRef.name"],
-          { timeoutMs: 15_000, cwd: repoPath },
-        );
-        const defaultBranch = defaultBranchRaw.stdout.trim();
-        const shaRaw = await runCommand(
-          ["gh", "api", `repos/:owner/:repo/git/ref/heads/${defaultBranch}`, "--jq", ".object.sha"],
-          { timeoutMs: 15_000, cwd: repoPath },
-        );
-        const sha = shaRaw.stdout.trim();
-        await runCommand(
-          ["gh", "api", "repos/:owner/:repo/git/refs", "--method", "POST",
-            "--field", `ref=refs/heads/${branch}`,
-            "--field", `sha=${sha}`],
-          { timeoutMs: 15_000, cwd: repoPath },
-        );
-      } catch {
-        // Can't create branch — fall back to local-only storage
-        return null;
-      }
-    }
-
-    // Upload file content
-    try {
-      const payload = JSON.stringify({
-        message: `attachment: ${attachment.filename} for issue #${issueId}`,
-        content: base64Content,
-        branch,
-      });
-      const result = await runCommand(
-        ["gh", "api", `repos/:owner/:repo/contents/${filePath}`,
-          "--method", "PUT",
-          "--input", "-"],
-        { timeoutMs: 30_000, cwd: repoPath, input: payload },
-      );
-      const parsed = JSON.parse(result.stdout);
-      return parsed.content?.download_url ?? null;
-    } catch {
-      return null;
-    }
-  } catch {
-    return null;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// GitLab upload via project upload API
-// ---------------------------------------------------------------------------
-
-/**
- * Upload a file to GitLab using the project uploads API.
- * Returns the markdown-compatible URL for embedding.
- */
-export async function uploadToGitLab(
-  repoPath: string,
-  attachment: AttachmentMeta,
-  filePath: string,
-): Promise<string | null> {
-  try {
-    const { runCommand } = await import("./run-command.js");
-
-    // GitLab has a native uploads endpoint: POST /projects/:id/uploads
-    // Use glab to get the project path, then upload via API
-    const projectRaw = await runCommand(
-      ["glab", "api", "projects/:id", "--method", "GET"],
+    await runCommand(
+      ["gh", "api", `repos/${repoInfo.owner}/${repoInfo.name}/git/ref/heads/${branch}`],
       { timeoutMs: 15_000, cwd: repoPath },
     );
-    const project = JSON.parse(projectRaw.stdout);
-    const projectId = project.id;
-    const webUrl = project.web_url;
+    branchExists = true;
+  } catch { /* branch doesn't exist yet */ }
 
-    // Upload using multipart form data via curl (glab doesn't support file upload directly)
+  if (!branchExists) {
+    // Create branch from the default branch HEAD
+    const shaRaw = await runCommand(
+      ["gh", "api",
+        `repos/${repoInfo.owner}/${repoInfo.name}/git/ref/heads/${repoInfo.defaultBranch}`,
+        "--jq", ".object.sha"],
+      { timeoutMs: 15_000, cwd: repoPath },
+    );
+    const sha = shaRaw.stdout.trim();
+    await runCommand(
+      ["gh", "api", `repos/${repoInfo.owner}/${repoInfo.name}/git/refs`,
+        "--method", "POST",
+        "--field", `ref=refs/heads/${branch}`,
+        "--field", `sha=${sha}`],
+      { timeoutMs: 15_000, cwd: repoPath },
+    );
+  }
+
+  // Step 3: Upload file via Contents API (PUT creates or updates)
+  const payload = JSON.stringify({
+    message: `attachment: ${attachment.filename} for issue #${issueId}`,
+    content: base64Content,
+    branch,
+  });
+  await runCommand(
+    ["gh", "api", `repos/${repoInfo.owner}/${repoInfo.name}/contents/${filePath}`,
+      "--method", "PUT", "--input", "-"],
+    { timeoutMs: 30_000, cwd: repoPath, input: payload },
+  );
+
+  // Step 4: Construct the raw URL (more reliable than parsing response)
+  return `https://raw.githubusercontent.com/${repoInfo.owner}/${repoInfo.name}/${branch}/${filePath}`;
+}
+
+async function uploadToGitLab(
+  repoPath: string,
+  attachment: AttachmentMeta,
+  fileBuffer: Buffer,
+): Promise<string | null> {
+  const { runCommand } = await import("./run-command.js");
+
+  // Step 1: Get project info and auth token from glab
+  const projectRaw = await runCommand(
+    ["glab", "api", "projects/:id", "--method", "GET"],
+    { timeoutMs: 15_000, cwd: repoPath },
+  );
+  const project = JSON.parse(projectRaw.stdout);
+  const projectId: number = project.id;
+  const webUrl: string = project.web_url;
+
+  // Step 2: Get the auth token from glab config
+  const tokenRaw = await runCommand(
+    ["glab", "config", "get", "token"],
+    { timeoutMs: 10_000, cwd: repoPath },
+  );
+  const token = tokenRaw.stdout.trim();
+  if (!token) throw new Error("No GitLab token from glab config");
+
+  // Step 3: Write file buffer to a temp file for curl upload
+  const tmpFile = path.join(
+    await fs.mkdtemp(path.join(os.tmpdir(), "devclaw-upload-")),
+    attachment.filename,
+  );
+  await fs.writeFile(tmpFile, fileBuffer);
+
+  try {
+    // Step 4: Upload via GitLab project uploads API
+    const apiBase = webUrl.replace(/\/[^/]+\/[^/]+\/?$/, "");
     const result = await runCommand(
-      ["curl", "--silent", "--fail",
-        "--header", `PRIVATE-TOKEN: $(glab config get token)`,
-        "--form", `file=@${filePath}`,
-        `${webUrl.replace(/\/$/, "")}/api/v4/projects/${projectId}/uploads`],
+      ["curl", "--silent", "--fail", "--show-error",
+        "--header", `PRIVATE-TOKEN: ${token}`,
+        "--form", `file=@${tmpFile}`,
+        `${apiBase}/api/v4/projects/${projectId}/uploads`],
       { timeoutMs: 30_000, cwd: repoPath },
     );
     const parsed = JSON.parse(result.stdout);
-    return parsed.full_path ? `${webUrl}${parsed.full_path}` : (parsed.url ?? null);
-  } catch {
+    // GitLab returns { alt, url, full_path, markdown }
+    // full_path is relative to the project, url is the upload path
+    if (parsed.full_path) return `${webUrl}${parsed.full_path}`;
+    if (parsed.url) return `${webUrl}${parsed.url}`;
     return null;
+  } finally {
+    // Clean up temp file
+    await fs.unlink(tmpFile).catch(() => {});
+    await fs.rmdir(path.dirname(tmpFile)).catch(() => {});
   }
 }
 
@@ -486,14 +518,16 @@ export async function processAttachmentMessage(opts: {
         telegramFileId: tgFile.file_id,
       });
 
-      // Try to upload to GitHub/GitLab for public URL
-      const localFilePath = getAttachmentPath(workspaceDir, projectSlug, issueId, meta.localPath);
+      // Upload to GitHub/GitLab for public URL
       let publicUrl: string | null = null;
-
-      if (providerType === "github") {
-        publicUrl = await uploadToGitHub(repoPath, projectSlug, issueId, meta, buffer);
-      } else if (providerType === "gitlab") {
-        publicUrl = await uploadToGitLab(repoPath, meta, localFilePath);
+      try {
+        publicUrl = await uploadToProvider(repoPath, providerType, projectSlug, issueId, meta, buffer);
+      } catch (uploadErr) {
+        await auditLog(workspaceDir, "attachment_upload_error", {
+          project: projectSlug, issueId, filename: meta.filename,
+          provider: providerType,
+          error: (uploadErr as Error).message ?? String(uploadErr),
+        });
       }
 
       if (publicUrl) {

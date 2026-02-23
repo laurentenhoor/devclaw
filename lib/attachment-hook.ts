@@ -4,6 +4,8 @@
  * Listens for incoming Telegram messages with media and issue references (#N).
  * When both are present, downloads the file and associates it with the issue.
  */
+import { homedir } from "node:os";
+import path from "node:path";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import {
   extractTelegramAttachments,
@@ -53,8 +55,6 @@ function resolveWorkspaceDir(config: Record<string, unknown>): string | null {
   const devclaw = agents?.list?.find((a) => a.id === "devclaw");
   if (devclaw?.workspace) return devclaw.workspace;
   // Fallback to standard path
-  const { homedir } = require("node:os");
-  const path = require("node:path");
   const fallback = path.join(homedir(), ".openclaw", "workspace-devclaw");
   return fallback;
 }
