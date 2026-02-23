@@ -17,6 +17,7 @@ import { getAllRoleIds, getLevelsForRole } from "../roles/index.js";
 import { requireWorkspaceDir, resolveProject, resolveProvider, getPluginConfig } from "../tool-helpers.js";
 import { getActiveLabel, getNotifyLabel, NOTIFY_LABEL_COLOR, NOTIFY_LABEL_PREFIX, ExecutionMode, getCurrentStateLabel } from "../workflow.js";
 import { loadConfig } from "../config/index.js";
+import { loadInstanceName } from "../instance.js";
 
 export function createWorkStartTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
@@ -47,6 +48,7 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
 
       const resolvedConfig = await loadConfig(workspaceDir, project.name);
       const workflow = resolvedConfig.workflow;
+      const instanceName = await loadInstanceName(workspaceDir, resolvedConfig.instanceName);
 
       // Find issue
       let issue: { iid: number; title: string; description: string; labels: string[]; web_url: string; state: string };
@@ -57,7 +59,7 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
         if (!label) throw new Error(`Issue #${issueIdParam} has no recognized state label`);
         currentLabel = label;
       } else {
-        const next = await findNextIssue(provider, roleParam, workflow);
+        const next = await findNextIssue(provider, roleParam, workflow, instanceName);
         if (!next) return jsonResult({ success: false, error: `No issues available. Queue is empty.` });
         issue = next.issue;
         currentLabel = next.label;
@@ -131,6 +133,7 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
         sessionKey: ctx.sessionKey,
         runtime: api.runtime,
         slotIndex: freeSlot,
+        instanceName,
       });
 
       // Auto-tick disabled per issue #125 - work_start should only pick up the explicitly requested issue

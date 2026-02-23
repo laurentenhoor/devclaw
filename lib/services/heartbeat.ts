@@ -16,6 +16,7 @@ import path from "node:path";
 import { readProjects, getProject, type Project } from "../projects.js";
 import { log as auditLog } from "../audit.js";
 import { DATA_DIR } from "../setup/migrate-layout.js";
+import { loadInstanceName } from "../instance.js";
 import {
   checkWorkerHealth,
   scanOrphanedLabels,
@@ -272,6 +273,10 @@ export async function tick(opts: {
 }): Promise<TickResult> {
   const { workspaceDir, agentId, config, pluginConfig, sessions, runtime } = opts;
 
+  // Load instance name for ownership filtering and auto-claiming
+  const resolvedWorkspaceConfig = await loadConfig(workspaceDir);
+  const instanceName = await loadInstanceName(workspaceDir, resolvedWorkspaceConfig.instanceName);
+
   const data = await readProjects(workspaceDir);
   const slugs = Object.keys(data.projects);
 
@@ -314,6 +319,7 @@ export async function tick(opts: {
         sessions,
         provider,
         resolvedConfig.timeouts.staleWorkerHours,
+        instanceName,
       );
 
       // Review pass: transition issues whose PR check condition is met
@@ -343,6 +349,7 @@ export async function tick(opts: {
         agentId,
         pluginConfig,
         maxPickups: remaining,
+        instanceName,
       });
 
       result.totalPickups += tickResult.pickups.length;
@@ -380,6 +387,7 @@ async function performHealthPass(
   sessions: SessionLookup | null,
   provider: import("../providers/provider.js").IssueProvider,
   staleWorkerHours?: number,
+  instanceName?: string,
 ): Promise<number> {
   let fixedCount = 0;
 
@@ -405,6 +413,7 @@ async function performHealthPass(
       role,
       autoFix: true,
       provider,
+      instanceName,
     });
     fixedCount += orphanFixes.filter((f) => f.fixed).length;
   }

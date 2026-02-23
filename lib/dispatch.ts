@@ -18,9 +18,11 @@ import { fetchGatewaySessions, type GatewaySession } from "./services/gateway-se
 import { resolveModel, getFallbackEmoji } from "./roles/index.js";
 import { notify, getNotificationConfig } from "./notify.js";
 import { loadConfig, type ResolvedRoleConfig } from "./config/index.js";
-import { ReviewPolicy, resolveReviewRouting, resolveNotifyChannel, isFeedbackState, hasReviewCheck, producesReviewableWork } from "./workflow.js";
+import { ReviewPolicy, resolveReviewRouting, resolveNotifyChannel, isFeedbackState, hasReviewCheck, producesReviewableWork, detectOwner, getOwnerLabel, OWNER_LABEL_COLOR, getRoleLabelColor, STEP_ROUTING_COLOR } from "./workflow.js";
 import { fetchPrFeedback, fetchPrContext, formatPrContext, formatPrFeedback, type PrFeedback, type PrContext } from "./pr-context.js";
 import { formatAttachmentsForTask } from "./attachments.js";
+import { loadRoleInstructions } from "./bootstrap-hook.js";
+import { slotName } from "./names.js";
 
 export type DispatchOpts = {
   workspaceDir: string;
@@ -47,6 +49,8 @@ export type DispatchOpts = {
   runtime?: PluginRuntime;
   /** Slot index within the role's worker slots (defaults to 0 for single-worker compat) */
   slotIndex?: number;
+  /** Instance name for ownership labels (auto-claimed on dispatch if not already owned) */
+  instanceName?: string;
 };
 
 export type DispatchResult = {
@@ -60,9 +64,9 @@ export type DispatchResult = {
 /**
  * Build the task message sent to a worker session.
  *
- * Role-specific instructions are no longer included in the message body.
- * They are injected via the agent:bootstrap hook (see bootstrap-hook.ts)
- * into the worker's system prompt as WORKER_INSTRUCTIONS.md.
+ * Role-specific instructions are NOT included in the message body.
+ * They are passed as `extraSystemPrompt` in the gateway agent call,
+ * which injects them into the worker's system prompt (see dispatch flow).
  */
 export function buildTaskMessage(opts: {
   projectName: string;
@@ -182,11 +186,23 @@ export async function dispatchTask(
     }
   }
 
-  const sessionAction = existingSessionKey ? "send" : "spawn";
-
   // Compute session key deterministically (avoids waiting for gateway)
-  // Include slotIndex to prevent collisions when multiple workers share role+level
-  const sessionKey = `agent:${agentId ?? "unknown"}:subagent:${project.name}-${role}-${level}-${slotIndex}`;
+  // Slot name provides both collision prevention and human-readable identity
+  const botName = slotName(project.name, role, level, slotIndex);
+  const sessionKey = `agent:${agentId ?? "unknown"}:subagent:${project.name}-${role}-${level}-${botName}`;
+
+  // Clear stale session key if it doesn't match the current deterministic key
+  // (handles migration from old numeric format like ...-0 to name-based ...-Cordelia)
+  if (existingSessionKey && existingSessionKey !== sessionKey) {
+    // Delete the orphaned gateway session (fire-and-forget)
+    runCommand(
+      ["openclaw", "gateway", "call", "sessions.delete", "--params", JSON.stringify({ key: existingSessionKey })],
+      { timeoutMs: 10_000 },
+    ).catch(() => {});
+    existingSessionKey = null;
+  }
+
+  const sessionAction = existingSessionKey ? "send" : "spawn";
 
   // Fetch comments to include in task context
   const comments = await provider.listComments(issueId);
@@ -211,6 +227,9 @@ export async function dispatchTask(
     comments, resolvedRole, prContext, prFeedback, attachmentContext,
   });
 
+  // Load role-specific instructions to inject into the worker's system prompt
+  const roleInstructions = await loadRoleInstructions(workspaceDir, project.name, role);
+
   // Mark issue + PR as managed and all consumed comments as seen (fire-and-forget)
   provider.reactToIssue(issueId, EYES_EMOJI).catch(() => {});
   provider.reactToPr(issueId, EYES_EMOJI).catch(() => {});
@@ -233,7 +252,9 @@ export async function dispatchTask(
     if (oldRoleLabels.length > 0) {
       await provider.removeLabels(issueId, oldRoleLabels);
     }
-    await provider.addLabel(issueId, `${role}:${level}`);
+    const roleLabel = `${role}:${level}:${botName}`;
+    await provider.ensureLabel(roleLabel, getRoleLabelColor(role));
+    await provider.addLabel(issueId, roleLabel);
 
     // Step 1c: Apply review routing label when role produces reviewable work (best-effort)
     if (producesReviewableWork(workflow, role)) {
@@ -242,7 +263,15 @@ export async function dispatchTask(
       );
       const oldRouting = issue.labels.filter((l) => l.startsWith("review:"));
       if (oldRouting.length > 0) await provider.removeLabels(issueId, oldRouting);
+      await provider.ensureLabel(reviewLabel, STEP_ROUTING_COLOR);
       await provider.addLabel(issueId, reviewLabel);
+    }
+
+    // Step 1d: Apply owner label if issue is unclaimed (auto-claim on pickup)
+    if (opts.instanceName && !detectOwner(issue.labels)) {
+      const ownerLabel = getOwnerLabel(opts.instanceName);
+      await provider.ensureLabel(ownerLabel, OWNER_LABEL_COLOR);
+      await provider.addLabel(issueId, ownerLabel);
     }
   } catch {
     // Best-effort — label failure must not abort dispatch
@@ -280,7 +309,7 @@ export async function dispatchTask(
 
   // Step 3: Ensure session exists (fire-and-forget — don't wait for gateway)
   // Session key is deterministic, so we can proceed immediately
-  const sessionLabel = formatSessionLabel(project.name, role, level);
+  const sessionLabel = formatSessionLabel(project.name, role, level, botName);
   ensureSessionFireAndForget(sessionKey, model, workspaceDir, timeouts.sessionPatchMs, sessionLabel);
 
   // Step 4: Send task to agent (fire-and-forget)
@@ -288,12 +317,13 @@ export async function dispatchTask(
     agentId, projectName: project.name, issueId, role, level, slotIndex,
     orchestratorSessionKey: opts.sessionKey, workspaceDir,
     dispatchTimeoutMs: timeouts.dispatchMs,
+    extraSystemPrompt: roleInstructions.trim() || undefined,
   });
 
   // Step 5: Update worker state
   try {
     await recordWorkerState(workspaceDir, project.slug, role, slotIndex, {
-      issueId, level, sessionKey, sessionAction, fromLabel,
+      issueId, level, sessionKey, sessionAction, fromLabel, slotName: botName,
     });
   } catch (err) {
     // Session is already dispatched — log warning but don't fail
@@ -311,7 +341,7 @@ export async function dispatchTask(
     fromLabel, toLabel,
   });
 
-  const announcement = buildAnnouncement(level, role, sessionAction, issueId, issueTitle, issueUrl, resolvedRole);
+  const announcement = buildAnnouncement(level, role, sessionAction, issueId, issueTitle, issueUrl, resolvedRole, botName);
 
   return { sessionAction, sessionKey, level, model, announcement };
 }
@@ -485,14 +515,15 @@ function ensureSessionFireAndForget(sessionKey: string, model: string, workspace
  * Build a human-friendly session label from project name, role, and level.
  * e.g. "my-project", "developer", "medior" → "My Project — Developer (Medior)"
  */
-function formatSessionLabel(projectName: string, role: string, level: string): string {
+function formatSessionLabel(projectName: string, role: string, level: string, botName?: string): string {
   const titleCase = (s: string) => s.replace(/(^|\s|-)\S/g, (c) => c.toUpperCase()).replace(/-/g, " ");
-  return `${titleCase(projectName)} — ${titleCase(role)} (${titleCase(level)})`;
+  const nameLabel = botName ? ` ${botName}` : "";
+  return `${titleCase(projectName)} — ${titleCase(role)}${nameLabel} (${titleCase(level)})`;
 }
 
 function sendToAgent(
   sessionKey: string, taskMessage: string,
-  opts: { agentId?: string; projectName: string; issueId: number; role: string; level?: string; slotIndex?: number; orchestratorSessionKey?: string; workspaceDir: string; dispatchTimeoutMs?: number },
+  opts: { agentId?: string; projectName: string; issueId: number; role: string; level?: string; slotIndex?: number; orchestratorSessionKey?: string; workspaceDir: string; dispatchTimeoutMs?: number; extraSystemPrompt?: string },
 ): void {
   const gatewayParams = JSON.stringify({
     idempotencyKey: `devclaw-${opts.projectName}-${opts.issueId}-${opts.role}-${opts.level ?? "unknown"}-${opts.slotIndex ?? 0}-${sessionKey}`,
@@ -502,6 +533,7 @@ function sendToAgent(
     deliver: false,
     lane: "subagent",
     ...(opts.orchestratorSessionKey ? { spawnedBy: opts.orchestratorSessionKey } : {}),
+    ...(opts.extraSystemPrompt ? { extraSystemPrompt: opts.extraSystemPrompt } : {}),
   });
   // Fire-and-forget: long-running agent turn, don't await
   runCommand(
@@ -518,7 +550,7 @@ function sendToAgent(
 
 async function recordWorkerState(
   workspaceDir: string, slug: string, role: string, slotIndex: number,
-  opts: { issueId: number; level: string; sessionKey: string; sessionAction: "spawn" | "send"; fromLabel?: string },
+  opts: { issueId: number; level: string; sessionKey: string; sessionAction: "spawn" | "send"; fromLabel?: string; slotName?: string },
 ): Promise<void> {
   await activateWorker(workspaceDir, slug, role, {
     issueId: String(opts.issueId),
@@ -527,6 +559,7 @@ async function recordWorkerState(
     startTime: new Date().toISOString(),
     previousLabel: opts.fromLabel,
     slotIndex,
+    slotName: opts.slotName,
   });
 }
 
@@ -553,9 +586,10 @@ async function auditDispatch(
 function buildAnnouncement(
   level: string, role: string, sessionAction: "spawn" | "send",
   issueId: number, issueTitle: string, issueUrl: string,
-  resolvedRole?: ResolvedRoleConfig,
+  resolvedRole?: ResolvedRoleConfig, botName?: string,
 ): string {
   const emoji = resolvedRole?.emoji[level] ?? getFallbackEmoji(role);
   const actionVerb = sessionAction === "spawn" ? "Spawning" : "Sending";
-  return `${emoji} ${actionVerb} ${role.toUpperCase()} (${level}) for #${issueId}: ${issueTitle}\n🔗 [Issue #${issueId}](${issueUrl})`;
+  const nameTag = botName ? ` ${botName}` : "";
+  return `${emoji} ${actionVerb} ${role.toUpperCase()}${nameTag} (${level}) for #${issueId}: ${issueTitle}\n🔗 [Issue #${issueId}](${issueUrl})`;
 }

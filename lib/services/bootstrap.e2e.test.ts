@@ -1,10 +1,8 @@
 /**
- * E2E bootstrap tests — verifies the full before_agent_start hook chain:
- *   dispatchTask() → session key → before_agent_start fires → prependContext returned
+ * E2E bootstrap tests — verifies role instructions reach workers via extraSystemPrompt:
+ *   dispatchTask() → loadRoleInstructions() → gateway agent call includes extraSystemPrompt
  *
- * Uses simulateBootstrap() which registers the real hook with a mock API,
- * fires it with the session key from dispatch, and returns the hook result
- * containing prependContext — proving instructions actually reach the worker.
+ * Also tests that the agent:bootstrap hook strips AGENTS.md from worker sessions.
  *
  * Run: npx tsx --test lib/services/bootstrap.e2e.test.ts
  */
@@ -13,14 +11,14 @@ import assert from "node:assert";
 import { createTestHarness, type TestHarness } from "../testing/index.js";
 import { dispatchTask } from "../dispatch.js";
 
-describe("E2E bootstrap — hook injection", () => {
+describe("E2E bootstrap — extraSystemPrompt injection", () => {
   let h: TestHarness;
 
   afterEach(async () => {
     if (h) await h.cleanup();
   });
 
-  it("should inject project-specific instructions via prependContext", async () => {
+  it("should inject project-specific instructions via extraSystemPrompt", async () => {
     h = await createTestHarness({ projectName: "my-app" });
     h.provider.seedIssue({ iid: 1, title: "Add feature", labels: ["To Do"] });
 
@@ -28,8 +26,7 @@ describe("E2E bootstrap — hook injection", () => {
     await h.writePrompt("developer", "# Default Developer\nGeneric instructions.");
     await h.writePrompt("developer", "# My App Developer\nUse React. Follow our design system.", "my-app");
 
-    // Dispatch to get the session key
-    const result = await dispatchTask({
+    await dispatchTask({
       workspaceDir: h.workspaceDir,
       agentId: "main",
       project: h.project,
@@ -44,15 +41,12 @@ describe("E2E bootstrap — hook injection", () => {
       provider: h.provider,
     });
 
-    // Fire the actual before_agent_start hook with the dispatch session key
-    const result2 = await h.simulateBootstrap(result.sessionKey);
-
-    // Hook should return prependContext with project-specific role instructions
-    assert.ok(result2?.prependContext, "Expected prependContext to be set");
-    const content = result2.prependContext;
-    assert.ok(content.includes("My App Developer"), `Got: ${content}`);
-    assert.ok(content.includes("Use React"));
-    assert.ok(!content.includes("Generic instructions"));
+    // Verify extraSystemPrompt in the gateway agent call
+    const prompts = h.commands.extraSystemPrompts();
+    assert.strictEqual(prompts.length, 1, `Expected 1 extraSystemPrompt, got ${prompts.length}`);
+    assert.ok(prompts[0].includes("My App Developer"), `Got: ${prompts[0]}`);
+    assert.ok(prompts[0].includes("Use React"));
+    assert.ok(!prompts[0].includes("Generic instructions"));
   });
 
   it("should fall back to default instructions when no project override exists", async () => {
@@ -62,7 +56,7 @@ describe("E2E bootstrap — hook injection", () => {
     // Only write default prompt — no project-specific
     await h.writePrompt("developer", "# Default Developer\nFollow coding standards.");
 
-    const result = await dispatchTask({
+    await dispatchTask({
       workspaceDir: h.workspaceDir,
       agentId: "main",
       project: h.project,
@@ -77,11 +71,10 @@ describe("E2E bootstrap — hook injection", () => {
       provider: h.provider,
     });
 
-    const hookResult = await h.simulateBootstrap(result.sessionKey);
-
-    assert.ok(hookResult?.prependContext, "Expected prependContext to be set");
-    assert.ok(hookResult.prependContext.includes("Default Developer"));
-    assert.ok(hookResult.prependContext.includes("Follow coding standards"));
+    const prompts = h.commands.extraSystemPrompts();
+    assert.strictEqual(prompts.length, 1);
+    assert.ok(prompts[0].includes("Default Developer"));
+    assert.ok(prompts[0].includes("Follow coding standards"));
   });
 
   it("should inject scaffolded default instructions when no overrides exist", async () => {
@@ -90,7 +83,7 @@ describe("E2E bootstrap — hook injection", () => {
 
     // Don't write any custom prompts — ensureWorkspaceMigrated scaffolds defaults
 
-    const result = await dispatchTask({
+    await dispatchTask({
       workspaceDir: h.workspaceDir,
       agentId: "main",
       project: h.project,
@@ -105,25 +98,9 @@ describe("E2E bootstrap — hook injection", () => {
       provider: h.provider,
     });
 
-    const hookResult = await h.simulateBootstrap(result.sessionKey);
-
-    // Default developer instructions are scaffolded by ensureDefaultFiles
-    assert.ok(hookResult?.prependContext, "Expected prependContext to be set");
-    assert.ok(hookResult.prependContext.includes("DEVELOPER"), "Should contain DEVELOPER heading");
-    assert.ok(hookResult.prependContext.includes("worktree"), "Should reference git worktree workflow");
-  });
-
-  it("should NOT inject anything for unknown custom roles", async () => {
-    h = await createTestHarness({ projectName: "custom-app" });
-
-    // Simulate a session key for a custom role that has no prompt file
-    // This key won't parse because "investigator" isn't in the role registry
-    const hookResult = await h.simulateBootstrap(
-      "agent:main:subagent:custom-app-investigator-medior",
-    );
-
-    // Hook should no-op (return undefined) — unknown role doesn't match pattern
-    assert.strictEqual(hookResult, undefined, "Should not return anything for unknown roles");
+    const prompts = h.commands.extraSystemPrompts();
+    // No prompt files exist in this temp workspace — extraSystemPrompt should be absent
+    assert.strictEqual(prompts.length, 0, "No extraSystemPrompt when no prompt files exist");
   });
 
   it("should resolve tester instructions independently from developer", async () => {
@@ -135,7 +112,7 @@ describe("E2E bootstrap — hook injection", () => {
     await h.writePrompt("tester", "# Default Tester\nRun integration tests.");
 
     // Dispatch as tester
-    const result = await dispatchTask({
+    await dispatchTask({
       workspaceDir: h.workspaceDir,
       agentId: "main",
       project: h.project,
@@ -150,18 +127,10 @@ describe("E2E bootstrap — hook injection", () => {
       provider: h.provider,
     });
 
-    // Simulate bootstrap for the tester session
-    const testerResult = await h.simulateBootstrap(result.sessionKey);
-    assert.ok(testerResult?.prependContext, "Expected tester prependContext");
-    assert.ok(testerResult.prependContext.includes("Default Tester"));
-    assert.ok(!testerResult.prependContext.includes("Dev for multi-role"));
-
-    // Simulate bootstrap for a developer session on the same project
-    const devKey = result.sessionKey.replace("-tester-", "-developer-");
-    const devResult = await h.simulateBootstrap(devKey);
-    assert.ok(devResult?.prependContext, "Expected developer prependContext");
-    assert.ok(devResult.prependContext.includes("Dev for multi-role"));
-    assert.ok(devResult.prependContext.includes("Specific dev rules"));
+    const prompts = h.commands.extraSystemPrompts();
+    assert.strictEqual(prompts.length, 1);
+    assert.ok(prompts[0].includes("Default Tester"));
+    assert.ok(!prompts[0].includes("Dev for multi-role"));
   });
 
   it("should handle project names with hyphens correctly", async () => {
@@ -174,7 +143,7 @@ describe("E2E bootstrap — hook injection", () => {
       "my-cool-project",
     );
 
-    const result = await dispatchTask({
+    await dispatchTask({
       workspaceDir: h.workspaceDir,
       agentId: "main",
       project: h.project,
@@ -189,10 +158,9 @@ describe("E2E bootstrap — hook injection", () => {
       provider: h.provider,
     });
 
-    const hookResult = await h.simulateBootstrap(result.sessionKey);
-
-    assert.ok(hookResult?.prependContext, "Expected prependContext to be set");
-    assert.ok(hookResult.prependContext.includes("Hyphenated Project"));
+    const prompts = h.commands.extraSystemPrompts();
+    assert.strictEqual(prompts.length, 1);
+    assert.ok(prompts[0].includes("Hyphenated Project"));
   });
 
   it("should resolve architect instructions with project override", async () => {
@@ -202,7 +170,7 @@ describe("E2E bootstrap — hook injection", () => {
     await h.writePrompt("architect", "# Default Architect\nGeneral design guidelines.");
     await h.writePrompt("architect", "# Arch Proj Architect\nUse event-driven architecture.", "arch-proj");
 
-    const result = await dispatchTask({
+    await dispatchTask({
       workspaceDir: h.workspaceDir,
       agentId: "main",
       project: h.project,
@@ -217,19 +185,43 @@ describe("E2E bootstrap — hook injection", () => {
       provider: h.provider,
     });
 
-    const hookResult = await h.simulateBootstrap(result.sessionKey);
+    const prompts = h.commands.extraSystemPrompts();
+    assert.strictEqual(prompts.length, 1);
+    assert.ok(prompts[0].includes("Arch Proj Architect"));
+    assert.ok(prompts[0].includes("event-driven"));
+    assert.ok(!prompts[0].includes("General design guidelines"));
+  });
+});
 
-    assert.ok(hookResult?.prependContext, "Expected prependContext to be set");
-    assert.ok(hookResult.prependContext.includes("Arch Proj Architect"));
-    assert.ok(hookResult.prependContext.includes("event-driven"));
-    assert.ok(!hookResult.prependContext.includes("General design guidelines"));
+describe("E2E bootstrap — agent:bootstrap hook (AGENTS.md stripping)", () => {
+  let h: TestHarness;
+
+  afterEach(async () => {
+    if (h) await h.cleanup();
   });
 
-  it("should not inject when session key is not a DevClaw subagent", async () => {
+  it("should strip AGENTS.md for DevClaw worker sessions", async () => {
+    h = await createTestHarness({ projectName: "my-app" });
+
+    const result = await h.simulateBootstrap(
+      "agent:main:subagent:my-app-developer-medior-Ada",
+    );
+    assert.strictEqual(result.agentsMdStripped, true);
+  });
+
+  it("should NOT strip AGENTS.md for non-DevClaw sessions", async () => {
     h = await createTestHarness();
 
-    // Non-DevClaw session key — hook should no-op (return undefined)
-    const hookResult = await h.simulateBootstrap("agent:main:orchestrator");
-    assert.strictEqual(hookResult, undefined, "Should not return anything for non-DevClaw sessions");
+    const result = await h.simulateBootstrap("agent:main:orchestrator");
+    assert.strictEqual(result.agentsMdStripped, false);
+  });
+
+  it("should NOT strip AGENTS.md for unknown roles", async () => {
+    h = await createTestHarness({ projectName: "custom-app" });
+
+    const result = await h.simulateBootstrap(
+      "agent:main:subagent:custom-app-investigator-medior",
+    );
+    assert.strictEqual(result.agentsMdStripped, false);
   });
 });

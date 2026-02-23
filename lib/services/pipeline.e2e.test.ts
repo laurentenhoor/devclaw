@@ -1073,7 +1073,7 @@ describe("E2E pipeline", () => {
       });
 
       const issue = await h.provider.getIssue(400);
-      assert.ok(issue.labels.includes("developer:senior"), `Should have developer:senior, got: ${issue.labels}`);
+      assert.ok(issue.labels.some(l => l.startsWith("developer:senior")), `Should have developer:senior[:name], got: ${issue.labels}`);
       assert.ok(issue.labels.includes("Doing"), "Should have Doing label");
       // Senior developer dispatch should also apply review:human routing label
       assert.ok(issue.labels.includes("review:human"), `Should have review:human for senior, got: ${issue.labels}`);
@@ -1099,7 +1099,7 @@ describe("E2E pipeline", () => {
       });
 
       const issue = await h.provider.getIssue(404);
-      assert.ok(issue.labels.includes("developer:junior"), `Should have developer:junior, got: ${issue.labels}`);
+      assert.ok(issue.labels.some(l => l.startsWith("developer:junior")), `Should have developer:junior[:name], got: ${issue.labels}`);
       assert.ok(issue.labels.includes("review:agent"), `Should have review:agent for junior, got: ${issue.labels}`);
     });
 
@@ -1124,8 +1124,8 @@ describe("E2E pipeline", () => {
       });
 
       const issue = await h.provider.getIssue(401);
-      assert.ok(issue.labels.includes("developer:medior"), `Should have developer:medior, got: ${issue.labels}`);
-      assert.ok(!issue.labels.includes("developer:junior"), "Should NOT have developer:junior");
+      assert.ok(issue.labels.some(l => l.startsWith("developer:medior")), `Should have developer:medior[:name], got: ${issue.labels}`);
+      assert.ok(!issue.labels.some(l => l.startsWith("developer:junior")), "Should NOT have developer:junior");
     });
 
     it("projectTick should skip reviewer when review:human label present", async () => {

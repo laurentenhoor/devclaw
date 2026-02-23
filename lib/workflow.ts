@@ -295,7 +295,7 @@ export const STEP_ROUTING_LABELS: readonly string[] = [
 ];
 
 /** Step routing label color. */
-const STEP_ROUTING_COLOR = "#d93f0b";
+export const STEP_ROUTING_COLOR = "#d93f0b";
 
 // ---------------------------------------------------------------------------
 // Notify labels — channel routing for notifications
@@ -333,6 +333,40 @@ export function resolveNotifyChannel(
   }
   return channels[0];
 }
+
+// ---------------------------------------------------------------------------
+// Owner labels — instance identity on issues
+// ---------------------------------------------------------------------------
+
+/** Prefix for owner labels. Format: "owner:{instanceName}" (e.g., "owner:Grace"). */
+export const OWNER_LABEL_PREFIX = "owner:";
+
+/** Light grey color for owner labels — low visual weight, like notify labels. */
+export const OWNER_LABEL_COLOR = "#e4e4e4";
+
+/** Build the owner label for a given instance name. */
+export function getOwnerLabel(instanceName: string): string {
+  return `${OWNER_LABEL_PREFIX}${instanceName}`;
+}
+
+/** Extract the instance name from an issue's labels, or null if unclaimed. */
+export function detectOwner(issueLabels: string[]): string | null {
+  const label = issueLabels.find((l) => l.startsWith(OWNER_LABEL_PREFIX));
+  return label ? label.slice(OWNER_LABEL_PREFIX.length) : null;
+}
+
+/** Check if an issue is owned by the given instance or unclaimed. */
+export function isOwnedByOrUnclaimed(
+  issueLabels: string[],
+  instanceName: string,
+): boolean {
+  const owner = detectOwner(issueLabels);
+  return owner === null || owner === instanceName;
+}
+
+// ---------------------------------------------------------------------------
+// Review routing
+// ---------------------------------------------------------------------------
 
 /**
  * Determine review routing label for an issue based on project policy and developer level.

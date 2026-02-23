@@ -196,7 +196,10 @@ function resolve(config: DevClawConfig): ResolvedConfig {
     sessionContextBudget: config.timeouts?.sessionContextBudget ?? 0.6,
   };
 
-  return { roles, workflow, timeouts };
+  return {
+    roles, workflow, timeouts,
+    instanceName: config.instance?.name,
+  };
 }
 
 // ---------------------------------------------------------------------------

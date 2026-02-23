@@ -67,10 +67,15 @@ const TimeoutConfigSchema = z.object({
   sessionContextBudget: z.number().min(0).max(1).optional(),
 }).optional();
 
+const InstanceConfigSchema = z.object({
+  name: z.string().optional(),
+}).optional();
+
 export const DevClawConfigSchema = z.object({
   roles: z.record(z.string(), RoleOverrideSchema).optional(),
   workflow: WorkflowConfigSchema.partial().optional(),
   timeouts: TimeoutConfigSchema,
+  instance: InstanceConfigSchema,
 });
 
 /**

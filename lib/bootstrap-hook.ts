@@ -1,15 +1,14 @@
 /**
- * bootstrap-hook.ts — Hybrid bootstrap for DevClaw worker sessions.
+ * bootstrap-hook.ts — Bootstrap support for DevClaw worker sessions.
  *
- * Two hooks work together:
+ * Provides:
  *   1. agent:bootstrap (internal hook) — strips orchestrator AGENTS.md so
- *      the worker doesn't see the orchestrator's instructions.
- *   2. before_agent_start (lifecycle hook) — injects role-specific instructions
- *      via prependContext, which is always available regardless of config.
- *
- * If only before_agent_start fires (e.g. hooks.internal.enabled is off),
- * the worker still gets role instructions prepended — just also sees the
- * orchestrator AGENTS.md (suboptimal but functional).
+ *      the worker doesn't see the orchestrator's instructions. Requires
+ *      hooks.internal.enabled in config. If unavailable, workers still
+ *      receive role instructions via extraSystemPrompt (just also see AGENTS.md).
+ *   2. loadRoleInstructions() — loads role-specific prompt files from workspace.
+ *      Used by dispatch.ts to pass instructions as extraSystemPrompt in the
+ *      gateway agent call, which injects them into the worker's system prompt.
  */
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -21,11 +20,13 @@ import { DATA_DIR } from "./setup/migrate-layout.js";
 /**
  * Parse a DevClaw subagent session key to extract project name and role.
  *
- * Session key format (new): `agent:{agentId}:subagent:{projectName}-{role}-{level}-{slotIndex}`
+ * Session key format (named): `agent:{agentId}:subagent:{projectName}-{role}-{level}-{slotName}`
+ * Session key format (numeric): `agent:{agentId}:subagent:{projectName}-{role}-{level}-{slotIndex}`
  * Session key format (legacy): `agent:{agentId}:subagent:{projectName}-{role}-{level}`
  * Examples:
- *   - `agent:devclaw:subagent:my-project-developer-medior-0` → { projectName: "my-project", role: "developer" }
- *   - `agent:devclaw:subagent:webapp-tester-medior`          → { projectName: "webapp", role: "tester" } (legacy)
+ *   - `agent:devclaw:subagent:my-project-developer-medior-Ada` → { projectName: "my-project", role: "developer" }
+ *   - `agent:devclaw:subagent:my-project-developer-medior-0`   → { projectName: "my-project", role: "developer" }
+ *   - `agent:devclaw:subagent:webapp-tester-medior`             → { projectName: "webapp", role: "tester" } (legacy)
  *
  * Note: projectName may contain hyphens, so we match role from the end.
  */
@@ -33,8 +34,8 @@ export function parseDevClawSessionKey(
   sessionKey: string,
 ): { projectName: string; role: string } | null {
   const rolePattern = getSessionKeyRolePattern();
-  // New format: ...-{role}-{level}-{slotIndex}
-  const newMatch = sessionKey.match(new RegExp(`:subagent:(.+)-(${rolePattern})-[^-]+-\\d+$`));
+  // Named/numeric format: ...-{role}-{level}-{slotNameOrIndex}
+  const newMatch = sessionKey.match(new RegExp(`:subagent:(.+)-(${rolePattern})-[^-]+-[^-]+$`));
   if (newMatch) return { projectName: newMatch[1], role: newMatch[2] };
   // Legacy format fallback: ...-{role}-{level} (for in-flight sessions during migration)
   const legacyMatch = sessionKey.match(new RegExp(`:subagent:(.+)-(${rolePattern})-[^-]+$`));
@@ -101,19 +102,16 @@ export async function loadRoleInstructions(
 }
 
 /**
- * Register both bootstrap hooks for DevClaw worker sessions.
+ * Register the agent:bootstrap hook for DevClaw worker sessions.
  *
- * Hook 1 — agent:bootstrap (internal):
- *   Strips AGENTS.md content so the worker doesn't see orchestrator instructions.
- *   Requires hooks.internal.enabled in config. If it doesn't fire, the worker
- *   still gets role instructions from hook 2, just also sees the orchestrator AGENTS.md.
+ * Strips AGENTS.md content so the worker doesn't see orchestrator instructions.
+ * Requires hooks.internal.enabled in config. If it doesn't fire, the worker
+ * still gets role instructions via extraSystemPrompt — just also sees AGENTS.md.
  *
- * Hook 2 — before_agent_start (lifecycle):
- *   Injects role-specific instructions via prependContext. Always available
- *   regardless of config — the reliable injection path.
+ * Role instruction injection is handled by dispatch.ts via the gateway's
+ * extraSystemPrompt parameter (injected into the worker's system prompt).
  */
 export function registerBootstrapHook(api: OpenClawPluginApi): void {
-  // Hook 1: Strip orchestrator AGENTS.md from DevClaw worker sessions
   api.registerHook("agent:bootstrap", async (event) => {
     const sessionKey = event.sessionKey;
     if (!sessionKey) return;
@@ -140,39 +138,4 @@ export function registerBootstrapHook(api: OpenClawPluginApi): void {
       api.logger.info(`agent:bootstrap: stripped AGENTS.md for ${parsed.role} worker in "${parsed.projectName}"`);
     }
   }, { name: "devclaw-strip-agents-md", description: "Strips orchestrator AGENTS.md from DevClaw worker sessions" } as any);
-
-  // Hook 2: Inject role-specific instructions via prependContext
-  api.on("before_agent_start", async (_event, ctx) => {
-    const sessionKey = ctx.sessionKey;
-    if (!sessionKey) return;
-
-    const parsed = parseDevClawSessionKey(sessionKey);
-    if (!parsed) {
-      api.logger.debug(`before_agent_start: not a DevClaw session key: ${sessionKey}`);
-      return;
-    }
-    api.logger.info(`before_agent_start: parsed → project="${parsed.projectName}", role="${parsed.role}"`);
-
-    const workspaceDir = ctx.workspaceDir;
-    if (!workspaceDir || typeof workspaceDir !== "string") {
-      api.logger.warn(`before_agent_start: no workspaceDir in context for ${sessionKey}`);
-      return;
-    }
-
-    const { content, source } = await loadRoleInstructions(
-      workspaceDir,
-      parsed.projectName,
-      parsed.role,
-      { withSource: true },
-    );
-
-    if (content) {
-      api.logger.info(
-        `before_agent_start: injecting ${parsed.role} instructions for "${parsed.projectName}" from ${source}`,
-      );
-      return { prependContext: content.trim() };
-    } else {
-      api.logger.warn(`before_agent_start: no role instructions for ${parsed.role} in "${parsed.projectName}"`);
-    }
-  });
 }

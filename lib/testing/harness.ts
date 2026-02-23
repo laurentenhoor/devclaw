@@ -17,14 +17,12 @@ import { TestProvider } from "./test-provider.js";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 
 // ---------------------------------------------------------------------------
-// Bootstrap result type (mirrors OpenClaw's PluginHookBeforeAgentStartResult)
+// Bootstrap result type — represents the agent:bootstrap hook outcome
 // ---------------------------------------------------------------------------
 
 export type BootstrapResult = {
-  prependContext?: string;
-  systemPrompt?: string;
-  modelOverride?: string;
-  providerOverride?: string;
+  /** Whether AGENTS.md was stripped from bootstrap files. */
+  agentsMdStripped: boolean;
 };
 
 // ---------------------------------------------------------------------------
@@ -36,6 +34,8 @@ export type CapturedCommand = {
   opts: { timeoutMs: number; cwd?: string };
   /** Extracted from gateway `agent` call params, if applicable. */
   taskMessage?: string;
+  /** Extracted from gateway `agent` call params, if applicable. */
+  extraSystemPrompt?: string;
   /** Extracted from gateway `sessions.patch` params, if applicable. */
   sessionPatch?: { key: string; model: string; label?: string };
 };
@@ -47,6 +47,8 @@ export type CommandInterceptor = {
   commandsFor(cmd: string): CapturedCommand[];
   /** Get all task messages sent via `openclaw gateway call agent`. */
   taskMessages(): string[];
+  /** Get all extraSystemPrompt values sent via `openclaw gateway call agent`. */
+  extraSystemPrompts(): string[];
   /** Get all session patches. */
   sessionPatches(): Array<{ key: string; model: string; label?: string }>;
   /** Reset captured commands. */
@@ -78,6 +80,9 @@ function createCommandInterceptor(): {
           const params = JSON.parse(argv[paramsIdx + 1]);
           if (rpcMethod === "agent" && params.message) {
             captured.taskMessage = params.message;
+            if (params.extraSystemPrompt) {
+              captured.extraSystemPrompt = params.extraSystemPrompt;
+            }
           }
           if (rpcMethod === "sessions.patch") {
             captured.sessionPatch = { key: params.key, model: params.model, label: params.label };
@@ -100,6 +105,11 @@ function createCommandInterceptor(): {
       return commands
         .filter((c) => c.taskMessage !== undefined)
         .map((c) => c.taskMessage!);
+    },
+    extraSystemPrompts() {
+      return commands
+        .filter((c) => c.extraSystemPrompt !== undefined)
+        .map((c) => c.extraSystemPrompt!);
     },
     sessionPatches() {
       return commands
@@ -143,11 +153,10 @@ export type TestHarness = {
    */
   writePrompt(role: string, content: string, projectName?: string): Promise<void>;
   /**
-   * Simulate both bootstrap hooks firing for a session key.
-   * Fires agent:bootstrap (strips AGENTS.md) + before_agent_start (returns prependContext).
-   * This tests the full hybrid hook chain.
+   * Simulate the agent:bootstrap hook firing for a session key.
+   * Tests that AGENTS.md is stripped from bootstrap files for DevClaw workers.
    */
-  simulateBootstrap(sessionKey: string): Promise<BootstrapResult | undefined>;
+  simulateBootstrap(sessionKey: string): Promise<BootstrapResult>;
   /** Clean up temp directory. */
   cleanup(): Promise<void>;
 };
@@ -266,15 +275,11 @@ export async function createTestHarness(opts?: HarnessOptions): Promise<TestHarn
       await fs.writeFile(path.join(dir, `${role}.md`), content, "utf-8");
     },
     async simulateBootstrap(sessionKey: string) {
-      // Capture callbacks from both hooks registered by registerBootstrapHook
+      // Capture the agent:bootstrap hook callback
       let internalHookCb: ((event: any) => Promise<void>) | null = null;
-      let lifecycleHookCb: ((event: any, ctx: any) => Promise<any>) | null = null;
       const mockApi = {
         registerHook(_name: string, cb: (event: any) => Promise<void>) {
           internalHookCb = cb;
-        },
-        on(_name: string, cb: (event: any, ctx: any) => Promise<any>) {
-          lifecycleHookCb = cb;
         },
         logger: {
           debug() {},
@@ -285,31 +290,27 @@ export async function createTestHarness(opts?: HarnessOptions): Promise<TestHarn
       } as unknown as OpenClawPluginApi;
 
       registerBootstrapHook(mockApi);
-      if (!lifecycleHookCb) throw new Error("registerBootstrapHook did not register before_agent_start callback");
 
-      // Fire the internal hook (agent:bootstrap) to strip AGENTS.md
+      // Fire the internal hook (agent:bootstrap) to test AGENTS.md stripping
+      const bootstrapFiles = [
+        {
+          name: "AGENTS.md",
+          path: path.join(workspaceDir, "AGENTS.md"),
+          content: "# Orchestrator instructions\nThis content should be stripped.",
+          missing: false,
+        },
+      ];
+
       if (internalHookCb) {
-        const bootstrapFiles = [
-          {
-            name: "AGENTS.md",
-            path: path.join(workspaceDir, "AGENTS.md"),
-            content: "# Orchestrator instructions\nThis content should be stripped.",
-            missing: false,
-          },
-        ];
         await internalHookCb({
           sessionKey,
           context: { bootstrapFiles },
         });
       }
 
-      // Fire the lifecycle hook (before_agent_start) to get prependContext
-      const result = await lifecycleHookCb(
-        { prompt: "", messages: [] },
-        { sessionKey, workspaceDir },
-      );
-
-      return result as BootstrapResult | undefined;
+      return {
+        agentsMdStripped: bootstrapFiles[0].missing === true && bootstrapFiles[0].content === "",
+      };
     },
     async cleanup() {
       await fs.rm(workspaceDir, { recursive: true, force: true });

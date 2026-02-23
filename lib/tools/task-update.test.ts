@@ -18,7 +18,7 @@ describe("task_update tool", () => {
 
   it("supports all state labels", () => {
     const labels = getStateLabels(DEFAULT_WORKFLOW);
-    assert.strictEqual(labels.length, 12); // Added To Research + Researching in #213
+    assert.strictEqual(labels.length, 11); // Tester states removed; To Research + Researching added in #213
     assert.ok(labels.includes("Planning"));
     assert.ok(labels.includes("Done"));
     assert.ok(labels.includes("To Review"));
@@ -66,12 +66,12 @@ describe("detectLevelFromLabels — colon format", () => {
 describe("detectRoleLevelFromLabels", () => {
   it("should detect role and level from colon-format labels", () => {
     const result = detectRoleLevelFromLabels(["developer:senior", "Doing"]);
-    assert.deepStrictEqual(result, { role: "developer", level: "senior" });
+    assert.deepStrictEqual(result, { role: "developer", level: "senior", slotName: undefined });
   });
 
   it("should detect tester role", () => {
     const result = detectRoleLevelFromLabels(["tester:medior", "Testing"]);
-    assert.deepStrictEqual(result, { role: "tester", level: "medior" });
+    assert.deepStrictEqual(result, { role: "tester", level: "medior", slotName: undefined });
   });
 
   it("should return null for step routing labels", () => {

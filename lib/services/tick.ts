@@ -64,10 +64,12 @@ export async function projectTick(opts: {
   runtime?: PluginRuntime;
   /** Workflow config (defaults to DEFAULT_WORKFLOW) */
   workflow?: WorkflowConfig;
+  /** Instance name for ownership filtering and auto-claiming. */
+  instanceName?: string;
 }): Promise<TickResult> {
   const {
     workspaceDir, projectSlug, agentId, sessionKey, pluginConfig, dryRun,
-    maxPickups, targetRole, runtime,
+    maxPickups, targetRole, runtime, instanceName,
   } = opts;
 
   const project = getProject(await readProjects(workspaceDir), projectSlug);
@@ -117,7 +119,7 @@ export async function projectTick(opts: {
       }
     }
 
-    const next = await findNextIssueForRole(provider, role, workflow);
+    const next = await findNextIssueForRole(provider, role, workflow, instanceName);
     if (!next) continue;
 
     const { issue, label: currentLabel } = next;
@@ -168,6 +170,7 @@ export async function projectTick(opts: {
           sessionKey,
           runtime,
           slotIndex: freeSlot,
+          instanceName,
         });
         pickups.push({
           project: project.name, projectSlug, issueId: issue.iid, issueTitle: issue.title, issueUrl: issue.web_url,

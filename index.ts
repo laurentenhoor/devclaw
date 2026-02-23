@@ -17,6 +17,7 @@ import { createWorkflowGuideTool } from "./lib/tools/workflow-guide.js";
 import { createResetDefaultsTool } from "./lib/tools/reset-defaults.js";
 import { createSyncLabelsTool } from "./lib/tools/sync-labels.js";
 import { createUpgradeTool } from "./lib/tools/upgrade.js";
+import { createClaimOwnershipTool } from "./lib/tools/claim-ownership.js";
 import { registerCli } from "./lib/cli.js";
 import { registerHeartbeatService } from "./lib/services/heartbeat.js";
 import { registerBootstrapHook } from "./lib/bootstrap-hook.js";
@@ -115,6 +116,9 @@ const plugin = {
     api.registerTool(createUpgradeTool(), {
       names: ["upgrade"],
     });
+    api.registerTool(createClaimOwnershipTool(api), {
+      names: ["claim_ownership"],
+    });
 
     // CLI
     api.registerCli(({ program }: { program: any }) => registerCli(program, api), {
@@ -129,7 +133,7 @@ const plugin = {
     registerAttachmentHook(api);
 
     api.logger.info(
-      "DevClaw plugin registered (19 tools, 1 CLI command group, 1 service, 3 hooks)",
+      "DevClaw plugin registered (20 tools, 1 CLI command group, 1 service, 3 hooks)",
     );
   },
 };

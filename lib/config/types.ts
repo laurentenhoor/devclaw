@@ -37,6 +37,14 @@ export type TimeoutConfig = {
 };
 
 /**
+ * Instance identity config. Optional — auto-generated if not set.
+ */
+export type InstanceConfig = {
+  /** Override the auto-generated instance name (CS pioneer name). */
+  name?: string;
+};
+
+/**
  * The full workflow.yaml shape.
  * All fields optional — missing fields inherit from the layer below.
  */
@@ -44,6 +52,7 @@ export type DevClawConfig = {
   roles?: Record<string, RoleOverride | false>;
   workflow?: Partial<WorkflowConfig>;
   timeouts?: TimeoutConfig;
+  instance?: InstanceConfig;
 };
 
 /**
@@ -67,6 +76,8 @@ export type ResolvedConfig = {
   roles: Record<string, ResolvedRoleConfig>;
   workflow: WorkflowConfig;
   timeouts: ResolvedTimeouts;
+  /** Instance name override from config. Undefined = use auto-generated from instance.json. */
+  instanceName?: string;
 };
 
 /**

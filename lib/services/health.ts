@@ -38,6 +38,7 @@ import {
   getRevertLabel,
   hasWorkflowStates,
   getCurrentStateLabel,
+  isOwnedByOrUnclaimed,
   type WorkflowConfig,
   type Role,
 } from "../workflow.js";
@@ -434,10 +435,13 @@ export async function scanOrphanedLabels(opts: {
   provider: IssueProvider;
   /** Workflow config (defaults to DEFAULT_WORKFLOW) */
   workflow?: WorkflowConfig;
+  /** Instance name for ownership filtering. Only processes issues owned by this instance or unclaimed. */
+  instanceName?: string;
 }): Promise<HealthFix[]> {
   const {
     workspaceDir, projectSlug, project, role, autoFix, provider,
     workflow = DEFAULT_WORKFLOW,
+    instanceName,
   } = opts;
 
   const fixes: HealthFix[] = [];
@@ -460,8 +464,13 @@ export async function scanOrphanedLabels(opts: {
     return fixes;
   }
 
+  // Filter by ownership: only process issues owned by this instance or unclaimed
+  const ownedIssues = instanceName
+    ? issuesWithLabel.filter((i) => isOwnedByOrUnclaimed(i.labels, instanceName))
+    : issuesWithLabel;
+
   // Check each issue to see if it's tracked in any slot across all levels
-  for (const issue of issuesWithLabel) {
+  for (const issue of ownedIssues) {
     const issueIdStr = String(issue.iid);
 
     let isTracked = false;

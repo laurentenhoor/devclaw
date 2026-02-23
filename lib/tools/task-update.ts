@@ -11,7 +11,7 @@ import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
 import { log as auditLog } from "../audit.js";
 import type { StateLabel } from "../providers/provider.js";
-import { DEFAULT_WORKFLOW, getStateLabels, findStateByLabel, getCurrentStateLabel } from "../workflow.js";
+import { DEFAULT_WORKFLOW, getStateLabels, findStateByLabel, getCurrentStateLabel, getRoleLabelColor } from "../workflow.js";
 import { loadConfig } from "../config/index.js";
 import { requireWorkspaceDir, resolveProject, resolveProvider } from "../tool-helpers.js";
 
@@ -108,13 +108,19 @@ Examples:
           throw new Error(`Invalid level "${newLevel}" for role "${role}". Valid levels: ${roleConfig?.levels.join(", ") ?? "none"}`);
         }
 
-        // Remove old role:* labels, add new role:level
+        // Remove old role:* labels, add new role:level (preserving slot name if present)
         const oldRoleLabels = issue.labels.filter((l) => l.startsWith(`${role}:`));
-        fromLevel = oldRoleLabels[0]?.split(":")[1];
+        const oldParts = oldRoleLabels[0]?.split(":");
+        fromLevel = oldParts?.[1];
+        const existingSlotName = oldParts?.[2];
         if (oldRoleLabels.length > 0) {
           await provider.removeLabels(issueId, oldRoleLabels);
         }
-        await provider.addLabel(issueId, `${role}:${newLevel}`);
+        const newRoleLabel = existingSlotName
+          ? `${role}:${newLevel}:${existingSlotName}`
+          : `${role}:${newLevel}`;
+        await provider.ensureLabel(newRoleLabel, getRoleLabelColor(role));
+        await provider.addLabel(issueId, newRoleLabel);
         levelChanged = fromLevel !== newLevel;
       }
 
