@@ -87,6 +87,35 @@ export type NotifyEvent =
     };
 
 /**
+ * Format a worker identification string in a standardized format.
+ * 
+ * Combines role, worker name, and level into a consistent format:
+ * - "DEVELOPER" (no name/level)
+ * - "DEVELOPER Herminia" (name only)
+ * - "DEVELOPER (junior)" (level only)
+ * - "DEVELOPER Herminia (junior)" (name and level)
+ * 
+ * This ensures consistency across all notifications that reference a worker.
+ */
+function formatWorkerString(
+  role: string,
+  opts?: { name?: string; level?: string },
+): string {
+  const roleUpper = role.toUpperCase();
+  const parts = [roleUpper];
+
+  if (opts?.name) {
+    parts.push(opts.name);
+  }
+
+  if (opts?.level) {
+    parts.push(`(${opts.level})`);
+  }
+
+  return parts.join(" ");
+}
+
+/**
  * Extract a PR/MR number from a URL.
  * GitHub: .../pull/123  GitLab: .../merge_requests/123
  * Returns null if not parseable.
@@ -116,8 +145,11 @@ function buildMessage(event: NotifyEvent): string {
   switch (event.type) {
     case "workerStart": {
       const action = event.sessionAction === "spawn" ? "🚀 Started" : "▶️ Resumed";
-      const workerName = event.name ? ` ${event.name}` : "";
-      return `${action} ${event.role.toUpperCase()}${workerName} (${event.level}) on #${event.issueId}: ${event.issueTitle}\n🔗 [Issue #${event.issueId}](${event.issueUrl})`;
+      const worker = formatWorkerString(event.role, {
+        name: event.name,
+        level: event.level,
+      });
+      return `${action} ${worker} on #${event.issueId}: ${event.issueTitle}\n🔗 [Issue #${event.issueId}](${event.issueUrl})`;
     }
 
     case "workerComplete": {
@@ -138,9 +170,11 @@ function buildMessage(event: NotifyEvent): string {
       };
       const text = resultText[event.result] ?? event.result;
       // Header: status + issue reference
-      const workerName = event.name ? ` ${event.name}` : "";
-      const levelInfo = event.level ? ` (${event.level})` : "";
-      let msg = `${icon} ${event.role.toUpperCase()}${workerName}${levelInfo} ${text} #${event.issueId}`;
+      const worker = formatWorkerString(event.role, {
+        name: event.name,
+        level: event.level,
+      });
+      let msg = `${icon} ${worker} ${text} #${event.issueId}`;
       // Summary: on its own line for readability
       if (event.summary) {
         msg += `\n${event.summary}`;
