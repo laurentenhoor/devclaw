@@ -13,11 +13,11 @@ import {
   TOOLS_MD_TEMPLATE,
   WORKFLOW_YAML_TEMPLATE,
   DEFAULT_ROLE_INSTRUCTIONS,
-} from "../templates.js";
+} from "./templates.js";
 import { getAllRoleIds } from "../roles/index.js";
 import { migrateWorkspaceLayout, DATA_DIR } from "./migrate-layout.js";
-import { hashContent, writePromptHashes, backupProjectPrompts } from "../prompt-hashes.js";
-import { PLUGIN_VERSION } from "../upgrade.js";
+import { hashContent, writePromptHashes, backupProjectPrompts } from "./prompt-hashes.js";
+import { PLUGIN_VERSION } from "./upgrade.js";
 
 /**
  * Ensure default data files exist in the workspace.

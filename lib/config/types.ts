@@ -4,7 +4,7 @@
  * A single workflow.yaml combines roles, models, and workflow.
  * Three-layer resolution: built-in → workspace → per-project.
  */
-import type { WorkflowConfig } from "../workflow.js";
+import type { WorkflowConfig } from "../workflow/index.js";
 
 /**
  * Role override in workflow.yaml. All fields optional — only override what you need.

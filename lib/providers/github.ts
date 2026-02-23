@@ -10,14 +10,14 @@ import {
   type PrReviewComment,
   PrState,
 } from "./provider.js";
-import { runCommand } from "../run-command.js";
+import type { RunCommand } from "../context.js";
 import { withResilience } from "./resilience.js";
 import {
   DEFAULT_WORKFLOW,
   getStateLabels,
   getLabelColors,
   type WorkflowConfig,
-} from "../workflow.js";
+} from "../workflow/index.js";
 
 type GhIssue = {
   number: number;
@@ -38,15 +38,17 @@ function toIssue(gh: GhIssue): Issue {
 export class GitHubProvider implements IssueProvider {
   private repoPath: string;
   private workflow: WorkflowConfig;
+  private runCommand: RunCommand;
 
-  constructor(opts: { repoPath: string; workflow?: WorkflowConfig }) {
+  constructor(opts: { repoPath: string; runCommand: RunCommand; workflow?: WorkflowConfig }) {
     this.repoPath = opts.repoPath;
+    this.runCommand = opts.runCommand;
     this.workflow = opts.workflow ?? DEFAULT_WORKFLOW;
   }
 
   private async gh(args: string[]): Promise<string> {
     return withResilience(async () => {
-      const result = await runCommand(["gh", ...args], { timeoutMs: 30_000, cwd: this.repoPath });
+      const result = await this.runCommand(["gh", ...args], { timeoutMs: 30_000, cwd: this.repoPath });
       return result.stdout.trim();
     });
   }
@@ -623,7 +625,7 @@ export class GitHubProvider implements IssueProvider {
    */
   async isCommitOnBaseBranch(issueId: number, baseBranch: string): Promise<boolean> {
     try {
-      const result = await runCommand(
+      const result = await this.runCommand(
         ["git", "log", `origin/${baseBranch}`, "--oneline", "-200", "--grep", `#${issueId}`],
         { timeoutMs: 15_000, cwd: this.repoPath },
       );

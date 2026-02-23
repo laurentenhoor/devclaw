@@ -12,7 +12,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import YAML from "yaml";
 import { ROLE_REGISTRY } from "../roles/registry.js";
-import { DEFAULT_WORKFLOW, type WorkflowConfig } from "../workflow.js";
+import { DEFAULT_WORKFLOW, type WorkflowConfig } from "../workflow/index.js";
 import { mergeConfig } from "./merge.js";
 import type { DevClawConfig, ResolvedConfig, ResolvedRoleConfig, ResolvedTimeouts, RoleOverride, ModelEntry } from "./types.js";
 import { validateConfig, validateWorkflowIntegrity } from "./schema.js";

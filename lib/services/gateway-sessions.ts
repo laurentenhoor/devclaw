@@ -8,7 +8,7 @@
  * which triggers false-positive "data exfiltration" warnings in plugin scanners.
  */
 import fs from "node:fs/promises";
-import { runCommand } from "../run-command.js";
+import type { RunCommand } from "../context.js";
 
 export type GatewaySession = {
   key: string;
@@ -32,11 +32,12 @@ export type SessionLookup = Map<string, GatewaySession>;
  * Returns null if gateway is unavailable (timeout, error, etc).
  * Callers should skip session liveness checks if null — unknown ≠ dead.
  */
-export async function fetchGatewaySessions(gatewayTimeoutMs = 15_000): Promise<SessionLookup | null> {
+export async function fetchGatewaySessions(gatewayTimeoutMs = 15_000, runCommand: RunCommand): Promise<SessionLookup | null> {
+  const rc = runCommand;
   const lookup: SessionLookup = new Map();
 
   try {
-    const result = await runCommand(
+    const result = await rc(
       ["openclaw", "gateway", "call", "status", "--json"],
       { timeoutMs: gatewayTimeoutMs },
     );

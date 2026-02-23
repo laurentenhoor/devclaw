@@ -1,29 +1,29 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
-import { createWorkStartTool } from "./lib/tools/work-start.js";
-import { createWorkFinishTool } from "./lib/tools/work-finish.js";
-import { createTaskCreateTool } from "./lib/tools/task-create.js";
-import { createTaskUpdateTool } from "./lib/tools/task-update.js";
-import { createTaskCommentTool } from "./lib/tools/task-comment.js";
-import { createTaskEditBodyTool } from "./lib/tools/task-edit-body.js";
-import { createTasksStatusTool } from "./lib/tools/tasks-status.js";
-import { createHealthTool } from "./lib/tools/health.js";
-import { createProjectRegisterTool } from "./lib/tools/project-register.js";
-import { createSetupTool } from "./lib/tools/setup.js";
-import { createOnboardTool } from "./lib/tools/onboard.js";
-import { createAutoConfigureModelsTool } from "./lib/tools/autoconfigure-models.js";
-import { createResearchTaskTool } from "./lib/tools/research-task.js";
-import { createTaskListTool } from "./lib/tools/task-list.js";
-import { createWorkflowGuideTool } from "./lib/tools/workflow-guide.js";
-import { createResetDefaultsTool } from "./lib/tools/reset-defaults.js";
-import { createSyncLabelsTool } from "./lib/tools/sync-labels.js";
-import { createUpgradeTool } from "./lib/tools/upgrade.js";
-import { createClaimOwnershipTool } from "./lib/tools/claim-ownership.js";
-import { registerCli } from "./lib/cli.js";
-import { registerHeartbeatService } from "./lib/services/heartbeat.js";
-import { registerBootstrapHook } from "./lib/bootstrap-hook.js";
-import { createTaskAttachTool } from "./lib/tools/task-attach.js";
-import { registerAttachmentHook } from "./lib/attachment-hook.js";
-import { initRunCommand } from "./lib/run-command.js";
+import { createWorkStartTool } from "./lib/tools/worker/work-start.js";
+import { createWorkFinishTool } from "./lib/tools/worker/work-finish.js";
+import { createTaskCreateTool } from "./lib/tools/tasks/task-create.js";
+import { createTaskUpdateTool } from "./lib/tools/tasks/task-update.js";
+import { createTaskCommentTool } from "./lib/tools/tasks/task-comment.js";
+import { createTaskEditBodyTool } from "./lib/tools/tasks/task-edit-body.js";
+import { createTasksStatusTool } from "./lib/tools/admin/tasks-status.js";
+import { createHealthTool } from "./lib/tools/admin/health.js";
+import { createProjectRegisterTool } from "./lib/tools/admin/project-register.js";
+import { createSetupTool } from "./lib/tools/admin/setup.js";
+import { createOnboardTool } from "./lib/tools/admin/onboard.js";
+import { createAutoConfigureModelsTool } from "./lib/tools/admin/autoconfigure-models.js";
+import { createResearchTaskTool } from "./lib/tools/worker/research-task.js";
+import { createTaskListTool } from "./lib/tools/tasks/task-list.js";
+import { createWorkflowGuideTool } from "./lib/tools/admin/workflow-guide.js";
+import { createResetDefaultsTool } from "./lib/tools/admin/reset-defaults.js";
+import { createSyncLabelsTool } from "./lib/tools/admin/sync-labels.js";
+import { createUpgradeTool } from "./lib/tools/admin/upgrade.js";
+import { createClaimOwnershipTool } from "./lib/tools/admin/claim-ownership.js";
+import { registerCli } from "./lib/setup/cli.js";
+import { registerHeartbeatService } from "./lib/services/heartbeat/index.js";
+import { registerBootstrapHook } from "./lib/dispatch/bootstrap-hook.js";
+import { createTaskAttachTool } from "./lib/tools/tasks/task-attach.js";
+import { registerAttachmentHook } from "./lib/dispatch/attachment-hook.js";
+import { createPluginContext } from "./lib/context.js";
 
 const plugin = {
   id: "devclaw",
@@ -75,62 +75,62 @@ const plugin = {
   },
 
   register(api: OpenClawPluginApi) {
-    initRunCommand(api);
+    const ctx = createPluginContext(api);
 
     // Worker lifecycle
-    api.registerTool(createWorkStartTool(api), { names: ["work_start"] });
-    api.registerTool(createWorkFinishTool(api), { names: ["work_finish"] });
+    api.registerTool(createWorkStartTool(ctx), { names: ["work_start"] });
+    api.registerTool(createWorkFinishTool(ctx), { names: ["work_finish"] });
 
     // Task management
-    api.registerTool(createTaskCreateTool(api), { names: ["task_create"] });
-    api.registerTool(createTaskUpdateTool(api), { names: ["task_update"] });
-    api.registerTool(createTaskCommentTool(api), { names: ["task_comment"] });
-    api.registerTool(createTaskEditBodyTool(api), { names: ["task_edit_body"] });
-    api.registerTool(createTaskAttachTool(api), { names: ["task_attach"] });
+    api.registerTool(createTaskCreateTool(ctx), { names: ["task_create"] });
+    api.registerTool(createTaskUpdateTool(ctx), { names: ["task_update"] });
+    api.registerTool(createTaskCommentTool(ctx), { names: ["task_comment"] });
+    api.registerTool(createTaskEditBodyTool(ctx), { names: ["task_edit_body"] });
+    api.registerTool(createTaskAttachTool(ctx), { names: ["task_attach"] });
 
     // Architect
-    api.registerTool(createResearchTaskTool(api), { names: ["research_task"] });
+    api.registerTool(createResearchTaskTool(ctx), { names: ["research_task"] });
 
     // Operations
-    api.registerTool(createTasksStatusTool(api), { names: ["tasks_status"] });
-    api.registerTool(createTaskListTool(api), { names: ["task_list"] });
-    api.registerTool(createHealthTool(), { names: ["health"] });
+    api.registerTool(createTasksStatusTool(ctx), { names: ["tasks_status"] });
+    api.registerTool(createTaskListTool(ctx), { names: ["task_list"] });
+    api.registerTool(createHealthTool(ctx), { names: ["health"] });
     // Setup & config
-    api.registerTool(createProjectRegisterTool(), {
+    api.registerTool(createProjectRegisterTool(ctx), {
       names: ["project_register"],
     });
-    api.registerTool(createSetupTool(api), { names: ["setup"] });
-    api.registerTool(createOnboardTool(api), { names: ["onboard"] });
-    api.registerTool(createAutoConfigureModelsTool(api), {
+    api.registerTool(createSetupTool(ctx), { names: ["setup"] });
+    api.registerTool(createOnboardTool(ctx), { names: ["onboard"] });
+    api.registerTool(createAutoConfigureModelsTool(ctx), {
       names: ["autoconfigure_models"],
     });
-    api.registerTool(createWorkflowGuideTool(), {
+    api.registerTool(createWorkflowGuideTool(ctx), {
       names: ["workflow_guide"],
     });
-    api.registerTool(createResetDefaultsTool(), {
+    api.registerTool(createResetDefaultsTool(ctx), {
       names: ["reset_defaults"],
     });
-    api.registerTool(createSyncLabelsTool(), {
+    api.registerTool(createSyncLabelsTool(ctx), {
       names: ["sync_labels"],
     });
-    api.registerTool(createUpgradeTool(), {
+    api.registerTool(createUpgradeTool(ctx), {
       names: ["upgrade"],
     });
-    api.registerTool(createClaimOwnershipTool(api), {
+    api.registerTool(createClaimOwnershipTool(ctx), {
       names: ["claim_ownership"],
     });
 
     // CLI
-    api.registerCli(({ program }: { program: any }) => registerCli(program, api), {
+    api.registerCli(({ program }: { program: any }) => registerCli(program, ctx), {
       commands: ["devclaw"],
     });
 
     // Services
-    registerHeartbeatService(api);
+    registerHeartbeatService(api, ctx);
 
     // Bootstrap hooks for worker instruction injection (hybrid: internal + lifecycle)
-    registerBootstrapHook(api);
-    registerAttachmentHook(api);
+    registerBootstrapHook(api, ctx);
+    registerAttachmentHook(api, ctx);
 
     api.logger.info(
       "DevClaw plugin registered (20 tools, 1 CLI command group, 1 service, 3 hooks)",

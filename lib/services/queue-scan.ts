@@ -14,7 +14,7 @@ import {
   isOwnedByOrUnclaimed,
   type WorkflowConfig,
   type Role,
-} from "../workflow.js";
+} from "../workflow/index.js";
 
 // ---------------------------------------------------------------------------
 // Label detection

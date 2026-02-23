@@ -7,7 +7,7 @@
 import { ROLE_REGISTRY } from "./registry.js";
 import type { RoleConfig } from "./types.js";
 import type { ResolvedRoleConfig } from "../config/types.js";
-import { ROLE_ALIASES as _ROLE_ALIASES, canonicalLevel as _canonicalLevel } from "../migrations.js";
+import { ROLE_ALIASES as _ROLE_ALIASES, canonicalLevel as _canonicalLevel } from "../projects/migrations.js";
 
 // ---------------------------------------------------------------------------
 // Role IDs
@@ -42,7 +42,7 @@ export function requireRole(role: string): RoleConfig {
 // Migration aliases — re-exported from lib/migrations.ts for backward compat
 // ---------------------------------------------------------------------------
 
-export { ROLE_ALIASES, canonicalRole, LEVEL_ALIASES, canonicalLevel } from "../migrations.js";
+export { ROLE_ALIASES, canonicalRole, LEVEL_ALIASES, canonicalLevel } from "../projects/migrations.js";
 
 // ---------------------------------------------------------------------------
 // Levels

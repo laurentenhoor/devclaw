@@ -5,14 +5,15 @@
  * Uses workflow config for queue labels — no hardcoded state names.
  */
 import type { Issue } from "../providers/provider.js";
+import type { RunCommand } from "../context.js";
 import { createProvider } from "../providers/index.js";
-import type { Project } from "../projects.js";
+import type { Project } from "../projects/index.js";
 import {
   DEFAULT_WORKFLOW,
   StateType,
   type WorkflowConfig,
   type Role,
-} from "../workflow.js";
+} from "../workflow/index.js";
 
 // ---------------------------------------------------------------------------
 // Workflow-driven helpers
@@ -114,8 +115,9 @@ export function getStateLabelsByType(
 export async function fetchProjectQueues(
   project: Project,
   workflow: WorkflowConfig = DEFAULT_WORKFLOW,
+  runCommand: RunCommand,
 ): Promise<Record<string, Issue[]>> {
-  const { provider } = await createProvider({ repo: project.repo, provider: project.provider });
+  const { provider } = await createProvider({ repo: project.repo, provider: project.provider, runCommand });
   const queueLabels = getQueueLabelsWithPriority(workflow);
   const queues: Record<string, Issue[]> = {};
 

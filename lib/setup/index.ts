@@ -7,20 +7,21 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import YAML from "yaml";
-import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
+import type { PluginRuntime } from "openclaw/plugin-sdk";
+import type { RunCommand } from "../context.js";
 import { getAllDefaultModels } from "../roles/index.js";
-import { migrateChannelBinding } from "../binding-manager.js";
+import { migrateChannelBinding } from "./binding-manager.js";
 import { createAgent, resolveWorkspacePath } from "./agent.js";
 import { writePluginConfig } from "./config.js";
 import { scaffoldWorkspace } from "./workspace.js";
 import { DATA_DIR } from "./migrate-layout.js";
-import type { ExecutionMode } from "../workflow.js";
+import type { ExecutionMode } from "../workflow/index.js";
 
 export type ModelConfig = Record<string, Record<string, string>>;
 
 export type SetupOpts = {
-  /** OpenClaw plugin API for config access. */
-  api: OpenClawPluginApi;
+  /** OpenClaw plugin runtime for config access. */
+  runtime: PluginRuntime;
   /** Create a new agent with this name. Mutually exclusive with agentId. */
   newAgentName?: string;
   /** Channel binding for new agent. Only used when newAgentName is set. */
@@ -35,6 +36,8 @@ export type SetupOpts = {
   models?: Record<string, Partial<Record<string, string>>>;
   /** Plugin-level project execution mode: parallel or sequential. Default: parallel. */
   projectExecution?: ExecutionMode;
+  /** Injected runCommand for dependency injection. */
+  runCommand?: RunCommand;
 };
 
 export type SetupResult = {
@@ -64,9 +67,9 @@ export async function runSetup(opts: SetupOpts): Promise<SetupResult> {
   const { agentId, workspacePath, agentCreated, bindingMigrated } =
     await resolveOrCreateAgent(opts, warnings);
 
-  await writePluginConfig(opts.api, agentId, opts.projectExecution);
+  await writePluginConfig(opts.runtime, agentId, opts.projectExecution);
 
-  const defaultWorkspacePath = getDefaultWorkspacePath(opts.api);
+  const defaultWorkspacePath = getDefaultWorkspacePath(opts.runtime);
   const filesWritten = await scaffoldWorkspace(workspacePath, defaultWorkspacePath);
 
   const models = buildModelConfig(opts.models);
@@ -89,13 +92,14 @@ async function resolveOrCreateAgent(
   bindingMigrated?: SetupResult["bindingMigrated"];
 }> {
   if (opts.newAgentName) {
-    const { agentId, workspacePath } = await createAgent(opts.api, opts.newAgentName, opts.channelBinding);
+    if (!opts.runCommand) throw new Error("runCommand is required when creating a new agent");
+    const { agentId, workspacePath } = await createAgent(opts.runtime, opts.newAgentName, opts.runCommand, opts.channelBinding);
     const bindingMigrated = await tryMigrateBinding(opts, agentId, warnings);
     return { agentId, workspacePath, agentCreated: true, bindingMigrated };
   }
 
   if (opts.agentId) {
-    const workspacePath = opts.workspacePath ?? resolveWorkspacePath(opts.api, opts.agentId);
+    const workspacePath = opts.workspacePath ?? resolveWorkspacePath(opts.runtime, opts.agentId);
     return { agentId: opts.agentId, workspacePath, agentCreated: false };
   }
 
@@ -113,7 +117,7 @@ async function tryMigrateBinding(
 ): Promise<SetupResult["bindingMigrated"]> {
   if (!opts.migrateFrom || !opts.channelBinding) return undefined;
   try {
-    await migrateChannelBinding(opts.api, opts.channelBinding, opts.migrateFrom, agentId);
+    await migrateChannelBinding(opts.runtime, opts.channelBinding, opts.migrateFrom, agentId);
     return { from: opts.migrateFrom, channel: opts.channelBinding };
   } catch (err) {
     warnings.push(`Failed to migrate binding from "${opts.migrateFrom}": ${(err as Error).message}`);
@@ -141,9 +145,9 @@ function buildModelConfig(overrides?: SetupOpts["models"]): ModelConfig {
   return result;
 }
 
-function getDefaultWorkspacePath(api: OpenClawPluginApi): string | undefined {
+function getDefaultWorkspacePath(runtime: PluginRuntime): string | undefined {
   try {
-    const config = api.runtime.config.loadConfig();
+    const config = runtime.config.loadConfig();
     return (config as any).agents?.defaults?.workspace ?? undefined;
   } catch {
     return undefined;
