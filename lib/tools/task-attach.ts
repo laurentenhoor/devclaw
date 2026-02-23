@@ -10,7 +10,7 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
 import { log as auditLog } from "../audit.js";
-import { requireWorkspaceDir, resolveProject, resolveProvider } from "../tool-helpers.js";
+import { requireWorkspaceDir, resolveProject, resolveProvider, autoAssignOwnerLabel } from "../tool-helpers.js";
 import {
   listAttachments,
   saveAttachment,
@@ -133,6 +133,9 @@ Use cases:
         // Post comment on issue
         const comment = formatAttachmentComment([meta]);
         await provider.addComment(issueId, comment);
+
+        // Auto-assign owner label to this instance (best-effort).
+        autoAssignOwnerLabel(workspaceDir, provider, issueId, project).catch(() => {});
 
         await auditLog(workspaceDir, "task_attach", {
           project: project.name,

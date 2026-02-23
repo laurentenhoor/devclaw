@@ -13,7 +13,7 @@ import { log as auditLog } from "../audit.js";
 import type { StateLabel } from "../providers/provider.js";
 import { DEFAULT_WORKFLOW, getStateLabels, findStateByLabel, getCurrentStateLabel, getRoleLabelColor } from "../workflow.js";
 import { loadConfig } from "../config/index.js";
-import { requireWorkspaceDir, resolveProject, resolveProvider } from "../tool-helpers.js";
+import { requireWorkspaceDir, resolveProject, resolveProvider, autoAssignOwnerLabel } from "../tool-helpers.js";
 
 export function createTaskUpdateTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
@@ -123,6 +123,9 @@ Examples:
         await provider.addLabel(issueId, newRoleLabel);
         levelChanged = fromLevel !== newLevel;
       }
+
+      // Auto-assign owner label to this instance (best-effort).
+      autoAssignOwnerLabel(workspaceDir, provider, issueId, project).catch(() => {});
 
       // Audit
       await auditLog(workspaceDir, "task_update", {

@@ -15,7 +15,7 @@ import type { ToolContext } from "../types.js";
 import { log as auditLog } from "../audit.js";
 import type { StateLabel } from "../providers/provider.js";
 import { DEFAULT_WORKFLOW, getStateLabels, getNotifyLabel, NOTIFY_LABEL_COLOR } from "../workflow.js";
-import { requireWorkspaceDir, resolveProject, resolveProvider } from "../tool-helpers.js";
+import { requireWorkspaceDir, resolveProject, resolveProvider, autoAssignOwnerLabel } from "../tool-helpers.js";
 
 /** Derive the initial state label from the workflow config. */
 const INITIAL_LABEL = DEFAULT_WORKFLOW.states[DEFAULT_WORKFLOW.initial].label;
@@ -89,6 +89,9 @@ Examples:
           .then(() => provider.addLabel(issue.iid, notifyLabel))
           .catch(() => {}); // best-effort
       }
+
+      // Auto-assign owner label to this instance (best-effort).
+      autoAssignOwnerLabel(workspaceDir, provider, issue.iid, project).catch(() => {});
 
       await auditLog(workspaceDir, "task_create", {
         project: project.name, issueId: issue.iid,
