@@ -56,6 +56,7 @@ export const Action = {
   MERGE_PR: "mergePr",
   CLOSE_ISSUE: "closeIssue",
   REOPEN_ISSUE: "reopenIssue",
+  MARK_PR_AS_SEEN: "markPrAsSeen",
 } as const;
 
 /** Built-in review check types for review states. */
@@ -148,7 +149,7 @@ export const DEFAULT_WORKFLOW: WorkflowConfig = {
       label: "Doing",
       color: "#f0ad4e",
       on: {
-        [WorkflowEvent.COMPLETE]: { target: "toReview", actions: [Action.DETECT_PR] },
+        [WorkflowEvent.COMPLETE]: { target: "toReview", actions: [Action.DETECT_PR, Action.MARK_PR_AS_SEEN] },
         [WorkflowEvent.BLOCKED]: "refining",
       },
     },

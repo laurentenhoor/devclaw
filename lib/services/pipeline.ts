@@ -127,6 +127,14 @@ export async function executeCompletion(opts: {
           auditLog(workspaceDir, "pipeline_warning", { step: "mergePr", issue: issueId, role, error: (err as Error).message ?? String(err) }).catch(() => {});
         }
         break;
+      case Action.MARK_PR_AS_SEEN:
+        try {
+          // Mark the newly created PR/MR with an eye emoji reaction
+          await provider.reactToPr(issueId, "eyes");
+        } catch (err) {
+          auditLog(workspaceDir, "pipeline_warning", { step: "markPrAsSeen", issue: issueId, role, error: (err as Error).message ?? String(err) }).catch(() => {});
+        }
+        break;
     }
   }
 
