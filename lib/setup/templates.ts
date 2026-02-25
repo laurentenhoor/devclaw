@@ -12,13 +12,16 @@ import path from "node:path";
 // File loader — reads from defaults/ (single source of truth)
 // ---------------------------------------------------------------------------
 
-const DEFAULTS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "defaults");
+// esbuild bundles everything into dist/index.js, so import.meta.url points to
+// dist/index.js → one level up reaches the repo root where defaults/ lives.
+const DEFAULTS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "defaults");
 
-function loadDefault(filename: string, fallback = ""): string {
+function loadDefault(filename: string): string {
+  const filePath = path.join(DEFAULTS_DIR, filename);
   try {
-    return fs.readFileSync(path.join(DEFAULTS_DIR, filename), "utf-8");
-  } catch {
-    return fallback;
+    return fs.readFileSync(filePath, "utf-8");
+  } catch (err) {
+    throw new Error(`Failed to load default file: ${filePath} (${(err as Error).message})`);
   }
 }
 
@@ -26,10 +29,10 @@ function loadDefault(filename: string, fallback = ""): string {
 // Role prompts — defaults/developer.md, defaults/tester.md, etc.
 // ---------------------------------------------------------------------------
 
-const DEFAULT_DEV_INSTRUCTIONS = loadDefault("devclaw/prompts/developer.md", "# DEVELOPER Worker Instructions\n\nAdd role-specific instructions here.\n");
-const DEFAULT_QA_INSTRUCTIONS = loadDefault("devclaw/prompts/tester.md", "# TESTER Worker Instructions\n\nAdd role-specific instructions here.\n");
-const DEFAULT_ARCHITECT_INSTRUCTIONS = loadDefault("devclaw/prompts/architect.md", "# ARCHITECT Worker Instructions\n\nAdd role-specific instructions here.\n");
-const DEFAULT_REVIEWER_INSTRUCTIONS = loadDefault("devclaw/prompts/reviewer.md", "# REVIEWER Worker Instructions\n\nAdd role-specific instructions here.\n");
+const DEFAULT_DEV_INSTRUCTIONS = loadDefault("devclaw/prompts/developer.md");
+const DEFAULT_QA_INSTRUCTIONS = loadDefault("devclaw/prompts/tester.md");
+const DEFAULT_ARCHITECT_INSTRUCTIONS = loadDefault("devclaw/prompts/architect.md");
+const DEFAULT_REVIEWER_INSTRUCTIONS = loadDefault("devclaw/prompts/reviewer.md");
 
 /** Default role instructions indexed by role ID. Used by project scaffolding. */
 export const DEFAULT_ROLE_INSTRUCTIONS: Record<string, string> = {
