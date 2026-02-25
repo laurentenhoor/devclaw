@@ -335,6 +335,91 @@ See the [Configuration reference](docs/CONFIGURATION.md) for the full schema.
 
 ---
 
+## Forum topics & real-time session streaming
+
+Each worker session can broadcast its progress to a dedicated **forum topic** in your group chat, giving you complete transparency into what every worker is doing. Instead of waiting for completion announcements, you see the work unfold in real-time.
+
+### How it works
+
+When a developer picks up issue #42, DevClaw creates (or reuses) a forum topic named after that worker session — for example, `DEV (medior): #42 Add login page`. Every action the worker takes — code changes, test runs, git commits, decisions — is streamed to that topic in real-time.
+
+```
+Group Chat
+├─ Main channel        (receives final announcements)
+│   └─ "✅ DEV DONE #42 — Login page with OAuth. PR opened for review."
+│
+└─ Forum Topics (worker sessions)
+    ├─ 🔧 DEV (medior): #42 Add login page
+    │   ├─ Working on lib/auth/login.ts...
+    │   ├─ Added OAuth provider handler
+    │   ├─ Running tests...
+    │   ├─ All tests passing ✓
+    │   ├─ Committing changes...
+    │   └─ Opening PR...
+    │
+    └─ 🧪 TESTER (medior): #42 Add login page
+        ├─ Testing OAuth flow...
+        ├─ ✓ Desktop OAuth successful
+        ├─ ✓ Mobile OAuth successful
+        ├─ Checking edge cases...
+        └─ All checks passed ✓
+```
+
+A medior developer finishes and returns to the group channel with "DONE". Meanwhile, the tester is already watching the QA progress in the forum topic without any additional announcements.
+
+### Per-worker topics, not per-project
+
+One forum topic per **worker level per project** — not one monolithic log for all workers. A junior and a medior developer on the same project have separate topics. A developer and tester on the same issue have separate topics. This keeps the signal-to-noise ratio high: you see relevant context, not spam.
+
+Session keys determine the topic:
+
+```
+project-<project_id>-developer-medior
+project-<project_id>-developer-junior
+project-<project_id>-tester-medior
+```
+
+When a developer picks up an issue, messages go to the developer topic. When a tester picks up the same issue, messages go to the tester topic. You subscribe to the topics you care about.
+
+### Configuration
+
+Control streaming behavior in `workflow.yaml`:
+
+```yaml
+# Workspace level: applies to all projects
+streaming:
+  enabled: true
+  verboseDefault: true
+
+# Per-project override
+projects:
+  my-webapp:
+    streaming:
+      enabled: true
+      verboseDefault: false
+```
+
+| Setting | Default | Description |
+|---|---|---|
+| `streaming.enabled` | `true` | Enable forum topic creation and streaming |
+| `streaming.verboseDefault` | `true` | Log all actions (git, tests, decisions) or just key milestones |
+
+When `verboseDefault: true`, every git commit, test run, and decision is logged. When `false`, only significant milestones are posted (PR opened, tests passed, worker blocked).
+
+### Benefits for transparency
+
+**See the work unfold** — No more "is the dev still working on this?" Refresh the forum topic and see exactly what they've done in the last 5 minutes.
+
+**Non-blocking visibility** — Forum topics are opt-in. You don't have to watch them. The final announcement still goes to the main channel.
+
+**Audit trail** — Every action is timestamped and threaded under the worker session. If something goes wrong, you can replay the exact sequence of events.
+
+**Parallel work debugging** — With multiple workers active, separate topics keep their streams isolated. You can follow one worker deep while others work independently, without losing context.
+
+**Onboarding** — New team members can read the forum topic threads to understand how workers approach different task types.
+
+---
+
 ## Task management
 
 ### Your issues stay in your tracker
