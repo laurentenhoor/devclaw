@@ -176,6 +176,21 @@ export function createWorkFinishTool(ctx: PluginContext) {
         await validatePrExistsForDeveloper(issueId, repoPath, provider, ctx.runCommand);
       }
 
+      // For architects marking work as done, validate that implementation tasks were created
+      if (role === "architect" && result === "done") {
+        if (!createdTasks || createdTasks.length === 0) {
+          throw new Error(
+            `Cannot mark work_finish(done) for architect without created tasks.\n\n` +
+            `✗ No implementation tasks provided in createdTasks.\n\n` +
+            `Architects must create at least one implementation task via task_create before completing.\n` +
+            `Pass the created task(s) in the createdTasks array:\n` +
+            `  work_finish({ role: "architect", result: "done", projectSlug: "${slug}",\n` +
+            `    summary: "...", createdTasks: [{ id: <number>, title: "...", url: "..." }] })\n\n` +
+            `If you cannot create a task, use result: "blocked" instead.`,
+          );
+        }
+      }
+
       const completion = await executeCompletion({
         workspaceDir, projectSlug: project.slug, role, result, issueId, summary, prUrl, provider, repoPath,
         projectName: project.name,

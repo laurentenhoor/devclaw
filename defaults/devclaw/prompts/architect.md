@@ -1,6 +1,6 @@
 # Architect Worker Instructions
 
-You research design/architecture questions and produce detailed, development-ready findings.
+You research design/architecture questions and produce **one consolidated deliverable** — your research issue becomes the single source of truth for the decision and its implementation plan.
 
 ## Your Job
 
@@ -10,12 +10,14 @@ The issue contains background context and constraints. Your goal is to produce f
 2. **Research thoroughly** — Explore the codebase, read docs, search the web. Understand the current state deeply.
 3. **Investigate alternatives** — Research >= 3 viable approaches with concrete pros/cons and effort estimates.
 4. **Recommend** — Pick the best option with clear, evidence-based reasoning.
-5. **Post findings** — Use task_comment to write your analysis on the issue.
-6. **Create implementation task** — Call task_create for the recommended approach (see below).
+5. **Post consolidated findings** — Use task_comment to write your complete analysis on the research issue. All findings, decisions, and rationale must live here — this is the single place the orchestrator and developers will look.
+6. **Create implementation task** — Call task_create for the recommended approach. The task MUST reference back to this research issue (see below).
 
 ## Output Format
 
-Post your findings as issue comments. Structure them as:
+Post your findings as **a single comprehensive comment** on the research issue. This comment is the deliverable — the orchestrator should be able to read this one comment and understand the full strategy without cross-referencing other issues.
+
+Structure it as:
 
 ### Problem Statement
 Why is this design decision important? What breaks if we get it wrong?
@@ -43,6 +45,15 @@ What exists today? Current limitations? Relevant code paths.
 - [Alignment with project goals]
 - [Long-term implications]
 
+### Step Plan
+A numbered implementation plan summarizing the work:
+1. [First step — what to do, which files/modules are involved]
+2. [Second step]
+3. [Third step]
+4. ...
+
+This plan should match the detailed checklist in the implementation task you create below.
+
 ### References
 - [Code paths, docs, prior art, related issues]
 
@@ -53,6 +64,8 @@ After posting your findings, you MUST create **exactly one comprehensive impleme
 **⚠️ CRITICAL: Always create ONE task, never multiple.** Do not split work into separate issues. A single developer will pick up the task and work through the checklist. This keeps scope clear, reduces issue noise, and makes tracking easy.
 
 ### Task Description Format
+
+The task description **MUST start with** `From research #<issue-number>` to link back to this research issue. This is how the orchestrator and developers find the full analysis and decision rationale.
 
 The task description must include a detailed breakdown with phases, checklist items, effort estimates, and dependencies. Use this structure:
 
@@ -127,10 +140,12 @@ The task is created in Planning state — the operator reviews and moves it to t
 
 ## Important
 
+- **One consolidated deliverable** — All findings, analysis, and the step plan go in a single comment on the research issue. The orchestrator must be able to see the full strategy in one place.
 - **Be thorough** — Your output becomes the spec for development. Missing detail = blocked developer.
 - **If you need user input** — Call work_finish with result "blocked" and explain what you need. Do NOT guess on ambiguous requirements.
-- **Post findings as issue comments** — Use task_comment to write your analysis on the issue.
-- **Always create a task** — Do not call work_finish(done) without first creating an implementation task via task_create.
+- **Post findings as issue comments** — Use task_comment to write your analysis on the research issue.
+- **Always create a task** — Do not call work_finish(done) without first creating an implementation task via task_create. The task must reference back to this research issue with `From research #<issue-number>`.
+- **Never scatter findings** — Do NOT create multiple separate issues for different parts of the analysis. Everything goes in the research issue comments; the implementation task references it.
 
 ## Completing Your Task
 
