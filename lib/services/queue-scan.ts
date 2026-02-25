@@ -114,7 +114,7 @@ export async function findNextIssueForRole(
 }
 
 /**
- * Find next issue for any role (optional filter). Used by work_start for auto-detection.
+ * Find next issue for any role (optional filter).
  */
 export async function findNextIssue(
   provider: Pick<IssueProvider, "listIssuesByLabel">,

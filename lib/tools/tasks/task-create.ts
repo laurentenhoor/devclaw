@@ -14,8 +14,8 @@ import type { PluginContext } from "../../context.js";
 import type { ToolContext } from "../../types.js";
 import { log as auditLog } from "../../audit.js";
 import type { StateLabel } from "../../providers/provider.js";
-import { DEFAULT_WORKFLOW, getStateLabels, getNotifyLabel, NOTIFY_LABEL_COLOR } from "../../workflow/index.js";
-import { requireWorkspaceDir, resolveProject, resolveProvider, autoAssignOwnerLabel } from "../helpers.js";
+import { DEFAULT_WORKFLOW, getStateLabels } from "../../workflow/index.js";
+import { requireWorkspaceDir, resolveProject, resolveProvider, autoAssignOwnerLabel, applyNotifyLabel } from "../helpers.js";
 
 /** Derive the initial state label from the workflow config. */
 const INITIAL_LABEL = DEFAULT_WORKFLOW.states[DEFAULT_WORKFLOW.initial].label;
@@ -82,14 +82,7 @@ Examples:
       provider.reactToIssue(issue.iid, "eyes").catch(() => {});
 
       // Apply notify label for channel routing (best-effort).
-      // Routes to the channel the request came from, falling back to primary.
-      const sourceChannel = project.channels.find(ch => ch.groupId === slug) ?? project.channels[0];
-      if (sourceChannel) {
-        const notifyLabel = getNotifyLabel(sourceChannel.channel, sourceChannel.name ?? "0");
-        provider.ensureLabel(notifyLabel, NOTIFY_LABEL_COLOR)
-          .then(() => provider.addLabel(issue.iid, notifyLabel))
-          .catch(() => {}); // best-effort
-      }
+      applyNotifyLabel(provider, issue.iid, project, slug);
 
       // Auto-assign owner label to this instance (best-effort).
       autoAssignOwnerLabel(workspaceDir, provider, issue.iid, project).catch(() => {});

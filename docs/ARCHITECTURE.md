@@ -12,7 +12,7 @@ graph TB
         A_GL[GitHub/GitLab Issues]
         A_DEV["DEVELOPER (worker session)"]
         A_TST["TESTER (worker session)"]
-        A_O -->|work_start| A_GL
+        A_O -->|task_start| A_GL
         A_O -->|dispatches| A_DEV
         A_O -->|dispatches| A_TST
     end
@@ -23,7 +23,7 @@ graph TB
         B_GL[GitHub/GitLab Issues]
         B_DEV["DEVELOPER (worker session)"]
         B_TST["TESTER (worker session)"]
-        B_O -->|work_start| B_GL
+        B_O -->|task_start| B_GL
         B_O -->|dispatches| B_DEV
         B_O -->|dispatches| B_TST
     end
@@ -42,14 +42,15 @@ sequenceDiagram
     participant IT as Issue Tracker
     participant S as Worker Session
 
-    O->>DC: work_start({ issueId: 42, role: "developer" })
+    O->>DC: task_start({ issueId: 42, projectSlug: "my-app" })
+    DC->>IT: Advance label to queue (Planning → To Do)
+    DC-->>O: { success: true, announcement: "..." }
+    Note over DC: Heartbeat picks up on next tick
     DC->>IT: Fetch issue, verify label
     DC->>DC: Assign level (junior/medior/senior)
-    DC->>DC: Check existing session for assigned level
     DC->>IT: Transition label (To Do → Doing)
     DC->>S: Dispatch task via CLI (create or reuse session)
     DC->>DC: Update projects.json, write audit log
-    DC-->>O: { success: true, announcement: "..." }
 ```
 
 ## Agents vs Sessions
@@ -89,15 +90,15 @@ Why per-level instead of switching models on one session:
 DevClaw controls the **full** session lifecycle end-to-end. The orchestrator agent never calls `sessions_spawn` or `sessions_send` — the plugin handles session creation and task dispatch internally using the OpenClaw CLI:
 
 ```
-Plugin dispatch (inside work_start):
+Plugin dispatch (heartbeat → dispatchTask):
   1. Assign level, look up session, decide spawn vs send
   2. New session:  openclaw gateway call sessions.patch → create entry + set model
                    openclaw gateway call agent → dispatch task
   3. Existing:     openclaw gateway call agent → dispatch task to existing session
-  4. Return result to orchestrator (announcement text, no session instructions)
+  4. Update projects.json, write audit log
 ```
 
-The agent's only job after `work_start` returns is to post the announcement to Telegram. Everything else — level assignment, session creation, task dispatch, state update, audit logging — is deterministic plugin code.
+The orchestrator's only job is to advance issues to the queue via `task_start`. The heartbeat handles everything else — level assignment, session creation, task dispatch, state update, audit logging — as deterministic plugin code.
 
 **Why this matters:** Previously the plugin returned instructions like `{ sessionAction: "spawn", model: "sonnet" }` and the agent had to correctly call `sessions_spawn` with the right params. This was the fragile handoff point where agents would forget `cleanup: "keep"`, use wrong models, or corrupt session state. Moving dispatch into the plugin eliminates that entire class of errors.
 
@@ -108,7 +109,7 @@ The agent's only job after `work_start` returns is to post the announcement to T
 | Feature | Sub-agent system | Plugin-controlled | DevClaw equivalent |
 |---|---|---|---|
 | Auto-reporting | Sub-agent reports to parent | No | Heartbeat polls for completion |
-| Concurrency control | `maxConcurrent` | No | `work_start` checks `active` flag |
+| Concurrency control | `maxConcurrent` | No | Heartbeat checks `active` flag |
 | Lifecycle tracking | Parent-child registry | No | `projects.json` tracks all sessions |
 | Timeout detection | `runTimeoutSeconds` | No | `health` flags stale >2h |
 | Cleanup | Auto-archive | No | `health` manual cleanup |
@@ -149,7 +150,7 @@ graph TB
     end
 
     subgraph "DevClaw Plugin"
-        WS[work_start]
+        WS[task_start]
         WF[work_finish]
         TCR[task_create]
         ST[tasks_status]
@@ -245,7 +246,14 @@ sequenceDiagram
 
     Note over MS: Decides to pick up #42 for DEVELOPER as medior
 
-    MS->>DC: work_start({ issueId: 42, role: "developer", level: "medior", ... })
+    MS->>DC: task_start({ issueId: 42, projectSlug: "my-app", level: "medior" })
+    DC->>GL: advance label "Planning" → "To Do"
+    DC-->>MS: { success: true, announcement: "📋 Advanced #42 to queue" }
+
+    MS->>TG: "📋 Advanced #42 to queue (medior)"
+    TG->>H: sees announcement
+
+    Note over DC: Heartbeat picks up on next tick
     DC->>DC: resolve level "medior" → model ID
     DC->>DC: lookup developer.sessions.medior → null (first time)
     DC->>GL: transition label "To Do" → "Doing"
@@ -253,10 +261,6 @@ sequenceDiagram
     DC->>CLI: openclaw gateway call agent --params { sessionKey, message }
     CLI->>DEV: creates session, delivers task
     DC->>DC: store session key in projects.json + append audit.log
-    DC-->>MS: { success: true, announcement: "🔧 Spawning DEVELOPER (medior) for #42" }
-
-    MS->>TG: "🔧 Spawning DEVELOPER (medior) for #42: Add login page"
-    TG->>H: sees announcement
 
     Note over DEV: Works autonomously — reads code, writes code, creates PR
     Note over DEV: Calls work_finish when done
@@ -279,7 +283,7 @@ sequenceDiagram
     participant CLI as openclaw gateway call agent
     participant DEV as DEVELOPER Session<br/>(medior, existing)
 
-    MS->>DC: work_start({ issueId: 57, role: "developer", level: "medior", ... })
+    MS->>DC: task_start({ issueId: 57, projectSlug: "my-app", level: "medior" })
     DC->>DC: resolve level "medior" → model ID
     DC->>DC: lookup developer.sessions.medior → existing key!
     Note over DC: No sessions.patch needed — session already exists
@@ -335,12 +339,12 @@ sequenceDiagram
 
 ### Phase 3: DEVELOPER pickup
 
-The plugin handles everything end-to-end — level resolution, session lookup, label transition, state update, **and** task dispatch to the worker session. The agent's only job after is to post the announcement.
+The heartbeat handles everything end-to-end — level resolution, session lookup, label transition, state update, **and** task dispatch to the worker session. The orchestrator only needs to advance issues to the queue via `task_start`.
 
 ```mermaid
 sequenceDiagram
     participant A as Orchestrator
-    participant WS as work_start
+    participant HB as Heartbeat
     participant GL as Issue Tracker
     participant TIER as Level Resolver
     participant GW as Gateway RPC
@@ -348,27 +352,25 @@ sequenceDiagram
     participant PJ as projects.json
     participant AL as audit.log
 
-    A->>WS: work_start({ issueId: 42, role: "developer", projectGroupId: "-123", level: "medior" })
-    WS->>PJ: readProjects()
-    WS->>GL: getIssue(42)
-    GL-->>WS: { title: "Add login page", labels: ["To Do"] }
-    WS->>WS: Verify label is "To Do"
-    WS->>TIER: resolve "medior" → "anthropic/claude-sonnet-4-5"
-    WS->>PJ: lookup developer.sessions.medior
-    WS->>GL: transitionLabel(42, "To Do", "Doing")
+    Note over HB: Heartbeat picks up "To Do" issue on tick
+    HB->>PJ: readProjects()
+    HB->>GL: getIssue(42)
+    GL-->>HB: { title: "Add login page", labels: ["To Do"] }
+    HB->>TIER: resolve "medior" → "anthropic/claude-sonnet-4-5"
+    HB->>PJ: lookup developer.sessions.medior
+    HB->>GL: transitionLabel(42, "To Do", "Doing")
     alt New session
-        WS->>GW: sessions.patch({ key: new-key, model: "anthropic/claude-sonnet-4-5" })
+        HB->>GW: sessions.patch({ key: new-key, model: "anthropic/claude-sonnet-4-5" })
     end
-    WS->>CLI: openclaw gateway call agent --params { sessionKey, message }
-    WS->>PJ: activateWorker + store session key
-    WS->>AL: append work_start + model_selection
-    WS-->>A: { success: true, announcement: "🔧 ..." }
+    HB->>CLI: openclaw gateway call agent --params { sessionKey, message }
+    HB->>PJ: activateWorker + store session key
+    HB->>AL: append dispatch + model_selection
 ```
 
 **Writes:**
 - `Issue Tracker`: label "To Do" → "Doing"
 - `projects.json`: workers.developer.active=true, issueId="42", level="medior", sessions.medior=key
-- `audit.log`: 2 entries (work_start, model_selection)
+- `audit.log`: 2 entries (dispatch, model_selection)
 - `Session`: task message delivered to worker session via CLI
 
 ### Phase 4: DEVELOPER works
@@ -501,7 +503,7 @@ sequenceDiagram
     participant SH as health check
     participant RV as review pass
     participant TK as projectTick
-    participant WS as work_start (dispatch)
+    participant WS as dispatchTask (heartbeat)
     Note over HB: Tick triggered (every 60s)
 
     HB->>SH: checkWorkerHealth per project per role
@@ -564,10 +566,10 @@ Every piece of data and where it lives:
 │ DevClaw Plugin (orchestration logic)                            │
 │                                                                 │
 │  setup          → agent creation + workspace + model config     │
-│  work_start     → level + label + dispatch (e2e)                │
+│  task_start     → advance issue to queue (state-agnostic)       │
 │  work_finish    → label + state + git pull + tick queue          │
 │  task_create    → create issue in tracker                       │
-│  task_update    → manual label state change                     │
+│  task_set_level → set level hint on HOLD-state issues           │
 │  task_comment   → add comment to issue                          │
 │  tasks_status   → read labels + read state                      │
 │  health         → check sessions + fix zombies                  │
@@ -607,11 +609,11 @@ Every piece of data and where it lives:
 │ devclaw/log/audit.log (observability)                           │
 │                                                                 │
 │  NDJSON, one line per event:                                    │
-│  work_start, work_finish, model_selection,                      │
-│  tasks_status, task_list, health, task_create, task_update,      │
+│  task_start, work_finish, model_selection,                       │
+│  tasks_status, task_list, health, task_create, task_set_level,   │
 │  task_comment, project_register, setup, heartbeat_tick          │
 │                                                                 │
-│  Query: cat audit.log | jq 'select(.event=="work_start")'      │
+│  Query: cat audit.log | jq 'select(.event=="dispatch")'         │
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
@@ -681,7 +683,7 @@ graph LR
     end
 ```
 
-**Key boundary:** The orchestrator is a planner and dispatcher — it never writes code. All implementation work (code edits, git operations, tests) must go through sub-agent sessions via the `task_create` → `work_start` pipeline. This ensures audit trails, level selection, and testing for every code change.
+**Key boundary:** The orchestrator is a planner and dispatcher — it never writes code. All implementation work (code edits, git operations, tests) must go through sub-agent sessions via the `task_create` → `task_start` → heartbeat dispatch pipeline. This ensures audit trails, level selection, and testing for every code change.
 
 ## IssueProvider abstraction
 
@@ -732,8 +734,8 @@ See [CONFIGURATION.md](CONFIGURATION.md) for the full reference.
 | `openclaw gateway call agent` fails | Plugin catches error during dispatch | Plugin rolls back: reverts label, clears active state. Returns error. No orphaned state. |
 | `sessions.patch` fails | Plugin catches error during session creation | Plugin rolls back label transition. Returns error. |
 | projects.json corrupted | Tool can't parse JSON | Manual fix needed. Atomic writes (temp+rename) prevent partial writes. File locking prevents concurrent races. |
-| Label out of sync | `work_start` verifies label before transitioning | Throws error if label doesn't match expected state. |
-| Worker already active | `work_start` checks `active` flag | Throws error: "DEVELOPER already active on project". Must complete current task first. |
+| Label out of sync | Heartbeat verifies label before transitioning | Throws error if label doesn't match expected state. |
+| Worker already active | Heartbeat checks `active` flag | Skips dispatch: role already active on project. Must complete current task first. |
 | Stale worker (>2h) | `health` and heartbeat health check | `fix=true`: deactivates worker, reverts label to queue. Task available for next pickup. |
 | Worker stuck/blocked | Worker calls `work_finish` with `"blocked"` | Deactivates worker, transitions to "Refining" (hold state). Requires human decision to proceed. |
 | Config invalid | Zod schema validation at load time | Clear error message with field path. Prevents startup with broken config. |

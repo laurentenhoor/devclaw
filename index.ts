@@ -1,8 +1,8 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
-import { createWorkStartTool } from "./lib/tools/worker/work-start.js";
+import { createTaskStartTool } from "./lib/tools/tasks/task-start.js";
 import { createWorkFinishTool } from "./lib/tools/worker/work-finish.js";
 import { createTaskCreateTool } from "./lib/tools/tasks/task-create.js";
-import { createTaskUpdateTool } from "./lib/tools/tasks/task-update.js";
+import { createTaskSetLevelTool } from "./lib/tools/tasks/task-set-level.js";
 import { createTaskCommentTool } from "./lib/tools/tasks/task-comment.js";
 import { createTaskEditBodyTool } from "./lib/tools/tasks/task-edit-body.js";
 import { createTasksStatusTool } from "./lib/tools/admin/tasks-status.js";
@@ -11,7 +11,7 @@ import { createProjectRegisterTool } from "./lib/tools/admin/project-register.js
 import { createSetupTool } from "./lib/tools/admin/setup.js";
 import { createOnboardTool } from "./lib/tools/admin/onboard.js";
 import { createAutoConfigureModelsTool } from "./lib/tools/admin/autoconfigure-models.js";
-import { createResearchTaskTool } from "./lib/tools/worker/research-task.js";
+import { createResearchTaskTool } from "./lib/tools/tasks/research-task.js";
 import { createTaskListTool } from "./lib/tools/tasks/task-list.js";
 import { createWorkflowGuideTool } from "./lib/tools/admin/workflow-guide.js";
 import { createSyncLabelsTool } from "./lib/tools/admin/sync-labels.js";
@@ -76,12 +76,12 @@ const plugin = {
     const ctx = createPluginContext(api);
 
     // Worker lifecycle
-    api.registerTool(createWorkStartTool(ctx), { names: ["work_start"] });
+    api.registerTool(createTaskStartTool(ctx), { names: ["task_start"] });
     api.registerTool(createWorkFinishTool(ctx), { names: ["work_finish"] });
 
     // Task management
     api.registerTool(createTaskCreateTool(ctx), { names: ["task_create"] });
-    api.registerTool(createTaskUpdateTool(ctx), { names: ["task_update"] });
+    api.registerTool(createTaskSetLevelTool(ctx), { names: ["task_set_level"] });
     api.registerTool(createTaskCommentTool(ctx), { names: ["task_comment"] });
     api.registerTool(createTaskEditBodyTool(ctx), { names: ["task_edit_body"] });
     api.registerTool(createTaskAttachTool(ctx), { names: ["task_attach"] });

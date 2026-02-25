@@ -1,7 +1,7 @@
 /**
- * Tests for task_update tool — state transitions and level overrides.
+ * Tests for task_set_level tool — level hints and label detection.
  *
- * Run: npx tsx --test lib/tools/tasks/task-update.test.ts
+ * Run: npx tsx --test lib/tools/tasks/task-set-level.test.ts
  */
 
 import { describe, it } from "node:test";
@@ -9,7 +9,7 @@ import assert from "node:assert";
 import { DEFAULT_WORKFLOW, getStateLabels, ReviewPolicy, resolveReviewRouting } from "../../workflow/index.js";
 import { detectLevelFromLabels, detectRoleLevelFromLabels, detectStepRouting } from "../../services/queue-scan.js";
 
-describe("task_update tool", () => {
+describe("task_set_level tool", () => {
   it("has correct schema", () => {
     // state is now optional — at least one of state or level required
     const requiredParams = ["projectSlug", "issueId"];

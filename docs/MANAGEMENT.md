@@ -28,7 +28,7 @@ This isn't just cost optimization. It mirrors what effective managers do instinc
 
 Classical management theory — later formalized by Bernard Bass in his work on Transformational Leadership — introduced a concept called Management by Exception (MBE). The principle: a manager should only be pulled back into a workstream when something deviates from the expected path.
 
-DevClaw's task lifecycle is built on this. The orchestrator delegates a task via `work_start`, then steps away. It only re-engages in specific scenarios:
+DevClaw's task lifecycle is built on this. The orchestrator delegates a task via `task_start`, then steps away. It only re-engages in specific scenarios:
 
 1. **DEVELOPER completes work** → The label moves to `To Review`. The heartbeat polls PR status. No orchestrator involvement needed.
 2. **PR is approved** → The heartbeat auto-merges the PR, closes the issue, and transitions to Done. Pipeline complete. (Or to `To Test` if the test phase is enabled.)

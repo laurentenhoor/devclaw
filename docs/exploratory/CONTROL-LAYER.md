@@ -63,7 +63,7 @@ JSON Schema constraints on tool parameters. The LLM framework **rejects the call
 | `task_create` | `label` must be a valid workflow state label | `enum` |
 | `research_task` | `complexity` must be `"simple"`, `"medium"`, or `"complex"` | `enum` |
 | `task_comment` | `authorRole` must be a known role or `"orchestrator"` | `enum` |
-| `task_update` | `state` must be a valid workflow state label | `enum` |
+| `task_set_level` | `level` must be a valid role level | `enum` |
 | All tools | `projectSlug` is required | `required` |
 
 ### Soft instructions in schemas

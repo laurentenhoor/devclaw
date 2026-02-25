@@ -250,7 +250,7 @@ Combined with tier selection (not using Opus when Haiku will do) and the token-f
 Every tool call writes an NDJSON line to `audit.log`:
 
 ```bash
-cat audit.log | jq 'select(.event=="work_start")'
+cat audit.log | jq 'select(.event=="task_start")'
 ```
 
 Full trace of every task, every level selection, every label transition, every health fix. No manual logging needed.
@@ -500,10 +500,10 @@ DevClaw gives the orchestrator 18 tools. These aren't just convenience wrappers 
 
 | Tool                   | What it does                                                                            |
 | ---------------------- | --------------------------------------------------------------------------------------- |
-| `work_start`           | Pick up a task — resolves level, transitions label, dispatches session, logs audit      |
+| `task_start`           | Advance an issue to the next queue (state-agnostic). Heartbeat handles dispatch.        |
 | `work_finish`          | Complete a task — transitions label, updates state, closes/reopens issue                |
 | `task_create`          | Create a new issue (used by workers to file bugs they discover)                         |
-| `task_update`          | Manually change an issue's state label or override assigned level                       |
+| `task_set_level`       | Set level hint on HOLD-state issues (Planning, Refining) before advancing               |
 | `task_comment`         | Add a comment to an issue (with role attribution)                                       |
 | `task_edit_body`       | Edit issue title/description (initial state only; audit-logged)                         |
 | `task_list`            | Browse and search issues by workflow state                                              |

@@ -1,5 +1,5 @@
 /**
- * dispatch/index.ts — Core dispatch logic shared by work_start and projectTick.
+ * dispatch/index.ts — Core dispatch logic used by projectTick (heartbeat).
  *
  * Handles: session lookup, spawn/reuse via Gateway RPC, task dispatch via CLI,
  * state update (activateWorker), and audit logging.
@@ -70,15 +70,14 @@ export type DispatchResult = {
  * Dispatch a task to a worker session.
  *
  * Flow:
- *   1. Resolve model and session key
- *   2. Build task message
- *   3. Transition label
- *   4. Fire notification (early — before session dispatch which can timeout)
- *   5. Ensure session (fire-and-forget) + send to agent
- *   6. Update worker state
- *   7. Audit
+ *   1. Resolve model, session key, build task message (setup — no side effects)
+ *   2. Transition label (commitment point — issue leaves queue)
+ *   3. Apply labels, send notification
+ *   4. Ensure session (fire-and-forget) + send to agent
+ *   5. Update worker state
+ *   6. Audit
  *
- * On dispatch failure: rolls back label transition.
+ * If setup fails, the issue stays in its queue untouched.
  * On state update failure after dispatch: logs warning (session IS running).
  */
 export async function dispatchTask(
@@ -93,6 +92,7 @@ export async function dispatchTask(
   const slotIndex = opts.slotIndex ?? 0;
   const rc = opts.runCommand;
 
+  // ── Setup (no side effects — safe to fail) ──────────────────────────
   const resolvedConfig = await loadConfig(workspaceDir, project.name);
   const resolvedRole = resolvedConfig.roles[role];
   const { timeouts } = resolvedConfig;
@@ -156,6 +156,9 @@ export async function dispatchTask(
   // Load role-specific instructions to inject into the worker's system prompt
   const roleInstructions = await loadRoleInstructions(workspaceDir, project.name, role);
 
+  // ── Commitment point — transition label (issue leaves queue) ────────
+  await provider.transitionLabel(issueId, fromLabel, toLabel);
+
   // Mark issue + PR as managed and all consumed comments as seen (fire-and-forget)
   provider.reactToIssue(issueId, EYES_EMOJI).catch(() => {});
   provider.reactToPr(issueId, EYES_EMOJI).catch(() => {});
@@ -167,10 +170,7 @@ export async function dispatchTask(
     }).catch(() => {});
   });
 
-  // Step 1: Transition label (this is the commitment point)
-  await provider.transitionLabel(issueId, fromLabel, toLabel);
-
-  // Step 1b: Apply role:level label (best-effort — failure must not abort dispatch)
+  // Apply role:level label (best-effort — failure must not abort dispatch)
   let issue: { labels: string[] } | undefined;
   try {
     issue = await provider.getIssue(issueId);
@@ -267,7 +267,7 @@ export async function dispatchTask(
     });
   } catch (err) {
     // Session is already dispatched — log warning but don't fail
-    await auditLog(workspaceDir, "work_start", {
+    await auditLog(workspaceDir, "dispatch", {
       project: project.name, issue: issueId, role,
       warning: "State update failed after successful dispatch",
       error: (err as Error).message, sessionKey,
@@ -309,7 +309,7 @@ async function auditDispatch(
     sessionKey: string; fromLabel: string; toLabel: string;
   },
 ): Promise<void> {
-  await auditLog(workspaceDir, "work_start", {
+  await auditLog(workspaceDir, "dispatch", {
     project: opts.project,
     issue: opts.issueId, issueTitle: opts.issueTitle,
     role: opts.role, level: opts.level,

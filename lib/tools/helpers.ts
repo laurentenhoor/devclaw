@@ -10,7 +10,7 @@ import { readProjects, getProject, type Project, type ProjectsData } from "../pr
 import { createProvider, type ProviderWithType } from "../providers/index.js";
 import { loadConfig } from "../config/index.js";
 import { loadInstanceName } from "../instance.js";
-import { getOwnerLabel, OWNER_LABEL_COLOR } from "../workflow/index.js";
+import { getOwnerLabel, OWNER_LABEL_COLOR, getNotifyLabel, NOTIFY_LABEL_PREFIX, NOTIFY_LABEL_COLOR } from "../workflow/index.js";
 
 /**
  * Require workspaceDir from context or throw a clear error.
@@ -44,6 +44,39 @@ export async function resolveProject(
  */
 export async function resolveProvider(project: Project, runCommand: RunCommand): Promise<ProviderWithType> {
   return createProvider({ repo: project.repo, provider: project.provider, runCommand });
+}
+
+/**
+ * Auto-assign owner label to an issue based on the current instance.
+ *
+ * This ensures that when a task tool creates or modifies an issue,
+ * it automatically claims ownership for the executing instance.
+ * Best-effort: failures are logged but don't block the operation.
+ */
+/**
+ * Apply a notify label to an issue for notification channel routing.
+ *
+ * Resolves the source channel from the slug (groupId) and applies
+ * a `notify:<channel>:<name>` label. Skips if the issue already has one.
+ * Best-effort: failures are silently ignored.
+ */
+export function applyNotifyLabel(
+  provider: ProviderWithType["provider"],
+  issueId: number,
+  project: Project,
+  slug: string,
+  existingLabels?: string[],
+): void {
+  const sourceChannel = project.channels.find(ch => ch.groupId === slug) ?? project.channels[0];
+  if (!sourceChannel) return;
+
+  const notifyLabel = getNotifyLabel(sourceChannel.channel, sourceChannel.name ?? "0");
+  const alreadyHas = existingLabels?.some(l => l.startsWith(NOTIFY_LABEL_PREFIX));
+  if (alreadyHas) return;
+
+  provider.ensureLabel(notifyLabel, NOTIFY_LABEL_COLOR)
+    .then(() => provider.addLabel(issueId, notifyLabel))
+    .catch(() => {});
 }
 
 /**

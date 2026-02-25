@@ -2,7 +2,7 @@
  * tick.ts — Project-level queue scan + dispatch.
  *
  * Core function: projectTick() scans one project's queue and fills free worker slots.
- * Called by: work_start (fill parallel slot), work_finish (next pipeline step), heartbeat service (sweep).
+ * Called by: work_finish (next pipeline step), heartbeat service (sweep).
  */
 import type { PluginRuntime } from "openclaw/plugin-sdk";
 import type { RunCommand } from "../context.js";
@@ -58,7 +58,7 @@ export async function projectTick(opts: {
   pluginConfig?: Record<string, unknown>;
   dryRun?: boolean;
   maxPickups?: number;
-  /** Only attempt this role. Used by work_start to fill the other slot. */
+  /** Only attempt this role. Used by work_finish to fill the next pipeline step. */
   targetRole?: Role;
   /** Optional provider override (for testing). Uses createProvider if omitted. */
   provider?: IssueProvider;

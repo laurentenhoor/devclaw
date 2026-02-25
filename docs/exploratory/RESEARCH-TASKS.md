@@ -33,7 +33,7 @@ You ←→ Claude Code (local terminal)
 
 **Research conversation in a clean chat, then dispatch a worker.**
 
-Start a secondary chat session with the orchestrator (separate from the main notification channel). Discuss the problem, explore the codebase together, form a plan. When ready, the orchestrator creates an issue and dispatches a developer via `work_start`.
+Start a secondary chat session with the orchestrator (separate from the main notification channel). Discuss the problem, explore the codebase together, form a plan. When ready, the orchestrator creates an issue and dispatches a developer via `task_start`.
 
 **Flow:**
 ```
@@ -41,7 +41,7 @@ You ←→ Orchestrator (secondary chat)
          │
          ├── discuss, plan, explore codebase
          │
-         └── task_create → work_start → Developer worker → PR
+         └── task_create → task_start → Developer worker → PR
 ```
 
 **When to use:**
@@ -70,7 +70,7 @@ You ←→ Orchestrator (primary chat, mixed with notifications)
          │
          ├── discuss, plan (interleaved with heartbeat updates)
          │
-         └── task_create → work_start → Developer worker → PR
+         └── task_create → task_start → Developer worker → PR
 ```
 
 **When to use:**
@@ -131,7 +131,7 @@ Create the issue with enough context for a senior developer to both figure out t
 
 **Flow:**
 ```
-You → Orchestrator → task_create + work_start(level: "senior")
+You → Orchestrator → task_create + task_start(level: "senior")
                           │
                     Senior Developer worker
                           │
@@ -169,7 +169,7 @@ Same as mode 5, but with `reviewPolicy: agent` or `reviewPolicy: auto`. The PR i
 
 **Flow:**
 ```
-You → Orchestrator → task_create + work_start(level: "senior")
+You → Orchestrator → task_create + task_start(level: "senior")
                           │
                     Senior Developer worker
                           │

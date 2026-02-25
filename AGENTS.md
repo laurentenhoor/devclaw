@@ -10,7 +10,7 @@ DevClaw is an OpenClaw plugin for multi-project dev/qa pipeline orchestration wi
 - `lib/providers/` — GitHub and GitLab issue providers (via `gh`/`glab` CLI)
 - `lib/services/` — Heartbeat, tick (queue scan), pipeline (completion rules)
 - `lib/setup/` — Agent creation, model fetching, LLM-powered model selection
-- `lib/tools/` — All registered tools (work_start, work_finish, task_create, etc.)
+- `lib/tools/` — All registered tools (task_start, work_finish, task_create, etc.)
 
 ## Coding Style
 

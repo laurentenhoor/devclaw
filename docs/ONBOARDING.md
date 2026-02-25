@@ -223,7 +223,7 @@ The agent should call `tasks_status` and report the "To Do" issue. Then:
 
 > "Pick up issue #1 for developer"
 
-The agent calls `work_start`, which assigns a level, transitions the label to "Doing", creates or reuses a worker session, and dispatches the task — all in one call. The agent posts the announcement.
+The agent calls `task_start`, which advances the issue to the queue. The heartbeat dispatches a worker on its next cycle — it assigns a level, transitions the label to "Doing", creates or reuses a worker session, and dispatches the task. The agent posts the announcement.
 
 ## Step 7: Understand the workflow
 

@@ -1,6 +1,6 @@
 /**
  * Tests for architect role, research_task tool, and workflow integration.
- * Run with: npx tsx --test lib/tools/worker/research-task.test.ts
+ * Run with: npx tsx --test lib/tools/tasks/research-task.test.ts
  */
 import { describe, it } from "node:test";
 import assert from "node:assert";

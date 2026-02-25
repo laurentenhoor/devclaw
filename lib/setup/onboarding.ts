@@ -27,7 +27,7 @@ export async function hasWorkspaceFiles(
       path.join(workspaceDir, "AGENTS.md"),
       "utf-8",
     );
-    return content.includes("DevClaw") && content.includes("work_start");
+    return content.includes("DevClaw") && (content.includes("task_start") || content.includes("work_start"));
   } catch {
     return false;
   }

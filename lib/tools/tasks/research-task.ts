@@ -19,9 +19,9 @@ import type { StateLabel } from "../../providers/provider.js";
 import { getRoleWorker, countActiveSlots } from "../../projects/index.js";
 import { dispatchTask } from "../../dispatch/index.js";
 import { log as auditLog } from "../../audit.js";
-import { requireWorkspaceDir, resolveProject, resolveProvider, autoAssignOwnerLabel } from "../helpers.js";
+import { requireWorkspaceDir, resolveProject, resolveProvider, autoAssignOwnerLabel, applyNotifyLabel } from "../helpers.js";
 import { loadConfig } from "../../config/index.js";
-import { getNotifyLabel, NOTIFY_LABEL_COLOR, NOTIFY_LABEL_PREFIX, getActiveLabel } from "../../workflow/index.js";
+import { getActiveLabel } from "../../workflow/index.js";
 import { selectLevel } from "../../roles/model-selector.js";
 import { resolveModel } from "../../roles/index.js";
 
@@ -140,17 +140,7 @@ Example:
       provider.reactToIssue(issue.iid, "eyes").catch(() => {});
 
       // Apply notify label for notification routing (best-effort).
-      // Routes to the channel the request came from, falling back to primary.
-      const sourceChannel = project.channels.find(ch => ch.groupId === slug) ?? project.channels[0];
-      const notifyLabel = sourceChannel ? getNotifyLabel(sourceChannel.channel, sourceChannel.name ?? "0") : null;
-      if (notifyLabel) {
-        const hasNotify = issue.labels.some((l) => l.startsWith(NOTIFY_LABEL_PREFIX));
-        if (!hasNotify) {
-          provider.ensureLabel(notifyLabel, NOTIFY_LABEL_COLOR)
-            .then(() => provider.addLabel(issue.iid, notifyLabel))
-            .catch(() => {});
-        }
-      }
+      applyNotifyLabel(provider, issue.iid, project, slug, issue.labels);
 
       // Auto-assign owner label to this instance (best-effort).
       autoAssignOwnerLabel(workspaceDir, provider, issue.iid, project).catch(() => {});

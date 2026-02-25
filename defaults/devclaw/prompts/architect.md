@@ -144,4 +144,4 @@ The `projectSlug` is included in your task message. Your session is persistent â
 ## Tools You Should NOT Use
 
 These are orchestrator-only tools. Do not call them:
-- `work_start`, `tasks_status`, `health`, `project_register`
+- `task_start`, `tasks_status`, `health`, `project_register`

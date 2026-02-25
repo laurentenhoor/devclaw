@@ -2,53 +2,32 @@
 
 Complete reference for all tools registered by DevClaw. See [`index.ts`](../index.ts) for registration.
 
-## Worker Lifecycle
+## Task Lifecycle
 
-### `work_start`
+### `task_start`
 
-Pick up a task from the issue queue. Handles level assignment, label transition, session creation/reuse, task dispatch, and audit logging — all in one call.
+Advance an issue to the next queue. State-agnostic — works from any HOLD or QUEUE state. The heartbeat handles actual dispatch on its next cycle.
 
-**Source:** [`lib/tools/work-start.ts`](../lib/tools/work-start.ts)
-
-**Context:** Only works in project group chats.
+**Source:** [`lib/tools/tasks/task-start.ts`](../lib/tools/tasks/task-start.ts)
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `issueId` | number | No | Issue ID. If omitted, picks next by priority. |
-| `role` | `"developer"` \| `"tester"` \| `"architect"` \| `"reviewer"` | No | Worker role. Auto-detected from issue label if omitted. |
-| `projectSlug` | string | No | Project slug (e.g. 'my-webapp'). Auto-detected from group context. |
-| `level` | string | No | Level (`junior`, `medior`, `senior`). Auto-detected if omitted. |
+| `projectSlug` | string | Yes | Project slug (e.g. 'my-webapp') |
+| `issueId` | number | Yes | Issue ID to advance |
+| `level` | string | No | Level hint (`junior`, `medior`, `senior`). Applied as a role:level label. |
 
-**What it does atomically:**
+**Behavior by current state type:**
 
-1. Resolves project from `projects.json`
-2. Validates no active worker for this role
-3. Fetches issue from tracker, verifies correct label state
-4. Assigns level (LLM-chosen via `level` param → label detection → keyword heuristic fallback)
-5. Resolves level to model ID via config or defaults
-6. Looks up existing session for assigned level (session-per-level)
-7. Transitions label (e.g. `To Do` → `Doing`)
-8. Creates session via Gateway RPC if new (`sessions.patch`)
-9. Dispatches task to worker session via CLI (`openclaw gateway call agent`)
-10. Updates `projects.json` state (active, issueId, level, session key)
-11. Writes audit log entries (work_start + model_selection)
-12. Sends notification
-13. Returns announcement text
+| State type | Action | Example |
+|---|---|---|
+| HOLD (Planning, Refining) | Follows APPROVE transition to target queue | Planning → To Do |
+| QUEUE (To Do, To Improve, etc.) | No-op (already queued), applies level if provided | Stays in To Do |
+| ACTIVE (Doing, Reviewing, etc.) | Error — already being worked on | — |
+| TERMINAL (Done, Rejected) | Error — cannot start | — |
 
-**Level selection priority:**
-
-1. `level` parameter (LLM-selected) — highest priority
-2. Issue label (e.g. a label named "junior" or "senior")
-3. Keyword heuristic from `model-selector.ts` — fallback
-
-**Execution guards:**
-
-- Rejects if role already has an active worker
-- Respects `roleExecution` (sequential: rejects if other role is active)
-
-**On failure:** Rolls back label transition. No orphaned state.
+**Level hint:** If `level` is provided, a `role:level` label is applied (e.g. `developer:senior`). The heartbeat respects this when dispatching.
 
 ---
 
@@ -127,11 +106,11 @@ Create a new issue in the project's issue tracker.
 
 ---
 
-### `task_update`
+### `task_set_level`
 
-Change an issue's state label and/or override the assigned worker level.
+Set the developer level hint on a HOLD-state issue (Planning, Refining).
 
-**Source:** [`lib/tools/task-update.ts`](../lib/tools/task-update.ts)
+**Source:** [`lib/tools/tasks/task-set-level.ts`](../lib/tools/tasks/task-set-level.ts)
 
 **Parameters:**
 
@@ -139,20 +118,15 @@ Change an issue's state label and/or override the assigned worker level.
 |---|---|---|---|
 | `projectSlug` | string | Yes | Project slug (e.g. 'my-webapp') |
 | `issueId` | number | Yes | Issue ID to update |
-| `state` | StateLabel | No | New state label |
-| `level` | string | No | Override the role:level assignment (e.g. 'senior') |
+| `level` | string | Yes | The role:level hint (e.g. 'senior', 'junior') |
 | `reason` | string | No | Audit log reason for the change |
 
-At least one of `state` or `level` must be provided.
-
-**Valid states:** `Planning`, `To Do`, `Doing`, `To Review`, `Reviewing`, `Done`, `To Improve`, `Refining`, `To Research`, `Researching` (and `To Test`, `Testing` if test phase enabled)
+Only works on issues in HOLD states (Planning, Refining). The level is applied as a `role:level` label and respected by the heartbeat when the issue is later advanced via `task_start`.
 
 **Use cases:**
 
-- Manual state adjustments (e.g. `Planning → To Do` after approval)
-- Override assigned level (e.g. escalate to senior for human review)
-- Failed auto-transitions that need correction
-- Force human review via level change
+- Override assigned level before advancing (e.g. set to senior for complex task)
+- Pre-set level on held issues before `task_start` moves them to the queue
 
 ---
 

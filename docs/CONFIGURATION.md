@@ -224,10 +224,10 @@ Restrict DevClaw tools to your orchestrator agent:
         "id": "my-orchestrator",
         "tools": {
           "allow": [
-            "work_start",
+            "task_start",
             "work_finish",
             "task_create",
-            "task_update",
+            "task_set_level",
             "task_comment",
             "task_edit_body",
             "tasks_status",
@@ -395,12 +395,12 @@ Append-only NDJSON at `<workspace>/devclaw/log/audit.log`. Auto-truncated to 250
 
 | Event | Trigger |
 |---|---|
-| `work_start` | Task dispatched to worker |
+| `task_start` | Issue advanced to queue |
 | `model_selection` | Level resolved to model ID |
 | `work_finish` | Task completed |
 | `work_heartbeat` | Heartbeat tick completed (background service) |
 | `task_create` | Issue created |
-| `task_update` | Issue state changed |
+| `task_set_level` | Level hint set on issue |
 | `task_comment` | Comment added to issue |
 | `tasks_status` | Project dashboard queried |
 | `task_list` | Issue list browsed |
@@ -412,7 +412,7 @@ Append-only NDJSON at `<workspace>/devclaw/log/audit.log`. Auto-truncated to 250
 
 ```bash
 # All task dispatches
-cat audit.log | jq 'select(.event=="work_start")'
+cat audit.log | jq 'select(.event=="task_start")'
 
 # All completions for a project
 cat audit.log | jq 'select(.event=="work_finish" and .project=="my-webapp")'
