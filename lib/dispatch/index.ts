@@ -24,7 +24,7 @@ import { loadRoleInstructions } from "./bootstrap-hook.js";
 import { slotName } from "../names.js";
 
 import { buildTaskMessage, buildAnnouncement, formatSessionLabel } from "./message-builder.js";
-import { ensureSessionFireAndForget, sendToAgent, shouldClearSession } from "./session.js";
+import { ensureSessionFireAndForget, sendToAgent, shouldClearSession, createWorkerTopic, detectForumGroup } from "./session.js";
 import { acknowledgeComments, EYES_EMOJI } from "./acknowledge.js";
 
 export type DispatchOpts = {
@@ -223,6 +223,51 @@ export async function dispatchTask(
     // Best-effort — label failure must not abort dispatch
   }
 
+  // Step 1f: Create worker forum topic (Telegram forum groups only)
+  let threadId: number | undefined;
+  if (runtime && project.channels.length > 0) {
+    try {
+      // Detect and cache forum status on the project
+      const primaryChannel = project.channels[0];
+      if (primaryChannel?.channel === "telegram") {
+        if (!project.isForum) {
+          project.isForum = await detectForumGroup(primaryChannel.channelId, runtime);
+        }
+
+        // If it's a forum, create a topic for this worker (best-effort)
+        if (project.isForum) {
+          const createdThreadId = await createWorkerTopic(
+            primaryChannel.channelId,
+            role,
+            botName,
+            issueId,
+            runtime,
+            workspaceDir,
+          );
+
+          // Store threadId on the slot for later retrieval (best-effort)
+          if (createdThreadId) {
+            threadId = createdThreadId;
+            await updateSlot(workspaceDir, project.slug, role, level, slotIndex, {
+              threadId,
+            }).catch((err) => {
+              auditLog(workspaceDir, "dispatch_warning", {
+                step: "storeThreadId", issue: issueId, role,
+                error: (err as Error).message ?? String(err),
+              }).catch(() => {});
+            });
+          }
+        }
+      }
+    } catch (err) {
+      // Forum topic creation is best-effort — failure should not abort dispatch
+      auditLog(workspaceDir, "dispatch_warning", {
+        step: "forumTopicSetup", issue: issueId, role,
+        error: (err as Error).message ?? String(err),
+      }).catch(() => {});
+    }
+  }
+
   // Step 2: Send notification early (before session dispatch which can timeout)
   // This ensures users see the notification even if gateway is slow
   const notifyConfig = getNotificationConfig(pluginConfig);
@@ -258,23 +303,29 @@ export async function dispatchTask(
   // Step 3: Ensure session exists (fire-and-forget — don't wait for gateway)
   // Session key is deterministic, so we can proceed immediately
   const sessionLabel = formatSessionLabel(project.name, role, level, botName);
-  ensureSessionFireAndForget(sessionKey, model, workspaceDir, rc, timeouts.sessionPatchMs, sessionLabel);
+  ensureSessionFireAndForget(sessionKey, model, workspaceDir, rc, timeouts.sessionPatchMs, {
+    label: sessionLabel,
+    isWorkerSession: true,
+  });
 
   // Step 4: Send task to agent (fire-and-forget)
   // Model is set on the session via sessions.patch (step 3), not on the agent RPC —
   // the gateway's agent endpoint rejects unknown properties like 'model'.
+  const primaryChannel = project.channels[0];
   sendToAgent(sessionKey, taskMessage, {
     agentId, projectName: project.name, issueId, role, level, slotIndex,
     orchestratorSessionKey: opts.sessionKey, workspaceDir,
     dispatchTimeoutMs: timeouts.dispatchMs,
     extraSystemPrompt: roleInstructions.trim() || undefined,
     runCommand: rc,
+    threadId,
+    groupId: primaryChannel?.channelId,
   });
 
   // Step 5: Update worker state
   try {
     await recordWorkerState(workspaceDir, project.slug, role, slotIndex, {
-      issueId, level, sessionKey, sessionAction, fromLabel, name: botName,
+      issueId, level, sessionKey, sessionAction, fromLabel, name: botName, threadId,
     });
   } catch (err) {
     // Session is already dispatched — log warning but don't fail
@@ -299,7 +350,7 @@ export async function dispatchTask(
 
 async function recordWorkerState(
   workspaceDir: string, slug: string, role: string, slotIndex: number,
-  opts: { issueId: number; level: string; sessionKey: string; sessionAction: "spawn" | "send"; fromLabel?: string; name?: string },
+  opts: { issueId: number; level: string; sessionKey: string; sessionAction: "spawn" | "send"; fromLabel?: string; name?: string; threadId?: number | null },
 ): Promise<void> {
   await activateWorker(workspaceDir, slug, role, {
     issueId: String(opts.issueId),
@@ -309,6 +360,7 @@ async function recordWorkerState(
     previousLabel: opts.fromLabel,
     slotIndex,
     name: opts.name,
+    threadId: opts.threadId ?? undefined,
   });
 }
 

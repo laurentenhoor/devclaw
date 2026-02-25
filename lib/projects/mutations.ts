@@ -76,6 +76,8 @@ export async function activateWorker(
     slotIndex?: number;
     /** Deterministic fun name for this slot. */
     name?: string;
+    /** Telegram forum topic thread ID (if applicable). */
+    threadId?: number;
   },
 ): Promise<ProjectsData> {
   await acquireLock(workspaceDir);
@@ -105,6 +107,7 @@ export async function activateWorker(
       startTime: params.startTime ?? new Date().toISOString(),
       previousLabel: params.previousLabel ?? null,
       name: params.name ?? slots[idx]!.name,
+      threadId: params.threadId ?? slots[idx]!.threadId,
     };
 
     project.workers[role] = rw;

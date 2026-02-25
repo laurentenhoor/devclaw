@@ -15,6 +15,8 @@ export type SlotState = {
   previousLabel?: string | null;
   /** Deterministic fun name for this slot (e.g. "Ada", "Grace"). */
   name?: string;
+  /** Telegram forum topic thread ID for this worker (if group is a forum). */
+  threadId?: number;
 };
 
 /** Per-level worker state: levels map instead of flat slots array. */
@@ -49,6 +51,8 @@ export type Project = {
   channels: Channel[];
   /** Issue tracker provider type (github or gitlab). Auto-detected at registration, stored for reuse. */
   provider?: "github" | "gitlab";
+  /** Whether the primary project group is a Telegram forum supergroup (cached for perf). */
+  isForum?: boolean;
   /** Worker state per role (developer, tester, architect, or custom roles). Shared across all channels. */
   workers: Record<string, RoleWorkerState>;
 };
