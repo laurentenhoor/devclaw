@@ -1,10 +1,16 @@
 /**
  * setup/workspace.ts — Workspace file scaffolding.
  *
- * Writes AGENTS.md, HEARTBEAT.md, default role prompts, and projects.json.
+ * On every startup, ensureDefaultFiles() overwrites prompts, workflow states,
+ * and workspace docs with the latest curated defaults. User-configurable
+ * sections (roles, timeouts) are preserved in workflow.yaml.
+ *
+ * Project-specific prompt overrides are backed up and removed so workers
+ * always fall through to the workspace defaults.
  */
 import fs from "node:fs/promises";
 import path from "node:path";
+import YAML from "yaml";
 import {
   AGENTS_MD_TEMPLATE,
   HEARTBEAT_MD_TEMPLATE,
@@ -16,22 +22,35 @@ import {
 } from "./templates.js";
 import { getAllRoleIds } from "../roles/index.js";
 import { migrateWorkspaceLayout, DATA_DIR } from "./migrate-layout.js";
-import { hashContent, writePromptHashes, backupProjectPrompts } from "./prompt-hashes.js";
-import { PLUGIN_VERSION } from "./upgrade.js";
 
 /**
- * Ensure default data files exist in the workspace.
- * Structural files (workflow.yaml, projects.json) are created only if missing.
- * Prompt files are always overwritten with backups (same as workspace docs).
- * Called automatically after migration (via ensureWorkspaceMigrated).
+ * Ensure all workspace data files are up to date with the latest defaults.
+ *
+ * Called on every heartbeat startup. Overwrites prompts and workflow states
+ * while preserving user-configurable sections (roles, timeouts).
  */
 export async function ensureDefaultFiles(workspacePath: string): Promise<void> {
   const dataDir = path.join(workspacePath, DATA_DIR);
 
-  // devclaw/workflow.yaml
+  // Workspace instruction files — always overwrite with latest
+  await backupAndWrite(path.join(workspacePath, "AGENTS.md"), AGENTS_MD_TEMPLATE);
+  await backupAndWrite(path.join(workspacePath, "HEARTBEAT.md"), HEARTBEAT_MD_TEMPLATE);
+  await backupAndWrite(path.join(workspacePath, "IDENTITY.md"), IDENTITY_MD_TEMPLATE);
+  await backupAndWrite(path.join(workspacePath, "TOOLS.md"), TOOLS_MD_TEMPLATE);
+
+  // Remove BOOTSTRAP.md — one-time onboarding file, not needed after setup
+  try { await fs.unlink(path.join(workspacePath, "BOOTSTRAP.md")); } catch { /* already gone */ }
+
+  // devclaw/workflow.yaml — overwrite with latest template, preserve roles/timeouts
   const workflowPath = path.join(dataDir, "workflow.yaml");
-  if (!await fileExists(workflowPath)) {
-    await fs.mkdir(dataDir, { recursive: true });
+  await fs.mkdir(dataDir, { recursive: true });
+  if (await fileExists(workflowPath)) {
+    const existing = YAML.parse(await fs.readFile(workflowPath, "utf-8")) as Record<string, unknown>;
+    const doc = YAML.parseDocument(WORKFLOW_YAML_TEMPLATE);
+    if (existing.roles) doc.set("roles", existing.roles);
+    if (existing.timeouts) doc.set("timeouts", existing.timeouts);
+    await backupAndWrite(workflowPath, doc.toString());
+  } else {
     await fs.writeFile(workflowPath, WORKFLOW_YAML_TEMPLATE, "utf-8");
   }
 
@@ -45,30 +64,21 @@ export async function ensureDefaultFiles(workspacePath: string): Promise<void> {
   // devclaw/projects/ directory
   await fs.mkdir(path.join(dataDir, "projects"), { recursive: true });
 
-  // devclaw/prompts/ — default role instructions (backup + overwrite)
+  // devclaw/prompts/ — force-overwrite with latest curated defaults
   const promptsDir = path.join(dataDir, "prompts");
   await fs.mkdir(promptsDir, { recursive: true });
-  const hashes: Record<string, string> = {};
   for (const role of getAllRoleIds()) {
     const rolePath = path.join(promptsDir, `${role}.md`);
-    const content = DEFAULT_ROLE_INSTRUCTIONS[role] ?? `# ${role.toUpperCase()} Worker Instructions\n\nAdd role-specific instructions here.\n`;
+    const content = DEFAULT_ROLE_INSTRUCTIONS[role];
+    if (!content) throw new Error(`No default instructions found for role: ${role}`);
     await backupAndWrite(rolePath, content);
-    hashes[role] = hashContent(content);
   }
-  await writePromptHashes(dataDir, hashes);
 
-  // Backup project-specific prompt overrides (safety net during re-setup)
+  // Backup + remove all project-specific prompt overrides
   await backupProjectPrompts(dataDir);
 
   // devclaw/log/ directory (audit.log created on first write)
   await fs.mkdir(path.join(dataDir, "log"), { recursive: true });
-
-  // Version stamp — prevents the heartbeat auto-upgrade from re-running
-  // immediately after a fresh install.
-  const versionPath = path.join(dataDir, ".plugin-version");
-  if (!await fileExists(versionPath)) {
-    await fs.writeFile(versionPath, PLUGIN_VERSION + "\n", "utf-8");
-  }
 }
 
 /**
@@ -81,29 +91,10 @@ export async function scaffoldWorkspace(workspacePath: string, defaultWorkspaceP
   // Migrate old layout if detected
   await migrateWorkspaceLayout(workspacePath);
 
-  const written: string[] = [];
-
-  // AGENTS.md (backup existing — stays at workspace root)
-  await backupAndWrite(path.join(workspacePath, "AGENTS.md"), AGENTS_MD_TEMPLATE);
-  written.push("AGENTS.md");
-
-  // HEARTBEAT.md (stays at workspace root)
-  await backupAndWrite(path.join(workspacePath, "HEARTBEAT.md"), HEARTBEAT_MD_TEMPLATE);
-  written.push("HEARTBEAT.md");
-
-  // IDENTITY.md (backup existing — stays at workspace root)
-  await backupAndWrite(path.join(workspacePath, "IDENTITY.md"), IDENTITY_MD_TEMPLATE);
-  written.push("IDENTITY.md");
-
-  // TOOLS.md (backup existing — stays at workspace root)
-  await backupAndWrite(path.join(workspacePath, "TOOLS.md"), TOOLS_MD_TEMPLATE);
-  written.push("TOOLS.md");
-
   // SOUL.md (create-only — never overwrite user customizations)
   const soulPath = path.join(workspacePath, "SOUL.md");
   if (!await fileExists(soulPath)) {
     await fs.writeFile(soulPath, SOUL_MD_TEMPLATE, "utf-8");
-    written.push("SOUL.md");
   }
 
   // USER.md — copy from default workspace if available (create-only)
@@ -112,18 +103,17 @@ export async function scaffoldWorkspace(workspacePath: string, defaultWorkspaceP
     const sourceUser = path.join(defaultWorkspacePath, "USER.md");
     if (await fileExists(sourceUser)) {
       await fs.copyFile(sourceUser, userPath);
-      written.push("USER.md");
     }
   }
 
-  // Ensure all data-dir defaults (workflow.yaml, prompts, etc.)
+  // Ensure all defaults (workspace docs, workflow, prompts, etc.)
   await ensureDefaultFiles(workspacePath);
 
-  return written;
+  return ["AGENTS.md", "HEARTBEAT.md", "IDENTITY.md", "TOOLS.md"];
 }
 
 // ---------------------------------------------------------------------------
-// Helpers (shared with reset-defaults tool)
+// Helpers
 // ---------------------------------------------------------------------------
 
 export async function backupAndWrite(filePath: string, content: string): Promise<void> {
@@ -142,5 +132,30 @@ export async function fileExists(filePath: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Backup and remove all project-specific prompt overrides.
+ * Workers always fall through to the curated workspace defaults.
+ */
+async function backupProjectPrompts(dataDir: string): Promise<void> {
+  const projectsDir = path.join(dataDir, "projects");
+  let projects: string[];
+  try {
+    projects = await fs.readdir(projectsDir);
+  } catch { return; }
+
+  for (const project of projects) {
+    const projPromptsDir = path.join(projectsDir, project, "prompts");
+    let files: string[];
+    try {
+      files = (await fs.readdir(projPromptsDir)).filter(f => f.endsWith(".md") && !f.endsWith(".bak"));
+    } catch { continue; }
+    for (const file of files) {
+      const filePath = path.join(projPromptsDir, file);
+      await fs.copyFile(filePath, filePath + ".bak");
+      await fs.unlink(filePath);
+    }
   }
 }

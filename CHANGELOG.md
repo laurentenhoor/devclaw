@@ -9,10 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Smart prompt upgrades with customization detection** — On version change, DevClaw auto-upgrades default role prompts while preserving user customizations. A SHA-256 hash manifest (`.prompt-hashes.json`) tracks what DevClaw last wrote; unmodified files are safely overwritten, customized files are skipped with a warning. First upgrade force-overwrites all prompts to establish the baseline.
-- **Auto-upgrade on heartbeat startup** — Workspace files (docs, prompts, workflow states) are automatically upgraded on the first heartbeat tick after a version change. No manual `upgrade` tool call needed — the version stamp gates execution so it runs exactly once per version.
-- **Stale prompt health warnings** — When customized prompt files are skipped during upgrade, a persistent `.stale-prompts.json` marker drives recurring warnings in heartbeat logs until the user runs `reset_defaults`.
-- **Project prompt backup on upgrade** — All project-specific prompt overrides (`devclaw/projects/<name>/prompts/*.md`) are backed up (`.bak`) during both first install and upgrades as a safety net. Backed-up files are reported in upgrade logs.
+- **Automatic workspace refresh on startup** — Every heartbeat startup refreshes workspace files (docs, prompts, workflow states) to the latest curated defaults. Role and timeout customizations in `workflow.yaml` are preserved. No manual tools needed — the mechanism is simple and reliable.
 - **Attachment support** — Upload images and files to issues via Telegram, GitHub, and GitLab. Channel-agnostic attachment hook detects media in incoming messages and associates them with referenced issues (#397).
 - **`task_attach` tool** — Attach files to issues programmatically from worker sessions.
 - **`claim_ownership` tool** — Workers can claim ownership of tasks with deterministic name generation for identification.
@@ -28,10 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Worker names use unique-names-generator** — Replaced hardcoded name pool with the `unique-names-generator` library for more distinct, memorable worker names (#424).
 - **Standardized worker name in notifications** — All task notifications consistently include worker name and level (#412, #416).
 - **Enhanced feedback cycle task messages** — Feedback dispatches now prioritize PR review comments for clearer context to developers.
-- **`reset_defaults` writes hash manifest** — Running `reset_defaults` now writes `.prompt-hashes.json` and clears the `.stale-prompts.json` marker, establishing a clean baseline for future upgrades.
-- **`upgrade` tool surfaces skipped prompts** — Tool response now includes a `skippedPrompts` section listing customized files that were not updated, with guidance to run `reset_defaults`.
-- **First install writes version stamp** — `ensureDefaultFiles()` writes `.plugin-version` to prevent the heartbeat auto-upgrade from re-running immediately after fresh setup.
-- **20 tools** (was 18) — added `task_attach`, `claim_ownership`
+- **18 tools** (was 20) — removed `upgrade`, `reset_defaults`; workspace defaults are now refreshed automatically on every startup
 
 ### Fixed
 
@@ -49,19 +43,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **esbuild bundler** — Build now produces a single `dist/index.js` with all dependencies (cockatiel, yaml, zod) inlined via esbuild. Eliminates the need for `npm install` at plugin install time; only the openclaw peer dependency is kept external.
 - **Dependencies moved to devDependencies** — cockatiel, yaml, and zod are bundled at build time, so they no longer need to be installed as runtime dependencies.
-- **Version injection at build time** — `PLUGIN_VERSION` and `PACKAGE_NAME` are now injected by esbuild defines instead of reading `package.json` at runtime, with a fallback for development/test environments.
+- **Version injection at build time** — `PACKAGE_NAME` is now injected by esbuild defines instead of reading `package.json` at runtime, with a fallback for development/test environments.
 
 ## [1.5.0] - 2026-02-22
 
 ### Added
 
-- **`upgrade` tool** — Automatic plugin and workspace upgrades. Checks npm for newer versions, installs via `openclaw plugins install`, then upgrades workspace docs, prompts, and workflow states to match the running version (with `.bak` backups). Preserves roles, timeouts, and project-level prompt overrides.
 - **`sync_labels` tool** — Synchronize GitHub/GitLab labels with the current workflow config. Creates any missing state labels, role:level labels, and step routing labels from the resolved three-layer config. Use after editing `workflow.yaml` to push label changes to your issue tracker.
 - **Slot-based worker pools** — Workers now support multiple concurrent slots per role level via `maxWorkers` / `maxWorkersPerLevel` in `workflow.yaml`. The dispatch engine, health checks, status dashboard, and project registration all support multi-slot workers.
 - **PR closure handling** — Closing a PR without merging now transitions the issue to `Rejected` state with proper issue closure. New `PR_CLOSED` event in workflow transitions.
 - **accountId support in notifications** — All `notify()` call sites now pass `accountId` and `runtime` for channel-aware notification routing.
 - **PR_CLOSED event in review pass** — Heartbeat detects closed (unmerged) PRs in `To Review` and auto-transitions to `To Improve` for developer action.
-- **Externalized defaults & `reset_defaults` tool** — All built-in templates (AGENTS.md, HEARTBEAT.md, IDENTITY.md, TOOLS.md, workflow states, role prompts) moved to a `defaults/` directory. New `reset_defaults` tool restores workspace files to factory settings with `.bak` backups, with warnings about project-level prompt overrides.
+- **Externalized defaults** — All built-in templates (AGENTS.md, HEARTBEAT.md, IDENTITY.md, TOOLS.md, workflow states, role prompts) moved to a `defaults/` directory. Workspace files are refreshed automatically on every startup.
 - **Eyes marker (👀) on managed issues/PRs** — DevClaw adds an eyes marker to issue and PR bodies it manages, distinguishing them from legacy or manually-created items.
 - **Comment consumption tracking with reactions** — Processed comments receive emoji reactions so workers don't re-read already-handled feedback on subsequent dispatches.
 - **Auto-heal for context overflow** — Workers that hit context limits are automatically recovered and restarted instead of becoming zombies.
@@ -74,7 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Safe two-phase label transitions** — Label changes on GitHub/GitLab use a two-phase commit (add new → remove old) to prevent half-states on API failures.
 - **PR review detection improvements** — More reliable detection of review approvals, change requests, and conversation comments across GitHub and GitLab providers.
 - **TOOLS.md template improvements** — Cleaner generated tool documentation for new workspaces.
-- **18 tools** (was 14) — added `reset_defaults`, `tasks_status`, `task_list`, `upgrade`, `sync_labels` (replaced `status` and `work_heartbeat`)
+- **16 tools** (was 14) — added `tasks_status`, `task_list`, `sync_labels` (replaced `status` and `work_heartbeat`)
 
 ### Fixed
 

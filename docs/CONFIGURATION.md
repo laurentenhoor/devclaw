@@ -239,7 +239,8 @@ Restrict DevClaw tools to your orchestrator agent:
             "autoconfigure_models",
             "research_task",
             "workflow_guide",
-            "reset_defaults"
+            "sync_labels",
+            "claim_ownership"
           ]
         }
       }

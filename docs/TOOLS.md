@@ -1,6 +1,6 @@
 # DevClaw — Tools Reference
 
-Complete reference for all 18 tools registered by DevClaw. See [`index.ts`](../index.ts) for registration.
+Complete reference for all tools registered by DevClaw. See [`index.ts`](../index.ts) for registration.
 
 ## Worker Lifecycle
 
@@ -289,25 +289,6 @@ Worker health scan with optional auto-fix.
 
 ---
 
-### `reset_defaults`
-
-Restore workspace files to built-in defaults from the `defaults/` directory. Creates `.bak` backups of existing files before overwriting. Warns about project-level prompt overrides that still take precedence over workspace defaults.
-
-**Source:** [`lib/tools/reset-defaults.ts`](../lib/tools/reset-defaults.ts)
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `resetProjectPrompts` | boolean | No | Also backup and delete project-level prompt overrides. Default: `false` (warn only). |
-
-**What it restores:**
-- Workspace docs: AGENTS.md, HEARTBEAT.md, IDENTITY.md, TOOLS.md
-- Workflow state definitions (preserves models/timeouts)
-- Role prompt defaults
-
----
-
 ## Setup
 
 ### `project_register`
@@ -471,28 +452,6 @@ This ensures the pipeline clears its backlog before starting new work.
 ---
 
 ## Maintenance
-
-### `upgrade`
-
-Upgrade DevClaw plugin and workspace files. Checks npm for a newer published version, installs it via `openclaw plugins install`, then upgrades workspace docs, default prompts, and workflow states to match the running version (with `.bak` backups). Preserves roles, timeouts, and project-level prompt overrides.
-
-**Source:** [`lib/tools/upgrade.ts`](../lib/tools/upgrade.ts)
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `skipNpmCheck` | boolean | No | Skip npm version check and only upgrade workspace files. Default: `false`. |
-
-**What it does:**
-
-1. Checks npm registry for a newer version of `@laurentenhoor/devclaw`
-2. Installs the update via `openclaw plugins install`
-3. Upgrades workspace docs (AGENTS.md, HEARTBEAT.md, etc.) to match the running version
-4. Creates `.bak` backups of any modified files
-5. Preserves user customizations in roles, timeouts, and project-level prompts
-
----
 
 ### `sync_labels`
 

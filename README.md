@@ -446,23 +446,13 @@ openclaw plugins install @laurentenhoor/devclaw
 
 ### Upgrade
 
-The easiest way to upgrade is through your agent:
-
-```
-You: "Upgrade DevClaw"
-```
-
-The `upgrade` tool checks npm for newer versions, installs the update, and upgrades workspace files (docs, prompts, workflow states) with `.bak` backups — preserving your customizations.
-
-Or manually:
-
 ```bash
 openclaw plugins install @laurentenhoor/devclaw
 ```
 
-> **Migrating to v1.5.0?** Default templates and workspace files are now externalized to a `defaults/` directory. Your existing customizations are preserved — run `reset_defaults` through your agent if you want to pick up the latest built-in templates (creates `.bak` backups first).
+On restart, workspace files (docs, prompts, workflow states) are automatically refreshed to the latest defaults. Role and timeout customizations in `workflow.yaml` are preserved.
 
-Or for local development:
+For local development:
 
 ```bash
 openclaw plugins install -l ./devclaw
@@ -517,6 +507,7 @@ DevClaw gives the orchestrator 18 tools. These aren't just convenience wrappers 
 | `task_comment`         | Add a comment to an issue (with role attribution)                                       |
 | `task_edit_body`       | Edit issue title/description (initial state only; audit-logged)                         |
 | `task_list`            | Browse and search issues by workflow state                                              |
+| `task_attach`          | Attach files to issues from worker sessions                                             |
 | `tasks_status`         | Full project dashboard: hold, active, and queued issues with details                    |
 | `health`               | Detect zombie workers, stale sessions, state inconsistencies                            |
 | `project_register`     | One-time project setup: creates labels, scaffolds instructions, initializes state       |
@@ -525,9 +516,8 @@ DevClaw gives the orchestrator 18 tools. These aren't just convenience wrappers 
 | `research_task`        | Spawn an architect for design investigation — creates issue, dispatches worker          |
 | `autoconfigure_models` | LLM-powered model selection based on available models                                   |
 | `workflow_guide`       | Configuration reference for workflow.yaml (call before editing)                         |
-| `reset_defaults`       | Restore workspace files to built-in defaults (creates `.bak` backups)                   |
-| `upgrade`              | Upgrade plugin and workspace files — checks npm, installs, upgrades docs/prompts/states |
 | `sync_labels`          | Sync GitHub/GitLab labels with workflow config after editing `workflow.yaml`            |
+| `claim_ownership`      | Workers claim task ownership with deterministic name generation                         |
 
 Full parameters and usage in the [Tools Reference](docs/TOOLS.md).
 
@@ -539,7 +529,7 @@ Full parameters and usage in the [Tools Reference](docs/TOOLS.md).
 | ------------------------------------------- | ------------------------------------------------------------ |
 | **[Architecture](docs/ARCHITECTURE.md)**    | System design, session model, data flow, end-to-end diagrams |
 | **[Workflow](docs/WORKFLOW.md)**            | State machine, review policies, optional test phase          |
-| **[Tools Reference](docs/TOOLS.md)**        | Complete reference for all 18 tools                          |
+| **[Tools Reference](docs/TOOLS.md)**        | Complete reference for all tools                             |
 | **[Configuration](docs/CONFIGURATION.md)**  | `openclaw.json`, `projects.json`, roles, timeouts            |
 | **[Onboarding Guide](docs/ONBOARDING.md)**  | Full step-by-step setup                                      |
 | **[Testing](docs/TESTING.md)**              | Test suite, fixtures, CI/CD                                  |

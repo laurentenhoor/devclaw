@@ -51,9 +51,9 @@ The architect role enables design investigations. `research_task` creates an iss
 
 Workers now support multiple concurrent slots per role level via `maxWorkers` / `maxWorkersPerLevel` in `workflow.yaml`. The data model (`WorkerState`), dispatch engine (`tick.ts`, `work-start.ts`), health checks, status dashboard, and project registration all support multi-slot workers. Session keys use slot-indexed naming for isolation.
 
-### Upgrade and Label Sync Tools
+### Label Sync Tool
 
-Two new maintenance tools: `upgrade` checks npm for newer versions, installs updates, and upgrades workspace files with `.bak` backups. `sync_labels` synchronizes GitHub/GitLab labels with the resolved workflow config after editing `workflow.yaml`.
+`sync_labels` synchronizes GitHub/GitLab labels with the resolved workflow config after editing `workflow.yaml`.
 
 ### PR Closure and Rejection Handling
 

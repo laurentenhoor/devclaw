@@ -7,7 +7,6 @@ import path from "node:path";
 import { readProjects, getProject, type Project } from "../../projects/index.js";
 import { log as auditLog } from "../../audit.js";
 import { DATA_DIR } from "../../setup/migrate-layout.js";
-import { readStalePrompts } from "../../setup/prompt-hashes.js";
 import { loadInstanceName } from "../../instance.js";
 import {
   type SessionLookup,
