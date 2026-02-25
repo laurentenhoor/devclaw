@@ -110,10 +110,10 @@ export function createWorkStartTool(ctx: PluginContext) {
       }
 
       // Ensure notify label is on the issue (best-effort — failure must not abort dispatch).
-      // Routes notifications to the primary channel for this project.
-      const primaryChannel = project.channels[0];
-      if (primaryChannel) {
-        const notifyLabel = getNotifyLabel(primaryChannel.channel, primaryChannel.name ?? "0");
+      // Routes notifications to the channel the request came from, falling back to primary.
+      const sourceChannel = project.channels.find(ch => ch.groupId === slug) ?? project.channels[0];
+      if (sourceChannel) {
+        const notifyLabel = getNotifyLabel(sourceChannel.channel, sourceChannel.name ?? "0");
         const hasNotify = issue.labels.some(l => l.startsWith(NOTIFY_LABEL_PREFIX));
         if (!hasNotify) {
           provider.ensureLabel(notifyLabel, NOTIFY_LABEL_COLOR)

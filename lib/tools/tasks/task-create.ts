@@ -82,9 +82,10 @@ Examples:
       provider.reactToIssue(issue.iid, "eyes").catch(() => {});
 
       // Apply notify label for channel routing (best-effort).
-      const primaryChannel = project.channels[0];
-      if (primaryChannel) {
-        const notifyLabel = getNotifyLabel(primaryChannel.channel, primaryChannel.name ?? "0");
+      // Routes to the channel the request came from, falling back to primary.
+      const sourceChannel = project.channels.find(ch => ch.groupId === slug) ?? project.channels[0];
+      if (sourceChannel) {
+        const notifyLabel = getNotifyLabel(sourceChannel.channel, sourceChannel.name ?? "0");
         provider.ensureLabel(notifyLabel, NOTIFY_LABEL_COLOR)
           .then(() => provider.addLabel(issue.iid, notifyLabel))
           .catch(() => {}); // best-effort
