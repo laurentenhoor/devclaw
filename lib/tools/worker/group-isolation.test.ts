@@ -50,34 +50,34 @@ describe("notify label helpers", () => {
 
 describe("resolveNotifyChannel (new format)", () => {
   const channels = [
-    { groupId: "-111", channel: "telegram", name: "primary" },
-    { groupId: "-222", channel: "whatsapp", name: "dev-chat" },
+    { channelId: "-111", channel: "telegram", name: "primary" },
+    { channelId: "-222", channel: "whatsapp", name: "dev-chat" },
   ];
 
   it("should resolve channel by channel type and name", () => {
     const result = resolveNotifyChannel(["To Do", "notify:whatsapp:dev-chat"], channels);
     assert.ok(result);
-    assert.strictEqual(result!.groupId, "-222");
+    assert.strictEqual(result!.channelId, "-222");
     assert.strictEqual(result!.channel, "whatsapp");
   });
 
   it("should resolve channel by channel type and index", () => {
     const result = resolveNotifyChannel(["To Do", "notify:whatsapp:1"], channels);
     assert.ok(result);
-    assert.strictEqual(result!.groupId, "-222");
+    assert.strictEqual(result!.channelId, "-222");
     assert.strictEqual(result!.channel, "whatsapp");
   });
 
   it("should fall back to first channel when new-format label matches nothing", () => {
     const result = resolveNotifyChannel(["To Do", "notify:discord:unknown"], channels);
     assert.ok(result);
-    assert.strictEqual(result!.groupId, "-111");
+    assert.strictEqual(result!.channelId, "-111");
   });
 
   it("should fall back to first channel when no notify label present", () => {
     const result = resolveNotifyChannel(["To Do", "bug"], channels);
     assert.ok(result);
-    assert.strictEqual(result!.groupId, "-111");
+    assert.strictEqual(result!.channelId, "-111");
   });
 
   it("should return undefined when channels is empty", () => {
@@ -87,31 +87,31 @@ describe("resolveNotifyChannel (new format)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// resolveNotifyChannel — legacy format (notify:{groupId})
+// resolveNotifyChannel — legacy format (notify:{channelId})
 // ---------------------------------------------------------------------------
 
 describe("resolveNotifyChannel (legacy format)", () => {
   const channels = [
-    { groupId: "-111", channel: "telegram", name: "primary" },
-    { groupId: "-222", channel: "whatsapp", name: "dev-chat" },
+    { channelId: "-111", channel: "telegram", name: "primary" },
+    { channelId: "-222", channel: "whatsapp", name: "dev-chat" },
   ];
 
   it("should resolve channel matching legacy notify label", () => {
     const result = resolveNotifyChannel(["To Do", "notify:-222"], channels);
     assert.ok(result);
-    assert.strictEqual(result!.groupId, "-222");
+    assert.strictEqual(result!.channelId, "-222");
     assert.strictEqual(result!.channel, "whatsapp");
   });
 
-  it("should fall back to first channel when legacy label matches unknown groupId", () => {
+  it("should fall back to first channel when legacy label matches unknown channelId", () => {
     const result = resolveNotifyChannel(["To Do", "notify:-999"], channels);
     assert.ok(result);
-    assert.strictEqual(result!.groupId, "-111");
+    assert.strictEqual(result!.channelId, "-111");
   });
 
   it("should return first channel when no notify label and multiple channels", () => {
     const result = resolveNotifyChannel(["To Do"], channels);
     assert.ok(result);
-    assert.strictEqual(result!.groupId, "-111");
+    assert.strictEqual(result!.channelId, "-111");
   });
 });

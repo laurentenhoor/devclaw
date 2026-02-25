@@ -40,11 +40,12 @@ export function getNotifyLabel(channel: string, nameOrIndex: string): string {
 
 /**
  * Resolve which channel should receive notifications for an issue.
+ * Each issue has at most one notify label. Falls back to the first channel.
  */
 export function resolveNotifyChannel(
   issueLabels: string[],
-  channels: Array<{ groupId: string; channel: string; name?: string; accountId?: string }>,
-): { groupId: string; channel: string; accountId?: string } | undefined {
+  channels: Array<{ channelId: string; channel: string; name?: string; accountId?: string }>,
+): { channelId: string; channel: string; accountId?: string } | undefined {
   const notifyLabel = issueLabels.find((l) => l.startsWith(NOTIFY_LABEL_PREFIX));
   if (notifyLabel) {
     const value = notifyLabel.slice(NOTIFY_LABEL_PREFIX.length);
@@ -56,7 +57,7 @@ export function resolveNotifyChannel(
         (ch) => ch.channel === channelType && (ch.name === channelName || String(channels.indexOf(ch)) === channelName),
       ) ?? channels[0];
     }
-    return channels.find((ch) => ch.groupId === value) ?? channels[0];
+    return channels.find((ch) => ch.channelId === value) ?? channels[0];
   }
   return channels[0];
 }

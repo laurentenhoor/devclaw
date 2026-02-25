@@ -1,5 +1,5 @@
 /**
- * schema-migration.ts — Schema migration from groupId-keyed to project-first.
+ * schema-migration.ts — Schema migration from channelId-keyed to project-first.
  *
  * Handles detection and migration of legacy projects.json format to new schema.
  * Separated from projects.ts to keep core logic clean.
@@ -24,7 +24,7 @@ function getFirstStartTime(worker: any): string | undefined {
 }
 
 /**
- * Detect if projects.json is in legacy format (keyed by numeric groupIds).
+ * Detect if projects.json is in legacy format (keyed by numeric channelIds).
  */
 export function isLegacySchema(data: any): boolean {
   const keys = Object.keys(data.projects || {});
@@ -50,7 +50,7 @@ export async function getRepoRemote(repoPath: string, runCommand?: RunCommand): 
 }
 
 /**
- * Migrate legacy groupId-keyed schema to project-first schema.
+ * Migrate legacy channelId-keyed schema to project-first schema.
  *
  * Groups projects by name, merges their configurations, creates channels array,
  * and merges worker state (taking the most recent active worker).
@@ -61,21 +61,21 @@ export async function getRepoRemote(repoPath: string, runCommand?: RunCommand): 
  */
 export async function migrateLegacySchema(data: any, runCommand?: RunCommand): Promise<ProjectsData> {
   const legacyProjects = data.projects as Record<string, LegacyProject>;
-  const byName: Record<string, { groupIds: string[]; legacyProjects: LegacyProject[] }> = {};
+  const byName: Record<string, { channelIds: string[]; legacyProjects: LegacyProject[] }> = {};
 
   // Group by project name
-  for (const [groupId, legacyProj] of Object.entries(legacyProjects)) {
+  for (const [channelId, legacyProj] of Object.entries(legacyProjects)) {
     if (!byName[legacyProj.name]) {
-      byName[legacyProj.name] = { groupIds: [], legacyProjects: [] };
+      byName[legacyProj.name] = { channelIds: [], legacyProjects: [] };
     }
-    byName[legacyProj.name].groupIds.push(groupId);
+    byName[legacyProj.name].channelIds.push(channelId);
     byName[legacyProj.name].legacyProjects.push(legacyProj);
   }
 
   const newProjects: Record<string, Project> = {};
 
   // Convert each group to new schema
-  for (const [projectName, { groupIds, legacyProjects: legacyList }] of Object.entries(byName)) {
+  for (const [projectName, { channelIds, legacyProjects: legacyList }] of Object.entries(byName)) {
     const slug = projectName.toLowerCase().replace(/\s+/g, "-");
     const firstProj = legacyList[0];
     const mostRecent = legacyList.reduce((a, b) => {
@@ -84,9 +84,9 @@ export async function migrateLegacySchema(data: any, runCommand?: RunCommand): P
       return (aTime || "") > (bTime || "") ? a : b;
     });
 
-    // Create channels: first groupId is "primary", rest are "secondary-{n}"
-    const channels: Channel[] = groupIds.map((gId, idx) => ({
-      groupId: gId,
+    // Create channels: first channelId is "primary", rest are "secondary-{n}"
+    const channels: Channel[] = channelIds.map((chId, idx) => ({
+      channelId: chId,
       channel: (firstProj.channel ?? "telegram") as "telegram" | "whatsapp" | "discord" | "slack",
       name: idx === 0 ? "primary" : `secondary-${idx}`,
       events: ["*"],

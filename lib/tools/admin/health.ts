@@ -28,7 +28,7 @@ export function createHealthTool(ctx: PluginContext) {
     parameters: {
       type: "object",
       properties: {
-        projectSlug: { type: "string", description: "Project slug. Omit for all." },
+        channelId: { type: "string", description: "Channel ID identifying the project. Omit for all." },
         fix: { type: "boolean", description: "Apply fixes for detected issues. Default: false (read-only)." },
       },
     },
@@ -37,17 +37,17 @@ export function createHealthTool(ctx: PluginContext) {
       const workspaceDir = requireWorkspaceDir(toolCtx);
       const fix = (params.fix as boolean) ?? false;
 
-      const slugOrGroupId = (params.projectSlug ?? params.projectGroupId) as string | undefined;
+      const slugOrChannelId = params.channelId as string | undefined;
 
       const data = await readProjects(workspaceDir);
 
-      // Resolve slug from slugOrGroupId
+      // Resolve slug from slugOrChannelId
       let slugs = Object.keys(data.projects);
-      if (slugOrGroupId) {
-        const project = getProject(data, slugOrGroupId);
+      if (slugOrChannelId) {
+        const project = getProject(data, slugOrChannelId);
         const slug = project ?
-          (data.projects[slugOrGroupId] ? slugOrGroupId :
-            Object.keys(data.projects).find(s => data.projects[s].channels.some(ch => ch.groupId === slugOrGroupId)))
+          (data.projects[slugOrChannelId] ? slugOrChannelId :
+            Object.keys(data.projects).find(s => data.projects[s].channels.some(ch => ch.channelId === slugOrChannelId)))
           : undefined;
         slugs = slug ? [slug] : [];
       }

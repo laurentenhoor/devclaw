@@ -14,7 +14,7 @@ import { getFallbackEmoji } from "../roles/index.js";
  */
 export function buildTaskMessage(opts: {
   projectName: string;
-  projectSlug: string;
+  channelId: string;
   role: string;
   issueId: number;
   issueTitle: string;
@@ -30,7 +30,7 @@ export function buildTaskMessage(opts: {
   attachmentContext?: string;
 }): string {
   const {
-    projectName, projectSlug, role, issueId, issueTitle,
+    projectName, channelId, role, issueId, issueTitle,
     issueDescription, issueUrl, repo, baseBranch,
   } = opts;
 
@@ -74,7 +74,7 @@ export function buildTaskMessage(opts: {
   parts.push(
     ``,
     `Repo: ${repo} | Branch: ${baseBranch} | ${issueUrl}`,
-    `Project: ${projectSlug}`,
+    `Project: ${projectName} | Channel: ${channelId}`,
   );
 
   parts.push(
@@ -83,7 +83,7 @@ export function buildTaskMessage(opts: {
     ``,
     `When you finish this task, you MUST call \`work_finish\` with:`,
     `- \`role\`: "${role}"`,
-    `- \`projectSlug\`: "${projectSlug}"`,
+    `- \`channelId\`: "${channelId}"`,
     `- \`result\`: ${availableResults}`,
     `- \`summary\`: brief description of what you did`,
     ``,

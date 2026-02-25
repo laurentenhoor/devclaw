@@ -26,7 +26,7 @@ import {
 } from "../../workflow/index.js";
 import { getLevelsForRole } from "../../roles/index.js";
 import { loadConfig } from "../../config/index.js";
-import { requireWorkspaceDir, resolveProject, resolveProvider, autoAssignOwnerLabel, applyNotifyLabel } from "../helpers.js";
+import { requireWorkspaceDir, resolveChannelId, resolveProject, resolveProvider, autoAssignOwnerLabel, applyNotifyLabel } from "../helpers.js";
 
 export function createTaskStartTool(ctx: PluginContext) {
   return (toolCtx: ToolContext) => ({
@@ -37,15 +37,15 @@ export function createTaskStartTool(ctx: PluginContext) {
 Optionally set a level hint (e.g. "junior", "senior") so the heartbeat dispatches with the desired level. The heartbeat handles the actual dispatch — this tool only places issues in queues.
 
 Examples:
-- Start work: { projectSlug: "my-app", issueId: 42 } → advances to next queue
-- With level: { projectSlug: "my-app", issueId: 42, level: "junior" } → advances + hints junior`,
+- Start work: { channelId: "-1003844794417", issueId: 42 } → advances to next queue
+- With level: { channelId: "-1003844794417", issueId: 42, level: "junior" } → advances + hints junior`,
     parameters: {
       type: "object",
-      required: ["projectSlug", "issueId"],
+      required: ["channelId", "issueId"],
       properties: {
-        projectSlug: {
+        channelId: {
           type: "string",
-          description: "Project slug (e.g. 'my-webapp').",
+          description: "YOUR chat/group ID — the numeric ID of the chat you are in right now (e.g. '-1003844794417'). Do NOT guess; use the ID of the conversation this message came from.",
         },
         issueId: {
           type: "number",
@@ -59,12 +59,12 @@ Examples:
     },
 
     async execute(_id: string, params: Record<string, unknown>) {
-      const slug = (params.projectSlug ?? params.projectGroupId) as string;
+      const channelId = resolveChannelId(toolCtx, params.channelId as string | undefined);
       const issueId = params.issueId as number;
       const levelHint = params.level as string | undefined;
       const workspaceDir = requireWorkspaceDir(toolCtx);
 
-      const { project } = await resolveProject(workspaceDir, slug);
+      const { project } = await resolveProject(workspaceDir, channelId);
       const { provider } = await resolveProvider(project, ctx.runCommand);
       const resolvedConfig = await loadConfig(workspaceDir, project.name);
       const workflow = resolvedConfig.workflow;
@@ -108,7 +108,7 @@ Examples:
       }
 
       // Ensure notify label is on the issue (best-effort)
-      applyNotifyLabel(provider, issueId, project, slug, issue.labels);
+      applyNotifyLabel(provider, issueId, project, channelId, issue.labels);
 
       // Auto-assign owner label (best-effort)
       autoAssignOwnerLabel(workspaceDir, provider, issueId, project).catch(() => {});

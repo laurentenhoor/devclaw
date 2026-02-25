@@ -156,7 +156,7 @@ describe("readProjects migration", () => {
           deployUrl: "",
           baseBranch: "main",
           deployBranch: "main",
-          channels: [{ groupId: "g1", channel: "telegram", name: "primary", events: ["*"] }],
+          channels: [{ channelId: "g1", channel: "telegram", name: "primary", events: ["*"] }],
           workers: {
             developer: {
               maxWorkers: 2,
@@ -198,7 +198,7 @@ describe("readProjects migration", () => {
           deployUrl: "",
           baseBranch: "main",
           deployBranch: "main",
-          channels: [{ groupId: "g1", channel: "telegram", name: "primary", events: ["*"] }],
+          channels: [{ channelId: "g1", channel: "telegram", name: "primary", events: ["*"] }],
           workers: {
             developer: {
               levels: {
@@ -338,7 +338,7 @@ describe("writeProjects round-trip", () => {
           deployUrl: "",
           baseBranch: "main",
           deployBranch: "main",
-          channels: [{ groupId: "g1", channel: "telegram", name: "primary", events: ["*"] }],
+          channels: [{ channelId: "g1", channel: "telegram", name: "primary", events: ["*"] }],
           workers: {
             developer: emptyRoleWorkerState({ medior: 2 }),
             tester: emptyRoleWorkerState({ medior: 1 }),

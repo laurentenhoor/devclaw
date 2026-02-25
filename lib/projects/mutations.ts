@@ -22,7 +22,7 @@ export function getRoleWorker(
  */
 export async function updateSlot(
   workspaceDir: string,
-  slugOrGroupId: string,
+  slugOrChannelId: string,
   role: string,
   level: string,
   slotIndex: number,
@@ -31,9 +31,9 @@ export async function updateSlot(
   await acquireLock(workspaceDir);
   try {
     const data = await readProjects(workspaceDir);
-    const slug = resolveProjectSlug(data, slugOrGroupId);
+    const slug = resolveProjectSlug(data, slugOrChannelId);
     if (!slug) {
-      throw new Error(`Project not found for slug or groupId: ${slugOrGroupId}`);
+      throw new Error(`Project not found for slug or channelId: ${slugOrChannelId}`);
     }
 
     const project = data.projects[slug]!;
@@ -59,11 +59,11 @@ export async function updateSlot(
 /**
  * Mark a worker slot as active with a new task.
  * Routes by level to the correct slot array.
- * Accepts slug or groupId (dual-mode).
+ * Accepts slug or channelId (dual-mode).
  */
 export async function activateWorker(
   workspaceDir: string,
-  slugOrGroupId: string,
+  slugOrChannelId: string,
   role: string,
   params: {
     issueId: string;
@@ -81,9 +81,9 @@ export async function activateWorker(
   await acquireLock(workspaceDir);
   try {
     const data = await readProjects(workspaceDir);
-    const slug = resolveProjectSlug(data, slugOrGroupId);
+    const slug = resolveProjectSlug(data, slugOrChannelId);
     if (!slug) {
-      throw new Error(`Project not found for slug or groupId: ${slugOrGroupId}`);
+      throw new Error(`Project not found for slug or channelId: ${slugOrChannelId}`);
     }
 
     const project = data.projects[slug]!;
@@ -119,20 +119,20 @@ export async function activateWorker(
  * Mark a worker slot as inactive after task completion.
  * Preserves sessionKey for session reuse.
  * Finds the slot by issueId (searches across all levels), or by explicit level+slotIndex.
- * Accepts slug or groupId (dual-mode).
+ * Accepts slug or channelId (dual-mode).
  */
 export async function deactivateWorker(
   workspaceDir: string,
-  slugOrGroupId: string,
+  slugOrChannelId: string,
   role: string,
   opts?: { level?: string; slotIndex?: number; issueId?: string },
 ): Promise<ProjectsData> {
   await acquireLock(workspaceDir);
   try {
     const data = await readProjects(workspaceDir);
-    const slug = resolveProjectSlug(data, slugOrGroupId);
+    const slug = resolveProjectSlug(data, slugOrChannelId);
     if (!slug) {
-      throw new Error(`Project not found for slug or groupId: ${slugOrGroupId}`);
+      throw new Error(`Project not found for slug or channelId: ${slugOrChannelId}`);
     }
 
     const project = data.projects[slug]!;

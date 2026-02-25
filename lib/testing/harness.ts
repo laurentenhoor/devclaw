@@ -149,8 +149,8 @@ export type TestHarness = {
   commands: CommandInterceptor;
   /** Mock runCommand function for passing to functions that require it. */
   runCommand: import("../context.js").RunCommand;
-  /** The project group ID used for test data. */
-  groupId: string;
+  /** The project channel ID used for test data. */
+  channelId: string;
   /** The project data. */
   project: Project;
   /** Workflow config. */
@@ -178,8 +178,8 @@ export type TestHarness = {
 export type HarnessOptions = {
   /** Project name (default: "test-project"). */
   projectName?: string;
-  /** Group ID (default: "-1234567890"). */
-  groupId?: string;
+  /** Channel ID (default: "-1234567890"). */
+  channelId?: string;
   /** Repo path (default: "/tmp/test-repo"). */
   repo?: string;
   /** Base branch (default: "main"). */
@@ -195,7 +195,7 @@ export type HarnessOptions = {
 export async function createTestHarness(opts?: HarnessOptions): Promise<TestHarness> {
   const {
     projectName = "test-project",
-    groupId = "-1234567890",
+    channelId = "-1234567890",
     repo = "/tmp/test-repo",
     baseBranch = "main",
     workflow = DEFAULT_WORKFLOW,
@@ -242,14 +242,14 @@ export async function createTestHarness(opts?: HarnessOptions): Promise<TestHarn
     deployUrl: "",
     baseBranch,
     deployBranch: baseBranch,
-    channels: [{ groupId, channel: "telegram", name: "primary", events: ["*"] }],
+    channels: [{ channelId, channel: "telegram", name: "primary", events: ["*"] }],
     provider: "github",
     workers: defaultWorkers,
   };
 
   const projectsData: ProjectsData = {
     projects: {
-      [projectName]: project,  // New schema: keyed by slug (projectName), not groupId
+      [projectName]: project,  // New schema: keyed by slug (projectName), not channelId
       ...extraProjects,
     },
   };
@@ -267,7 +267,7 @@ export async function createTestHarness(opts?: HarnessOptions): Promise<TestHarn
     provider,
     commands: interceptor,
     runCommand: handler as unknown as import("../context.js").RunCommand,
-    groupId,
+    channelId,
     project,
     workflow,
     async writeProjects(data: ProjectsData) {

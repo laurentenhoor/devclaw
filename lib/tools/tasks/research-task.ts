@@ -19,7 +19,7 @@ import type { StateLabel } from "../../providers/provider.js";
 import { getRoleWorker, countActiveSlots } from "../../projects/index.js";
 import { dispatchTask } from "../../dispatch/index.js";
 import { log as auditLog } from "../../audit.js";
-import { requireWorkspaceDir, resolveProject, resolveProvider, autoAssignOwnerLabel, applyNotifyLabel } from "../helpers.js";
+import { requireWorkspaceDir, resolveChannelId, resolveProject, resolveProvider, autoAssignOwnerLabel, applyNotifyLabel } from "../helpers.js";
 import { loadConfig } from "../../config/index.js";
 import { getActiveLabel } from "../../workflow/index.js";
 import { selectLevel } from "../../roles/model-selector.js";
@@ -47,7 +47,6 @@ The architect will:
 
 Example:
   research_task({
-    projectSlug: "my-webapp",
     title: "Research: Session persistence strategy",
     description: "Sessions are lost on restart. Current impl uses in-memory Map in session-store.ts. Constraints: must work with SQLite (already a dep), max 50ms latency on read. Prior discussion in #42 ruled out Redis.",
     focusAreas: ["SQLite vs file-based", "migration path", "cache invalidation"],
@@ -55,11 +54,11 @@ Example:
   })`,
     parameters: {
       type: "object",
-      required: ["projectSlug", "title", "description"],
+      required: ["channelId", "title", "description"],
       properties: {
-        projectSlug: {
+        channelId: {
           type: "string",
-          description: "Project slug (e.g. 'my-webapp').",
+          description: "YOUR chat/group ID — the numeric ID of the chat you are in right now (e.g. '-1003844794417'). Do NOT guess; use the ID of the conversation this message came from.",
         },
         title: {
           type: "string",
@@ -87,7 +86,7 @@ Example:
     },
 
     async execute(_id: string, params: Record<string, unknown>) {
-      const slug = (params.projectSlug ?? params.projectGroupId) as string;
+      const channelId = resolveChannelId(toolCtx, params.channelId as string | undefined);
       const title = params.title as string;
       const description = (params.description as string) ?? "";
       const focusAreas = (params.focusAreas as string[]) ?? [];
@@ -95,11 +94,10 @@ Example:
       const dryRun = (params.dryRun as boolean) ?? false;
       const workspaceDir = requireWorkspaceDir(toolCtx);
 
-      if (!slug) throw new Error("projectSlug is required");
       if (!title) throw new Error("title is required");
       if (!description) throw new Error("description is required — provide detailed background context for the architect");
 
-      const { project } = await resolveProject(workspaceDir, slug);
+      const { project } = await resolveProject(workspaceDir, channelId);
       const { provider } = await resolveProvider(project, ctx.runCommand);
       const pluginConfig = ctx.pluginConfig;
       const role = "architect";
@@ -140,7 +138,7 @@ Example:
       provider.reactToIssue(issue.iid, "eyes").catch(() => {});
 
       // Apply notify label for notification routing (best-effort).
-      applyNotifyLabel(provider, issue.iid, project, slug, issue.labels);
+      applyNotifyLabel(provider, issue.iid, project, channelId, issue.labels);
 
       // Auto-assign owner label to this instance (best-effort).
       autoAssignOwnerLabel(workspaceDir, provider, issue.iid, project).catch(() => {});

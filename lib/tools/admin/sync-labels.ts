@@ -33,26 +33,26 @@ export function createSyncLabelsTool(ctx: PluginContext) {
     parameters: {
       type: "object",
       properties: {
-        projectSlug: {
+        channelId: {
           type: "string",
           description:
-            "Project slug to sync. Omit to sync all registered projects.",
+            "Channel ID identifying the project. Omit to sync all registered projects.",
         },
       },
     },
 
     async execute(_id: string, params: Record<string, unknown>) {
       const workspaceDir = requireWorkspaceDir(toolCtx);
-      const targetSlug = params.projectSlug as string | undefined;
+      const targetChannelId = params.channelId as string | undefined;
 
       const data = await readProjects(workspaceDir);
       let slugs: string[];
 
-      if (targetSlug) {
-        const project = data.projects[targetSlug] ?? getProject(data, targetSlug);
+      if (targetChannelId) {
+        const project = getProject(data, targetChannelId);
         if (!project) {
           throw new Error(
-            `Project "${targetSlug}" not found. Run project_register first.`,
+            `No project found for "${targetChannelId}". Register a new project with project_register first.`,
           );
         }
         slugs = [project.slug];

@@ -331,8 +331,8 @@ export async function notify(
   opts: {
     workspaceDir: string;
     config?: NotificationConfig;
-    /** Target for project-scoped notifications (groupId) */
-    groupId?: string;
+    /** Target for project-scoped notifications (channelId) */
+    channelId?: string;
     /** Channel type for routing (e.g. "telegram", "whatsapp", "discord", "slack") */
     channel?: string;
     /** Plugin runtime for direct API access (avoids CLI subprocess timeouts) */
@@ -347,7 +347,7 @@ export async function notify(
 
   const channel = opts.channel ?? "telegram";
   const message = buildMessage(event);
-  const target = opts.groupId;
+  const target = opts.channelId;
 
   if (!target) {
     await auditLog(opts.workspaceDir, "notify_skip", {

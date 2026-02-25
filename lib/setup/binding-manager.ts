@@ -18,7 +18,7 @@ export interface BindingAnalysis {
   groupSpecificBindings: Array<{
     agentId: string;
     agentName: string;
-    groupId: string;
+    channelId: string;
   }>;
   recommendation: string;
 }
@@ -62,7 +62,7 @@ export async function analyzeChannelBindings(
         groupSpecificBindings.push({
           agentId: binding.agentId,
           agentName,
-          groupId: binding.match.peer.id,
+          channelId: binding.match.peer.id,
         });
       }
     }

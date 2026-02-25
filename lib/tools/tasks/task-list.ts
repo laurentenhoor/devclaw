@@ -8,21 +8,21 @@ import { jsonResult } from "openclaw/plugin-sdk";
 import type { PluginContext } from "../../context.js";
 import type { ToolContext } from "../../types.js";
 import { log as auditLog } from "../../audit.js";
-import { requireWorkspaceDir, resolveProject, resolveProvider } from "../helpers.js";
+import { requireWorkspaceDir, resolveChannelId, resolveProject, resolveProvider } from "../helpers.js";
 import { loadWorkflow, StateType, findStateByLabel } from "../../workflow/index.js";
 
 export function createTaskListTool(ctx: PluginContext) {
   return (toolCtx: ToolContext) => ({
     name: "task_list",
     label: "Task List",
-    description: `Browse issues for a project by workflow state. Shows issues grouped by state label. Use \`tasks_status\` for a quick dashboard overview, this tool for detailed browsing.`,
+    description: `Browse issues for a project by workflow state. Shows issues grouped by state label. Use \`tasks_status\` for a quick issue dashboard, this tool for filtered browsing.`,
     parameters: {
       type: "object",
-      required: ["projectSlug"],
+      required: ["channelId"],
       properties: {
-        projectSlug: {
+        channelId: {
           type: "string",
-          description: "Project slug (e.g. 'my-webapp')",
+          description: "YOUR chat/group ID — the numeric ID of the chat you are in right now (e.g. '-1003844794417'). Do NOT guess; use the ID of the conversation this message came from.",
         },
         stateType: {
           type: "string",
@@ -46,13 +46,13 @@ export function createTaskListTool(ctx: PluginContext) {
 
     async execute(_id: string, params: Record<string, unknown>) {
       const workspaceDir = requireWorkspaceDir(toolCtx);
-      const slug = (params.projectSlug ?? params.projectGroupId) as string;
+      const channelId = resolveChannelId(toolCtx, params.channelId as string | undefined);
       const stateType = params.stateType as string | undefined;
       const label = params.label as string | undefined;
       const search = params.search as string | undefined;
       const limit = (params.limit as number) ?? 20;
 
-      const { project } = await resolveProject(workspaceDir, slug);
+      const { project } = await resolveProject(workspaceDir, channelId);
       const { provider } = await resolveProvider(project, ctx.runCommand);
       const workflow = await loadWorkflow(workspaceDir, project.name);
 

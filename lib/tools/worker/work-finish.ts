@@ -13,7 +13,7 @@ import type { PluginContext, RunCommand } from "../../context.js";
 import { getRoleWorker, resolveRepoPath, findSlotByIssue } from "../../projects/index.js";
 import { executeCompletion, getRule } from "../../services/pipeline.js";
 import { log as auditLog } from "../../audit.js";
-import { requireWorkspaceDir, resolveProject, resolveProvider } from "../helpers.js";
+import { requireWorkspaceDir, resolveChannelId, resolveProject, resolveProvider } from "../helpers.js";
 import { getAllRoleIds, isValidResult, getCompletionResults } from "../../roles/index.js";
 import { loadWorkflow } from "../../workflow/index.js";
 
@@ -99,11 +99,11 @@ export function createWorkFinishTool(ctx: PluginContext) {
     description: `Complete a task: Developer done (PR created, goes to review) or blocked. Tester pass/fail/refine/blocked. Reviewer approve/reject/blocked. Architect done/blocked. Handles label transition, state update, issue close/reopen, notifications, and audit logging.`,
     parameters: {
       type: "object",
-      required: ["role", "result", "projectSlug"],
+      required: ["channelId", "role", "result"],
       properties: {
+        channelId: { type: "string", description: "YOUR chat/group ID — the numeric ID of the chat you are in right now (e.g. '-1003844794417'). Do NOT guess; use the ID of the conversation this message came from." },
         role: { type: "string", enum: getAllRoleIds(), description: "Worker role" },
         result: { type: "string", enum: ["done", "pass", "fail", "refine", "blocked", "approve", "reject"], description: "Completion result" },
-        projectSlug: { type: "string", description: "Project slug (e.g. 'my-webapp')" },
         summary: { type: "string", description: "Brief summary" },
         prUrl: { type: "string", description: "PR/MR URL (auto-detected if omitted)" },
         createdTasks: {
@@ -125,7 +125,7 @@ export function createWorkFinishTool(ctx: PluginContext) {
     async execute(_id: string, params: Record<string, unknown>) {
       const role = params.role as string;
       const result = params.result as string;
-      const slug = (params.projectSlug ?? params.projectGroupId) as string;
+      const channelId = resolveChannelId(toolCtx, params.channelId as string | undefined);
       const summary = params.summary as string | undefined;
       const prUrl = params.prUrl as string | undefined;
       const createdTasks = params.createdTasks as Array<{ id: number; title: string; url: string }> | undefined;
@@ -138,7 +138,7 @@ export function createWorkFinishTool(ctx: PluginContext) {
       }
 
       // Resolve project + worker
-      const { project } = await resolveProject(workspaceDir, slug);
+      const { project } = await resolveProject(workspaceDir, channelId);
       const roleWorker = getRoleWorker(project, role);
 
       // Find the first active slot across all levels

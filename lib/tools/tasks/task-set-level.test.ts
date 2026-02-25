@@ -12,13 +12,13 @@ import { detectLevelFromLabels, detectRoleLevelFromLabels, detectStepRouting } f
 describe("task_set_level tool", () => {
   it("has correct schema", () => {
     // state is now optional — at least one of state or level required
-    const requiredParams = ["projectSlug", "issueId"];
+    const requiredParams = ["channelId", "issueId"];
     assert.strictEqual(requiredParams.length, 2);
   });
 
   it("supports all state labels", () => {
     const labels = getStateLabels(DEFAULT_WORKFLOW);
-    assert.strictEqual(labels.length, 11); // Tester states removed; To Research + Researching added in #213
+    assert.strictEqual(labels.length, 13);
     assert.ok(labels.includes("Planning"));
     assert.ok(labels.includes("Done"));
     assert.ok(labels.includes("To Review"));

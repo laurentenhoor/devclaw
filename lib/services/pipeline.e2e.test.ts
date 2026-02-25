@@ -70,7 +70,7 @@ describe("E2E pipeline", () => {
 
       // Verify worker state updated in projects.json
       const data = await readProjects(h.workspaceDir);
-      const rw = getRoleWorker(getProject(data, h.groupId)!, "developer");
+      const rw = getRoleWorker(getProject(data, h.channelId)!, "developer");
       assert.ok(rw.levels.medior, "should have medior level");
       assert.strictEqual(rw.levels.medior[0]!.active, true);
       assert.strictEqual(rw.levels.medior[0]!.issueId, "42");
@@ -217,7 +217,7 @@ describe("E2E pipeline", () => {
       assert.ok(!issue.labels.includes("Doing"));
 
       const data = await readProjects(h.workspaceDir);
-      assert.strictEqual(countActiveSlots(getRoleWorker(getProject(data, h.groupId)!, "developer")), 0);
+      assert.strictEqual(countActiveSlots(getRoleWorker(getProject(data, h.channelId)!, "developer")), 0);
       assert.strictEqual(output.issueClosed, false);
     });
   });
@@ -742,7 +742,7 @@ describe("E2E pipeline", () => {
 
       // 4. Reviewer dispatched → Reviewing → approve → To Test
       const { activateWorker } = await import("../projects/index.js");
-      await activateWorker(h.workspaceDir, h.groupId, "reviewer", {
+      await activateWorker(h.workspaceDir, h.channelId, "reviewer", {
         issueId: "100", level: "junior",
       });
       await h.provider.transitionLabel(100, "To Review", "Reviewing");
@@ -765,7 +765,7 @@ describe("E2E pipeline", () => {
       assert.ok(issue.labels.includes("To Test"), `After reviewer approve: ${issue.labels}`);
 
       // 5. Tester passes → Done
-      await activateWorker(h.workspaceDir, h.groupId, "tester", {
+      await activateWorker(h.workspaceDir, h.channelId, "tester", {
         issueId: "100", level: "medior",
       });
       await h.provider.transitionLabel(100, "To Test", "Testing");
@@ -848,7 +848,7 @@ describe("E2E pipeline", () => {
 
       // 4. Tester passes → Done
       const { activateWorker } = await import("../projects/index.js");
-      await activateWorker(h.workspaceDir, h.groupId, "tester", {
+      await activateWorker(h.workspaceDir, h.channelId, "tester", {
         issueId: "200", level: "medior",
       });
       await h.provider.transitionLabel(200, "To Test", "Testing");
@@ -913,7 +913,7 @@ describe("E2E pipeline", () => {
 
       // 3. Reviewer REJECTS → To Improve
       const { activateWorker } = await import("../projects/index.js");
-      await activateWorker(h.workspaceDir, h.groupId, "reviewer", {
+      await activateWorker(h.workspaceDir, h.channelId, "reviewer", {
         issueId: "300", level: "junior",
       });
       await h.provider.transitionLabel(300, "To Review", "Reviewing");
@@ -939,7 +939,7 @@ describe("E2E pipeline", () => {
       await dispatchTask({
         workspaceDir: h.workspaceDir,
         agentId: "main",
-        project: getProject(await readProjects(h.workspaceDir), h.groupId)!,
+        project: getProject(await readProjects(h.workspaceDir), h.channelId)!,
         issueId: 300,
         issueTitle: "Payment flow",
         issueDescription: "Implement payment",
@@ -970,7 +970,7 @@ describe("E2E pipeline", () => {
       assert.ok(issue.labels.includes("To Review"), `After fix: ${issue.labels}`);
 
       // 5. Reviewer approves this time → To Test
-      await activateWorker(h.workspaceDir, h.groupId, "reviewer", {
+      await activateWorker(h.workspaceDir, h.channelId, "reviewer", {
         issueId: "300", level: "junior",
       });
       await h.provider.transitionLabel(300, "To Review", "Reviewing");
@@ -993,7 +993,7 @@ describe("E2E pipeline", () => {
       assert.ok(issue.labels.includes("To Test"), `After approve: ${issue.labels}`);
 
       // 6. Tester passes → Done
-      await activateWorker(h.workspaceDir, h.groupId, "tester", {
+      await activateWorker(h.workspaceDir, h.channelId, "tester", {
         issueId: "300", level: "medior",
       });
       await h.provider.transitionLabel(300, "To Test", "Testing");

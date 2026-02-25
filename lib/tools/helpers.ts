@@ -23,17 +23,32 @@ export function requireWorkspaceDir(ctx: ToolContext): string {
 }
 
 /**
- * Resolve project by slug or groupId (dual-mode resolution).
- * Throws if not found.
+ * Resolve the channelId from explicit tool param.
+ */
+export function resolveChannelId(_ctx: ToolContext, explicitChannelId?: string): string {
+  if (!explicitChannelId) {
+    throw new Error(
+      "channelId is required. Pass YOUR chat/group ID (the numeric ID of the chat you are in right now).",
+    );
+  }
+  return explicitChannelId;
+}
+
+/**
+ * Resolve project by channelId (or slug for backward compat).
+ * Throws with actionable guidance if not found.
  */
 export async function resolveProject(
   workspaceDir: string,
-  slugOrGroupId: string,
+  channelId: string,
 ): Promise<{ data: ProjectsData; project: Project }> {
   const data = await readProjects(workspaceDir);
-  const project = getProject(data, slugOrGroupId);
+  const project = getProject(data, channelId);
   if (!project) {
-    throw new Error(`Project not found for slug or groupId "${slugOrGroupId}". Run project_register first.`);
+    throw new Error(
+      `No project found for "${channelId}". ` +
+      `Register a new project with project_register, or link this channel to an existing project.`,
+    );
   }
   return { data, project };
 }
@@ -56,27 +71,42 @@ export async function resolveProvider(project: Project, runCommand: RunCommand):
 /**
  * Apply a notify label to an issue for notification channel routing.
  *
- * Resolves the source channel from the slug (groupId) and applies
- * a `notify:<channel>:<name>` label. Skips if the issue already has one.
+ * Each issue has at most one notify label. If the source channel differs
+ * from the existing label, the old one is replaced.
  * Best-effort: failures are silently ignored.
+ *
+ * @param sourceChannelId — The channelId the request came from (optional).
+ *   When provided, routes to the matching channel. Falls back to first channel.
  */
 export function applyNotifyLabel(
   provider: ProviderWithType["provider"],
   issueId: number,
   project: Project,
-  slug: string,
+  sourceChannelId?: string,
   existingLabels?: string[],
 ): void {
-  const sourceChannel = project.channels.find(ch => ch.groupId === slug) ?? project.channels[0];
+  const sourceChannel =
+    (sourceChannelId ? project.channels.find(ch => ch.channelId === sourceChannelId) : undefined) ??
+    project.channels[0];
   if (!sourceChannel) return;
 
   const notifyLabel = getNotifyLabel(sourceChannel.channel, sourceChannel.name ?? "0");
-  const alreadyHas = existingLabels?.some(l => l.startsWith(NOTIFY_LABEL_PREFIX));
-  if (alreadyHas) return;
+  const staleLabels = existingLabels?.filter(l => l.startsWith(NOTIFY_LABEL_PREFIX) && l !== notifyLabel) ?? [];
+  const hasCorrectLabel = existingLabels?.includes(notifyLabel) ?? false;
 
-  provider.ensureLabel(notifyLabel, NOTIFY_LABEL_COLOR)
-    .then(() => provider.addLabel(issueId, notifyLabel))
-    .catch(() => {});
+  // Nothing to do — correct label present, no stale labels
+  if (hasCorrectLabel && staleLabels.length === 0) return;
+
+  const apply = async () => {
+    if (staleLabels.length > 0) {
+      await provider.removeLabels(issueId, staleLabels);
+    }
+    if (!hasCorrectLabel) {
+      await provider.ensureLabel(notifyLabel, NOTIFY_LABEL_COLOR);
+      await provider.addLabel(issueId, notifyLabel);
+    }
+  };
+  apply().catch(() => {});
 }
 
 /**

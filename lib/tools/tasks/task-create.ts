@@ -1,8 +1,8 @@
 /**
  * task_create — Create a new task (issue) in the project's issue tracker.
  *
- * Atomically: creates an issue with the specified title, description, and label.
- * Returns the created issue for immediate pickup if desired.
+ * Atomically: creates an issue with the specified title and description in the
+ * initial workflow state. Returns the created issue for immediate pickup if desired.
  *
  * Use this when:
  * - You want to create work items from chat
@@ -13,9 +13,8 @@ import { jsonResult } from "openclaw/plugin-sdk";
 import type { PluginContext } from "../../context.js";
 import type { ToolContext } from "../../types.js";
 import { log as auditLog } from "../../audit.js";
-import type { StateLabel } from "../../providers/provider.js";
-import { DEFAULT_WORKFLOW, getStateLabels } from "../../workflow/index.js";
-import { requireWorkspaceDir, resolveProject, resolveProvider, autoAssignOwnerLabel, applyNotifyLabel } from "../helpers.js";
+import { DEFAULT_WORKFLOW } from "../../workflow/index.js";
+import { requireWorkspaceDir, resolveChannelId, resolveProject, resolveProvider, autoAssignOwnerLabel, applyNotifyLabel } from "../helpers.js";
 
 /** Derive the initial state label from the workflow config. */
 const INITIAL_LABEL = DEFAULT_WORKFLOW.states[DEFAULT_WORKFLOW.initial].label;
@@ -24,20 +23,14 @@ export function createTaskCreateTool(ctx: PluginContext) {
   return (toolCtx: ToolContext) => ({
     name: "task_create",
     label: "Task Create",
-    description: `Create a new task (issue) in the project's issue tracker. Use this to file bugs, features, or tasks from chat.
-
-**IMPORTANT:** Always creates in "${INITIAL_LABEL}" unless the user explicitly asks to start work immediately. Never set label to "To Do" on your own — "${INITIAL_LABEL}" issues require human review before entering the queue.
-
-Examples:
-- Default: { title: "Fix login bug" } → created in ${INITIAL_LABEL}
-- User says "create and start working": { title: "Implement auth", description: "...", label: "To Do" }`,
+    description: `Create a new task (issue) in the project's issue tracker. Use this to file bugs, features, or tasks from chat. Issues are created in "${INITIAL_LABEL}" state for human review before entering the queue.`,
     parameters: {
       type: "object",
-      required: ["projectSlug", "title"],
+      required: ["channelId", "title"],
       properties: {
-        projectSlug: {
+        channelId: {
           type: "string",
-          description: "Project slug (e.g. 'my-webapp')",
+          description: "YOUR chat/group ID — the numeric ID of the chat you are in right now (e.g. '-1003844794417'). Do NOT guess; use the ID of the conversation this message came from.",
         },
         title: {
           type: "string",
@@ -46,11 +39,6 @@ Examples:
         description: {
           type: "string",
           description: "Full issue body in markdown. Use for detailed context, acceptance criteria, reproduction steps, links. Supports GitHub-flavored markdown.",
-        },
-        label: {
-          type: "string",
-          description: `State label. Defaults to "${INITIAL_LABEL}" — only use "To Do" when the user explicitly asks to start work immediately.`,
-          enum: getStateLabels(DEFAULT_WORKFLOW),
         },
         assignees: {
           type: "array",
@@ -65,15 +53,15 @@ Examples:
     },
 
     async execute(_id: string, params: Record<string, unknown>) {
-      const slug = (params.projectSlug ?? params.projectGroupId) as string;
+      const channelId = resolveChannelId(toolCtx, params.channelId as string | undefined);
       const title = params.title as string;
       const description = (params.description as string) ?? "";
-      const label = (params.label as StateLabel) ?? INITIAL_LABEL;
+      const label = INITIAL_LABEL;
       const assignees = (params.assignees as string[] | undefined) ?? [];
       const pickup = (params.pickup as boolean) ?? false;
       const workspaceDir = requireWorkspaceDir(toolCtx);
 
-      const { project } = await resolveProject(workspaceDir, slug);
+      const { project } = await resolveProject(workspaceDir, channelId);
       const { provider, type: providerType } = await resolveProvider(project, ctx.runCommand);
 
       const issue = await provider.createIssue(title, description, label, assignees);
@@ -82,7 +70,7 @@ Examples:
       provider.reactToIssue(issue.iid, "eyes").catch(() => {});
 
       // Apply notify label for channel routing (best-effort).
-      applyNotifyLabel(provider, issue.iid, project, slug);
+      applyNotifyLabel(provider, issue.iid, project, channelId);
 
       // Auto-assign owner label to this instance (best-effort).
       autoAssignOwnerLabel(workspaceDir, provider, issue.iid, project).catch(() => {});

@@ -23,10 +23,10 @@ export type RoleWorkerState = {
 };
 
 /**
- * Channel registration: maps a groupId to messaging endpoint with event filters.
+ * Channel registration: maps a channelId to messaging endpoint with event filters.
  */
 export type Channel = {
-  groupId: string;
+  channelId: string;
   channel: "telegram" | "whatsapp" | "discord" | "slack";
   name: string; // e.g. "primary", "dev-chat"
   events: string[]; // e.g. ["*"] for all, ["workerComplete"] for filtered
@@ -54,7 +54,7 @@ export type Project = {
 };
 
 /**
- * Legacy Project format (groupId-keyed). Used only during migration.
+ * Legacy Project format (channelId-keyed). Used only during migration.
  */
 export type LegacyProject = {
   name: string;

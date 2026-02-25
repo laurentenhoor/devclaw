@@ -196,8 +196,12 @@ function parseWorkerState(worker: Record<string, unknown>, role: string): RoleWo
  * 4. Old slot-based format → per-level format
  * 5. Missing channel field defaults to "telegram"
  */
-export function migrateProject(project: Project): void {
+/**
+ * Returns true if any migration was applied (caller should persist).
+ */
+export function migrateProject(project: Project): boolean {
   const raw = project as unknown as Record<string, unknown>;
+  let changed = false;
 
   if (!raw.workers && (raw.dev || raw.qa || raw.architect)) {
     // Old format: hardcoded dev/qa/architect fields → workers map
@@ -212,6 +216,7 @@ export function migrateProject(project: Project): void {
     delete raw.dev;
     delete raw.qa;
     delete raw.architect;
+    changed = true;
   } else if (raw.workers) {
     // Parse each worker with role-aware migration (handles all formats)
     const workers = raw.workers as Record<string, Record<string, unknown>>;
@@ -225,18 +230,39 @@ export function migrateProject(project: Project): void {
     project.workers = {};
   }
 
+  // Migrate legacy `groupId` field to `channelId` in channel objects.
+  // Before the rename, channels were stored with { groupId: "..." } on disk.
+  if (project.channels) {
+    for (const ch of project.channels) {
+      const rawCh = ch as unknown as Record<string, unknown>;
+      if (rawCh.groupId && !rawCh.channelId) {
+        rawCh.channelId = rawCh.groupId;
+        delete rawCh.groupId;
+        changed = true;
+      }
+    }
+  }
+
   // Migrate legacy `channel` (string) field to `channels` array.
   // Called with `project as any` so raw.channel may still exist on old data.
   const rawChannel = (raw.channel as string | undefined) ?? "telegram";
   if (!project.channels || project.channels.length === 0) {
-    // Preserve the legacy single-channel registration. groupId is unknown here
-    // (the outer loop in readProjects doesn't pass it), so we leave groupId blank
+    // Preserve the legacy single-channel registration. channelId is unknown here
+    // (the outer loop in readProjects doesn't pass it), so we leave channelId blank
     // and callers fall back to channels[0] which still gives the right channel type.
-    project.channels = [{ groupId: "", channel: rawChannel as "telegram" | "whatsapp" | "discord" | "slack", name: "primary", events: ["*"] }];
+    project.channels = [{ channelId: "", channel: rawChannel as "telegram" | "whatsapp" | "discord" | "slack", name: "primary", events: ["*"] }];
+    changed = true;
   }
-  // Remove legacy field so it doesn't persist back to disk
-  delete (raw as Record<string, unknown>).channel;
+  if ((raw as Record<string, unknown>).channel !== undefined) {
+    delete (raw as Record<string, unknown>).channel;
+    changed = true;
+  }
 
   // Remove roleExecution from state — now lives in workflow.yaml
-  delete (raw as Record<string, unknown>).roleExecution;
+  if ((raw as Record<string, unknown>).roleExecution !== undefined) {
+    delete (raw as Record<string, unknown>).roleExecution;
+    changed = true;
+  }
+
+  return changed;
 }

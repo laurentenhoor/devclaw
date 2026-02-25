@@ -22,10 +22,10 @@ import { createProvider } from "../providers/index.js";
 import { log as auditLog } from "../audit.js";
 
 /**
- * Resolve which project a group/conversation maps to.
+ * Resolve which project a conversation maps to.
  * Looks up the conversationId in registered projects' channels.
  */
-async function resolveProjectFromGroup(
+async function resolveProjectFromChannel(
   workspaceDir: string,
   conversationId: string,
 ): Promise<Project | null> {
@@ -35,13 +35,13 @@ async function resolveProjectFromGroup(
     for (const project of Object.values(projects)) {
       const channels = (project as Project).channels ?? [];
       for (const ch of channels) {
-        if (String(ch.groupId) === String(conversationId)) {
+        if (String(ch.channelId) === String(conversationId)) {
           return project as Project;
         }
       }
-      // Legacy: check top-level groupId
-      const legacy = project as Project & { groupId?: string };
-      if (legacy.groupId && String(legacy.groupId) === String(conversationId)) {
+      // Legacy: check top-level channelId
+      const legacy = project as Project & { channelId?: string };
+      if (legacy.channelId && String(legacy.channelId) === String(conversationId)) {
         return project as Project;
       }
     }
@@ -87,7 +87,7 @@ export function registerAttachmentHook(api: OpenClawPluginApi, ctx: PluginContex
     const conversationId = eventCtx.conversationId;
     if (!conversationId) return;
 
-    const project = await resolveProjectFromGroup(workspaceDir, conversationId);
+    const project = await resolveProjectFromChannel(workspaceDir, conversationId);
     if (!project) return;
 
     // Process each referenced issue

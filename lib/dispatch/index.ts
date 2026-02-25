@@ -146,8 +146,9 @@ export async function dispatchTask(
     attachmentContext = await formatAttachmentsForTask(workspaceDir, project.slug, issueId) || undefined;
   } catch { /* best-effort */ }
 
+  const primaryChannelId = project.channels[0]?.channelId ?? project.slug;
   const taskMessage = buildTaskMessage({
-    projectName: project.name, projectSlug: project.slug, role, issueId,
+    projectName: project.name, channelId: primaryChannelId, role, issueId,
     issueTitle, issueDescription, issueUrl,
     repo: project.repo, baseBranch: project.baseBranch,
     comments, resolvedRole, prContext, prFeedback, attachmentContext,
@@ -233,7 +234,7 @@ export async function dispatchTask(
     {
       workspaceDir,
       config: notifyConfig,
-      groupId: notifyTarget?.groupId,
+      channelId: notifyTarget?.channelId,
       channel: notifyTarget?.channel ?? "telegram",
       runtime,
       accountId: notifyTarget?.accountId,

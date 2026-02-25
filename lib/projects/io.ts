@@ -79,9 +79,13 @@ export async function readProjects(workspaceDir: string): Promise<ProjectsData> 
 
   const typedData = data as ProjectsData;
 
-  // Apply per-project migrations
+  // Apply per-project migrations and persist if any changed
+  let migrated = false;
   for (const project of Object.values(typedData.projects)) {
-    migrateProject(project as any);
+    if (migrateProject(project as any)) migrated = true;
+  }
+  if (migrated) {
+    await writeProjects(workspaceDir, typedData);
   }
 
   return typedData;
@@ -98,21 +102,21 @@ export async function writeProjects(
 }
 
 /**
- * Resolve a project by slug or groupId (for backward compatibility).
+ * Resolve a project by slug or channelId (for backward compatibility).
  * Returns the slug of the found project.
  */
 export function resolveProjectSlug(
   data: ProjectsData,
-  slugOrGroupId: string,
+  slugOrChannelId: string,
 ): string | undefined {
   // Direct lookup by slug
-  if (data.projects[slugOrGroupId]) {
-    return slugOrGroupId;
+  if (data.projects[slugOrChannelId]) {
+    return slugOrChannelId;
   }
 
-  // Reverse lookup by groupId in channels
+  // Reverse lookup by channelId in channels
   for (const [slug, project] of Object.entries(data.projects)) {
-    if (project.channels.some(ch => ch.groupId === slugOrGroupId)) {
+    if (project.channels.some(ch => ch.channelId === slugOrChannelId)) {
       return slug;
     }
   }
@@ -121,13 +125,13 @@ export function resolveProjectSlug(
 }
 
 /**
- * Get a project by slug or groupId (dual-mode resolution).
+ * Get a project by slug or channelId (dual-mode resolution).
  */
 export function getProject(
   data: ProjectsData,
-  slugOrGroupId: string,
+  slugOrChannelId: string,
 ): Project | undefined {
-  const slug = resolveProjectSlug(data, slugOrGroupId);
+  const slug = resolveProjectSlug(data, slugOrChannelId);
   return slug ? data.projects[slug] : undefined;
 }
 

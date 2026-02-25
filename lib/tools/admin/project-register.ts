@@ -87,11 +87,11 @@ export function createProjectRegisterTool(ctx: PluginContext) {
     description: `Register a new project with DevClaw. Creates state labels, adds to projects.json. One-time setup per project.`,
     parameters: {
       type: "object",
-      required: ["projectGroupId", "name", "repo", "baseBranch"],
+      required: ["channelId", "name", "repo", "baseBranch"],
       properties: {
-        projectGroupId: {
+        channelId: {
           type: "string",
-          description: "Project group ID (e.g. Telegram/WhatsApp group ID)",
+          description: "Channel ID — the chat/group ID where this project is managed (e.g. Telegram group ID)",
         },
         name: {
           type: "string",
@@ -125,7 +125,7 @@ export function createProjectRegisterTool(ctx: PluginContext) {
     },
 
     async execute(_id: string, params: Record<string, unknown>) {
-      const groupId = params.projectGroupId as string;
+      const channelId = params.channelId as string;
       const name = params.name as string;
       const repo = params.repo as string;
       const channel = (params.channel as string) ?? "telegram";
@@ -146,12 +146,12 @@ export function createProjectRegisterTool(ctx: PluginContext) {
       const data = await readProjects(workspaceDir);
       const existing = data.projects[slug];
 
-      // If project exists, check if this groupId is already registered
+      // If project exists, check if this channelId is already registered
       if (existing) {
-        const channelExists = existing.channels.some(ch => ch.groupId === groupId);
+        const channelExists = existing.channels.some(ch => ch.channelId === channelId);
         if (channelExists) {
           throw new Error(
-            `Group ${groupId} is already registered for project "${name}". Each group can only register once per project.`,
+            `Channel ${channelId} is already registered for project "${name}". Each channel can only register once per project.`,
           );
         }
         // Adding a new channel to an existing project
@@ -204,7 +204,7 @@ export function createProjectRegisterTool(ctx: PluginContext) {
       if (existing) {
         // Add channel to existing project
         const newChannel: import("../../projects/index.js").Channel = {
-          groupId,
+          channelId,
           channel: channel as "telegram" | "whatsapp" | "discord" | "slack",
           name: `channel-${existing.channels.length + 1}`,
           events: ["*"],
@@ -222,7 +222,7 @@ export function createProjectRegisterTool(ctx: PluginContext) {
         }
 
         const newChannel: import("../../projects/index.js").Channel = {
-          groupId,
+          channelId,
           channel: channel as "telegram" | "whatsapp" | "discord" | "slack",
           name: "primary",
           events: ["*"],
@@ -252,7 +252,7 @@ export function createProjectRegisterTool(ctx: PluginContext) {
       await auditLog(workspaceDir, "project_register", {
         project: name,
         projectSlug: slug,
-        groupId,
+        channelId,
         repo,
         repoRemote: repoRemote || null,
         baseBranch,
@@ -279,7 +279,7 @@ export function createProjectRegisterTool(ctx: PluginContext) {
         success: true,
         project: name,
         projectSlug: slug,
-        groupId,
+        channelId,
         repo,
         repoRemote: repoRemote || null,
         baseBranch,

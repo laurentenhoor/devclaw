@@ -10,7 +10,7 @@ import { jsonResult } from "openclaw/plugin-sdk";
 import type { PluginContext } from "../../context.js";
 import type { ToolContext } from "../../types.js";
 import { log as auditLog } from "../../audit.js";
-import { requireWorkspaceDir, resolveProject, resolveProvider, autoAssignOwnerLabel } from "../helpers.js";
+import { requireWorkspaceDir, resolveChannelId, resolveProject, resolveProvider, autoAssignOwnerLabel, applyNotifyLabel } from "../helpers.js";
 import { getAllRoleIds, getFallbackEmoji } from "../../roles/index.js";
 
 /** Valid author roles for attribution — all registry roles + orchestrator */
@@ -30,16 +30,16 @@ Use cases:
 - Cross-referencing related issues or PRs
 
 Examples:
-- Simple: { projectSlug: "my-webapp", issueId: 42, body: "Found an edge case with null inputs" }
-- With role: { projectSlug: "my-webapp", issueId: 42, body: "LGTM!", authorRole: "tester" }
-- Detailed: { projectSlug: "my-webapp", issueId: 42, body: "## Notes\\n\\n- Tested on staging\\n- All checks passing", authorRole: "developer" }`,
+- Simple: { issueId: 42, body: "Found an edge case with null inputs" }
+- With role: { issueId: 42, body: "LGTM!", authorRole: "tester" }
+- Detailed: { issueId: 42, body: "## Notes\\n\\n- Tested on staging\\n- All checks passing", authorRole: "developer" }`,
     parameters: {
       type: "object",
-      required: ["projectSlug", "issueId", "body"],
+      required: ["channelId", "issueId", "body"],
       properties: {
-        projectSlug: {
+        channelId: {
           type: "string",
-          description: "Project slug (e.g. 'my-webapp').",
+          description: "YOUR chat/group ID — the numeric ID of the chat you are in right now (e.g. '-1003844794417'). Do NOT guess; use the ID of the conversation this message came from.",
         },
         issueId: {
           type: "number",
@@ -58,7 +58,7 @@ Examples:
     },
 
     async execute(_id: string, params: Record<string, unknown>) {
-      const slug = (params.projectSlug ?? params.projectGroupId) as string;
+      const channelId = resolveChannelId(toolCtx, params.channelId as string | undefined);
       const issueId = params.issueId as number;
       const body = params.body as string;
       const authorRole = (params.authorRole as AuthorRole) ?? undefined;
@@ -68,7 +68,7 @@ Examples:
         throw new Error("Comment body cannot be empty.");
       }
 
-      const { project } = await resolveProject(workspaceDir, slug);
+      const { project } = await resolveProject(workspaceDir, channelId);
       const { provider, type: providerType } = await resolveProvider(project, ctx.runCommand);
 
       const issue = await provider.getIssue(issueId);
@@ -81,6 +81,9 @@ Examples:
 
       // Mark as system-managed (best-effort).
       provider.reactToIssueComment(issueId, commentId, "eyes").catch(() => {});
+
+      // Apply notify label for channel routing (best-effort).
+      applyNotifyLabel(provider, issueId, project, channelId, issue.labels);
 
       // Auto-assign owner label to this instance (best-effort).
       autoAssignOwnerLabel(workspaceDir, provider, issueId, project).catch(() => {});

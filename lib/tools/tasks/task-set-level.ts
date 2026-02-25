@@ -11,7 +11,7 @@ import type { ToolContext } from "../../types.js";
 import { log as auditLog } from "../../audit.js";
 import { StateType, findStateByLabel, getCurrentStateLabel, getRoleLabelColor } from "../../workflow/index.js";
 import { loadConfig } from "../../config/index.js";
-import { requireWorkspaceDir, resolveProject, resolveProvider, autoAssignOwnerLabel } from "../helpers.js";
+import { requireWorkspaceDir, resolveChannelId, resolveProject, resolveProvider, autoAssignOwnerLabel, applyNotifyLabel } from "../helpers.js";
 
 export function createTaskSetLevelTool(ctx: PluginContext) {
   return (toolCtx: ToolContext) => ({
@@ -20,15 +20,15 @@ export function createTaskSetLevelTool(ctx: PluginContext) {
     description: `Set the developer level hint on a HOLD-state issue (Planning, Refining). The level is applied as a role:level label and respected by the heartbeat when the issue is advanced via task_start.
 
 Examples:
-- { projectSlug: "my-webapp", issueId: 42, level: "senior" }
-- { projectSlug: "my-webapp", issueId: 42, level: "junior", reason: "Simple typo fix" }`,
+- { issueId: 42, level: "senior" }
+- { issueId: 42, level: "junior", reason: "Simple typo fix" }`,
     parameters: {
       type: "object",
-      required: ["projectSlug", "issueId"],
+      required: ["channelId", "issueId"],
       properties: {
-        projectSlug: {
+        channelId: {
           type: "string",
-          description: "Project slug (e.g. 'my-webapp').",
+          description: "YOUR chat/group ID — the numeric ID of the chat you are in right now (e.g. '-1003844794417'). Do NOT guess; use the ID of the conversation this message came from.",
         },
         issueId: {
           type: "number",
@@ -46,7 +46,7 @@ Examples:
     },
 
     async execute(_id: string, params: Record<string, unknown>) {
-      const slug = (params.projectSlug ?? params.projectGroupId) as string;
+      const channelId = resolveChannelId(toolCtx, params.channelId as string | undefined);
       const issueId = params.issueId as number;
       const newLevel = (params.level as string) ?? undefined;
       const reason = (params.reason as string) ?? undefined;
@@ -56,7 +56,7 @@ Examples:
         throw new Error("'level' is required.");
       }
 
-      const { project } = await resolveProject(workspaceDir, slug);
+      const { project } = await resolveProject(workspaceDir, channelId);
       const { provider, type: providerType } = await resolveProvider(project, ctx.runCommand);
       const resolvedConfig = await loadConfig(workspaceDir, project.name);
 
@@ -97,6 +97,9 @@ Examples:
       await provider.ensureLabel(newRoleLabel, getRoleLabelColor(role));
       await provider.addLabel(issueId, newRoleLabel);
       const levelChanged = fromLevel !== newLevel;
+
+      // Apply notify label for channel routing (best-effort).
+      applyNotifyLabel(provider, issueId, project, channelId, issue.labels);
 
       // Auto-assign owner label to this instance (best-effort).
       autoAssignOwnerLabel(workspaceDir, provider, issueId, project).catch(() => {});

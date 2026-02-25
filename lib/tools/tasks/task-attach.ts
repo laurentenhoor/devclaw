@@ -10,7 +10,7 @@ import { jsonResult } from "openclaw/plugin-sdk";
 import type { PluginContext } from "../../context.js";
 import type { ToolContext } from "../../types.js";
 import { log as auditLog } from "../../audit.js";
-import { requireWorkspaceDir, resolveProject, resolveProvider, autoAssignOwnerLabel } from "../helpers.js";
+import { requireWorkspaceDir, resolveChannelId, resolveProject, resolveProvider, autoAssignOwnerLabel, applyNotifyLabel } from "../helpers.js";
 import {
   listAttachments,
   saveAttachment,
@@ -27,16 +27,16 @@ export function createTaskAttachTool(ctx: PluginContext) {
     description: `Manage file attachments on issues. List existing attachments or add new ones from local files.
 
 Use cases:
-- List attachments: { projectSlug: "my-app", issueId: 42, action: "list" }
-- Attach file: { projectSlug: "my-app", issueId: 42, action: "add", filePath: "/path/to/file.png" }
-- Get attachment path: { projectSlug: "my-app", issueId: 42, action: "get", attachmentId: "abc-123" }`,
+- List attachments: { issueId: 42, action: "list" }
+- Attach file: { issueId: 42, action: "add", filePath: "/path/to/file.png" }
+- Get attachment path: { issueId: 42, action: "get", attachmentId: "abc-123" }`,
     parameters: {
       type: "object",
-      required: ["projectSlug", "issueId"],
+      required: ["channelId", "issueId"],
       properties: {
-        projectSlug: {
+        channelId: {
           type: "string",
-          description: "Project slug (e.g. 'my-webapp').",
+          description: "YOUR chat/group ID — the numeric ID of the chat you are in right now (e.g. '-1003844794417'). Do NOT guess; use the ID of the conversation this message came from.",
         },
         issueId: {
           type: "number",
@@ -59,12 +59,12 @@ Use cases:
     },
 
     async execute(_id: string, params: Record<string, unknown>) {
-      const slug = params.projectSlug as string;
+      const channelId = resolveChannelId(toolCtx, params.channelId as string | undefined);
       const issueId = params.issueId as number;
       const action = (params.action as string) ?? "list";
       const workspaceDir = requireWorkspaceDir(toolCtx);
 
-      const { project } = await resolveProject(workspaceDir, slug);
+      const { project } = await resolveProject(workspaceDir, channelId);
 
       if (action === "list") {
         const attachments = await listAttachments(workspaceDir, project.slug, issueId);
@@ -133,6 +133,9 @@ Use cases:
         // Post comment on issue
         const comment = formatAttachmentComment([meta]);
         await provider.addComment(issueId, comment);
+
+        // Apply notify label for channel routing (best-effort).
+        applyNotifyLabel(provider, issueId, project, channelId);
 
         // Auto-assign owner label to this instance (best-effort).
         autoAssignOwnerLabel(workspaceDir, provider, issueId, project).catch(() => {});

@@ -111,7 +111,7 @@ export async function performReviewPass(
             {
               workspaceDir,
               config: notifyConfig,
-              groupId: target?.groupId,
+              channelId: target?.channelId,
               channel: target?.channel ?? "telegram",
               runtime,
               accountId: target?.accountId,
@@ -140,7 +140,7 @@ export async function performReviewPass(
         {
           workspaceDir,
           config: notifyConfig,
-          groupId: target?.groupId,
+          channelId: target?.channelId,
           channel: target?.channel ?? "telegram",
           runtime,
           accountId: target?.accountId,
@@ -163,7 +163,7 @@ export async function performReviewPass(
         {
           workspaceDir,
           config: notifyConfig,
-          groupId: target?.groupId,
+          channelId: target?.channelId,
           channel: target?.channel ?? "telegram",
           runtime,
           accountId: target?.accountId,
@@ -220,7 +220,7 @@ export async function performReviewSkipPass(
             {
               workspaceDir,
               config: notifyConfig,
-              groupId: target?.groupId,
+              channelId: target?.channelId,
               channel: target?.channel ?? "telegram",
               runtime,
               accountId: target?.accountId,
