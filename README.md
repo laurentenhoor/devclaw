@@ -335,6 +335,81 @@ See the [Configuration reference](docs/CONFIGURATION.md) for the full schema.
 
 ---
 
+## Real-time worker visibility with forum topics
+
+When your Telegram project group is a **forum-enabled supergroup**, each worker session automatically gets its own **forum topic**. Instead of all worker output going to one channel, you get isolated, real-time streams per worker — one topic per developer level, one per tester level, one per reviewer.
+
+### How it works
+
+DevClaw creates deterministic session keys per worker:
+
+```
+agent:devclaw:subagent:my-app-developer-medior-cordelia
+agent:devclaw:subagent:my-app-developer-junior-felix
+agent:devclaw:subagent:my-app-tester-medior-aurora
+```
+
+OpenClaw maps each session to a Telegram forum topic. When the medior developer picks up issue #42, their entire work stream — tool calls, code changes, test output, git operations — appears in a dedicated topic. The main channel only receives final announcements (started, completed, PR merged).
+
+```
+Project Group (Forum Supergroup)
+├─ General                     ← announcements only
+│   ├─ 🚀 Started DEVELOPER Cordelia (medior) on #42: Add login page
+│   └─ ✅ DEVELOPER Cordelia (medior) completed #42
+│
+├─ 🔧 Cordelia (medior DEV)   ← full session stream
+│   ├─ Reading issue #42...
+│   ├─ Creating worktree...
+│   ├─ Implementing OAuth handler in lib/auth/login.ts
+│   ├─ Running npm test — all passing ✓
+│   └─ Pushing branch, creating PR...
+│
+└─ 🧪 Aurora (medior QA)      ← separate stream
+    ├─ Checking OAuth flow on staging...
+    └─ All checks passed ✓
+```
+
+### Per-level isolation
+
+Topics are per **worker slot**, not per issue. Your medior developer reuses the same topic across tasks — building up a readable history of everything that worker has done. A junior and medior developer on the same project have separate topics. A developer and tester on the same issue have separate topics.
+
+### Configuration
+
+This uses standard OpenClaw settings in `openclaw.json` — no DevClaw-specific config needed:
+
+```json5
+{
+  channels: {
+    telegram: {
+      streaming: true,          // live preview of worker output (default: true)
+    },
+  },
+  agents: {
+    defaults: {
+      verboseDefault: "on",     // show tool calls and outputs (off | on)
+    },
+  },
+}
+```
+
+| Setting          | Default | What it controls                                               |
+| ---------------- | ------- | -------------------------------------------------------------- |
+| `streaming`      | `true`  | Live message preview as workers type (Telegram `editMessage`)  |
+| `verboseDefault` | `"off"` | Show tool call details (git commands, file reads, test output) |
+
+Set `verboseDefault: "on"` to see everything workers do. Leave it `"off"` for just the final responses. Streaming controls whether you see the output appear incrementally or all at once.
+
+### Why this matters
+
+- **No more "is it still working?"** — Open the worker's topic to see exactly what's happening right now
+- **Parallel work stays readable** — Three workers active? Three separate topics, no interleaving
+- **Built-in audit trail** — Every tool call, decision, and output is timestamped in the topic history
+- **Opt-in depth** — Main channel stays clean with just announcements; dive into topics only when you need to
+
+> **Note:** Forum topics require your Telegram group to have Topics enabled (Settings → Topics). Standard groups without Topics enabled will receive all output in the main channel.
+
+---
+
 ## Task management
 
 ### Your issues stay in your tracker
