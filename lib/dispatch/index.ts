@@ -256,6 +256,7 @@ export async function dispatchTask(
     orchestratorSessionKey: opts.sessionKey, workspaceDir,
     dispatchTimeoutMs: timeouts.dispatchMs,
     extraSystemPrompt: roleInstructions.trim() || undefined,
+    model,
     runCommand: rc,
   });
 
