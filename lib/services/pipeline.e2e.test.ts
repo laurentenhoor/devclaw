@@ -86,6 +86,41 @@ describe("E2E pipeline", () => {
       assert.ok(taskMsg.includes("work_finish"), "Task message should reference work_finish");
     });
 
+    it("should pass resolved model in agent RPC call (#436)", async () => {
+      h.provider.seedIssue({ iid: 99, title: "Model test", labels: ["To Do"] });
+
+      const result = await dispatchTask({
+        workspaceDir: h.workspaceDir,
+        agentId: "test-agent",
+        project: h.project,
+        issueId: 99,
+        issueTitle: "Model test",
+        issueDescription: "Testing model parameter",
+        issueUrl: "https://example.com/issues/99",
+        role: "developer",
+        level: "medior",
+        fromLabel: "To Do",
+        toLabel: "Doing",
+        provider: h.provider,
+        runCommand: h.runCommand,
+      });
+
+      // Model should be resolved and returned
+      assert.ok(result.model, "dispatch should return a model");
+
+      // Model must be passed to the agent RPC call (the bug fix)
+      const agentModels = h.commands.agentModels();
+      assert.ok(agentModels.length > 0, "Should pass model in agent RPC call");
+      assert.strictEqual(agentModels[0], result.model,
+        `Agent RPC model should match dispatch result: expected ${result.model}, got ${agentModels[0]}`);
+
+      // Also verify session patch has the same model
+      const patches = h.commands.sessionPatches();
+      assert.ok(patches.length > 0, "Should have patched session");
+      assert.strictEqual(patches[0].model, result.model,
+        `Session patch model should match: expected ${result.model}, got ${patches[0].model}`);
+    });
+
     it("should include comments in task message", async () => {
       h.provider.comments.set(42, [
         { id: 1001, author: "alice", body: "Please use OAuth", created_at: "2026-01-01T00:00:00Z" },

@@ -36,6 +36,8 @@ export type CapturedCommand = {
   taskMessage?: string;
   /** Extracted from gateway `agent` call params, if applicable. */
   extraSystemPrompt?: string;
+  /** Extracted from gateway `agent` call params, if applicable. */
+  agentModel?: string;
   /** Extracted from gateway `sessions.patch` params, if applicable. */
   sessionPatch?: { key: string; model: string; label?: string };
 };
@@ -49,6 +51,8 @@ export type CommandInterceptor = {
   taskMessages(): string[];
   /** Get all extraSystemPrompt values sent via `openclaw gateway call agent`. */
   extraSystemPrompts(): string[];
+  /** Get all agent models sent via `openclaw gateway call agent`. */
+  agentModels(): string[];
   /** Get all session patches. */
   sessionPatches(): Array<{ key: string; model: string; label?: string }>;
   /** Reset captured commands. */
@@ -83,6 +87,9 @@ function createCommandInterceptor(): {
             if (params.extraSystemPrompt) {
               captured.extraSystemPrompt = params.extraSystemPrompt;
             }
+            if (params.model) {
+              captured.agentModel = params.model;
+            }
           }
           if (rpcMethod === "sessions.patch") {
             captured.sessionPatch = { key: params.key, model: params.model, label: params.label };
@@ -110,6 +117,11 @@ function createCommandInterceptor(): {
       return commands
         .filter((c) => c.extraSystemPrompt !== undefined)
         .map((c) => c.extraSystemPrompt!);
+    },
+    agentModels() {
+      return commands
+        .filter((c) => c.agentModel !== undefined)
+        .map((c) => c.agentModel!);
     },
     sessionPatches() {
       return commands
