@@ -10,14 +10,14 @@ import {
   type PrReviewComment,
   PrState,
 } from "./provider.js";
-import { runCommand } from "../run-command.js";
+import type { RunCommand } from "../context.js";
 import { withResilience } from "./resilience.js";
 import {
   DEFAULT_WORKFLOW,
   getStateLabels,
   getLabelColors,
   type WorkflowConfig,
-} from "../workflow.js";
+} from "../workflow/index.js";
 
 type GitLabMR = {
   iid: number;
@@ -34,15 +34,17 @@ type GitLabMR = {
 export class GitLabProvider implements IssueProvider {
   private repoPath: string;
   private workflow: WorkflowConfig;
+  private runCommand: RunCommand;
 
-  constructor(opts: { repoPath: string; workflow?: WorkflowConfig }) {
+  constructor(opts: { repoPath: string; runCommand: RunCommand; workflow?: WorkflowConfig }) {
     this.repoPath = opts.repoPath;
+    this.runCommand = opts.runCommand;
     this.workflow = opts.workflow ?? DEFAULT_WORKFLOW;
   }
 
   private async glab(args: string[]): Promise<string> {
     return withResilience(async () => {
-      const result = await runCommand(["glab", ...args], { timeoutMs: 30_000, cwd: this.repoPath });
+      const result = await this.runCommand(["glab", ...args], { timeoutMs: 30_000, cwd: this.repoPath });
       return result.stdout.trim();
     });
   }
@@ -494,7 +496,7 @@ export class GitLabProvider implements IssueProvider {
       // Search for issue references: #N (issue) or !N (MR) in commit messages
       const patterns = [`#${issueId}`, `!${issueId}`];
       for (const pattern of patterns) {
-        const result = await runCommand(
+        const result = await this.runCommand(
           ["git", "log", `origin/${baseBranch}`, "--oneline", "-200", "--grep", pattern],
           { timeoutMs: 15_000, cwd: this.repoPath },
         );
@@ -515,7 +517,7 @@ export class GitLabProvider implements IssueProvider {
       const projectId: number = project.id;
       const webUrl: string = project.web_url;
 
-      const tokenRaw = await runCommand(
+      const tokenRaw = await this.runCommand(
         ["glab", "config", "get", "token"],
         { timeoutMs: 10_000, cwd: this.repoPath },
       );
@@ -532,7 +534,7 @@ export class GitLabProvider implements IssueProvider {
 
       try {
         const apiBase = webUrl.replace(/\/[^/]+\/[^/]+\/?$/, "");
-        const result = await runCommand(
+        const result = await this.runCommand(
           ["curl", "--silent", "--fail", "--show-error",
             "--header", `PRIVATE-TOKEN: ${token}`,
             "--form", `file=@${tmpFile}`,

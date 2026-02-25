@@ -5,11 +5,12 @@
  * Called by: work_start (fill parallel slot), work_finish (next pipeline step), heartbeat service (sweep).
  */
 import type { PluginRuntime } from "openclaw/plugin-sdk";
+import type { RunCommand } from "../context.js";
 import type { Issue, IssueProvider } from "../providers/provider.js";
 import { createProvider } from "../providers/index.js";
-import { selectLevel } from "../model-selector.js";
-import { getRoleWorker, getProject, readProjects, findFreeSlot, countActiveSlots, reconcileSlots } from "../projects.js";
-import { dispatchTask } from "../dispatch.js";
+import { selectLevel } from "../roles/model-selector.js";
+import { getRoleWorker, getProject, readProjects, findFreeSlot, countActiveSlots, reconcileSlots } from "../projects/index.js";
+import { dispatchTask } from "../dispatch/index.js";
 import { getLevelsForRole } from "../roles/index.js";
 import { loadConfig } from "../config/index.js";
 import {
@@ -19,7 +20,7 @@ import {
   getActiveLabel,
   type WorkflowConfig,
   type Role,
-} from "../workflow.js";
+} from "../workflow/index.js";
 import { detectRoleLevelFromLabels, detectStepRouting, findNextIssueForRole } from "./queue-scan.js";
 
 // ---------------------------------------------------------------------------
@@ -67,10 +68,12 @@ export async function projectTick(opts: {
   workflow?: WorkflowConfig;
   /** Instance name for ownership filtering and auto-claiming. */
   instanceName?: string;
+  /** Injected runCommand for dependency injection. */
+  runCommand?: RunCommand;
 }): Promise<TickResult> {
   const {
     workspaceDir, projectSlug, agentId, sessionKey, pluginConfig, dryRun,
-    maxPickups, targetRole, runtime, instanceName,
+    maxPickups, targetRole, runtime, instanceName, runCommand,
   } = opts;
 
   const project = getProject(await readProjects(workspaceDir), projectSlug);
@@ -79,7 +82,7 @@ export async function projectTick(opts: {
   const resolvedConfig = await loadConfig(workspaceDir, project.name);
   const workflow = opts.workflow ?? resolvedConfig.workflow;
 
-  const provider = opts.provider ?? (await createProvider({ repo: project.repo, provider: project.provider })).provider;
+  const provider = opts.provider ?? (await createProvider({ repo: project.repo, provider: project.provider, runCommand: runCommand! })).provider;
   const roleExecution = workflow.roleExecution ?? ExecutionMode.PARALLEL;
   const enabledRoles = Object.entries(resolvedConfig.roles)
     .filter(([, r]) => r.enabled)
@@ -185,6 +188,7 @@ export async function projectTick(opts: {
           runtime,
           slotIndex: freeSlot,
           instanceName,
+          runCommand: runCommand!,
         });
         pickups.push({
           project: project.name, projectSlug, issueId: issue.iid, issueTitle: issue.title, issueUrl: issue.web_url,

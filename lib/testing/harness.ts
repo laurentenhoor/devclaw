@@ -9,12 +9,12 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import { initRunCommand } from "../run-command.js";
-import { writeProjects, type ProjectsData, type Project, type RoleWorkerState } from "../projects.js";
-import { DEFAULT_WORKFLOW, type WorkflowConfig } from "../workflow.js";
-import { registerBootstrapHook } from "../bootstrap-hook.js";
+import { writeProjects, type ProjectsData, type Project, type RoleWorkerState } from "../projects/index.js";
+import { DEFAULT_WORKFLOW, type WorkflowConfig } from "../workflow/index.js";
+import { registerBootstrapHook } from "../dispatch/bootstrap-hook.js";
 import { TestProvider } from "./test-provider.js";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
+import type { PluginContext } from "../context.js";
 
 // ---------------------------------------------------------------------------
 // Bootstrap result type — represents the agent:bootstrap hook outcome
@@ -135,6 +135,8 @@ export type TestHarness = {
   provider: TestProvider;
   /** Command interceptor — captures all runCommand calls. */
   commands: CommandInterceptor;
+  /** Mock runCommand function for passing to functions that require it. */
+  runCommand: import("../context.js").RunCommand;
   /** The project group ID used for test data. */
   groupId: string;
   /** The project data. */
@@ -244,11 +246,6 @@ export async function createTestHarness(opts?: HarnessOptions): Promise<TestHarn
 
   // Install mock runCommand
   const { interceptor, handler } = createCommandInterceptor();
-  initRunCommand({
-    runtime: {
-      system: { runCommandWithTimeout: handler },
-    },
-  } as unknown as OpenClawPluginApi);
 
   // Create test provider
   const provider = new TestProvider({ workflow });
@@ -257,6 +254,7 @@ export async function createTestHarness(opts?: HarnessOptions): Promise<TestHarn
     workspaceDir,
     provider,
     commands: interceptor,
+    runCommand: handler as unknown as import("../context.js").RunCommand,
     groupId,
     project,
     workflow,
@@ -264,7 +262,7 @@ export async function createTestHarness(opts?: HarnessOptions): Promise<TestHarn
       await writeProjects(workspaceDir, data);
     },
     async readProjects() {
-      const { readProjects } = await import("../projects.js");
+      const { readProjects } = await import("../projects/index.js");
       return readProjects(workspaceDir);
     },
     async writePrompt(role: string, content: string, forProject?: string) {
@@ -289,7 +287,11 @@ export async function createTestHarness(opts?: HarnessOptions): Promise<TestHarn
         },
       } as unknown as OpenClawPluginApi;
 
-      registerBootstrapHook(mockApi);
+      const mockCtx = {
+        logger: mockApi.logger,
+      } as unknown as PluginContext;
+
+      registerBootstrapHook(mockApi, mockCtx);
 
       // Fire the internal hook (agent:bootstrap) to test AGENTS.md stripping
       const bootstrapFiles = [
@@ -301,8 +303,10 @@ export async function createTestHarness(opts?: HarnessOptions): Promise<TestHarn
         },
       ];
 
-      if (internalHookCb) {
-        await internalHookCb({
+      // Cast needed: TS strict mode doesn't track cross-function mutation of locals
+      const hookCb = internalHookCb as ((event: any) => Promise<void>) | null;
+      if (hookCb) {
+        await hookCb({
           sessionKey,
           context: { bootstrapFiles },
         });

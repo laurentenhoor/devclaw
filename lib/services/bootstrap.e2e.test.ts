@@ -9,7 +9,7 @@
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert";
 import { createTestHarness, type TestHarness } from "../testing/index.js";
-import { dispatchTask } from "../dispatch.js";
+import { dispatchTask } from "../dispatch/index.js";
 
 describe("E2E bootstrap — extraSystemPrompt injection", () => {
   let h: TestHarness;
@@ -39,6 +39,7 @@ describe("E2E bootstrap — extraSystemPrompt injection", () => {
       fromLabel: "To Do",
       toLabel: "Doing",
       provider: h.provider,
+      runCommand: h.runCommand,
     });
 
     // Verify extraSystemPrompt in the gateway agent call
@@ -69,6 +70,7 @@ describe("E2E bootstrap — extraSystemPrompt injection", () => {
       fromLabel: "To Do",
       toLabel: "Doing",
       provider: h.provider,
+      runCommand: h.runCommand,
     });
 
     const prompts = h.commands.extraSystemPrompts();
@@ -96,6 +98,7 @@ describe("E2E bootstrap — extraSystemPrompt injection", () => {
       fromLabel: "To Do",
       toLabel: "Doing",
       provider: h.provider,
+      runCommand: h.runCommand,
     });
 
     const prompts = h.commands.extraSystemPrompts();
@@ -125,6 +128,7 @@ describe("E2E bootstrap — extraSystemPrompt injection", () => {
       fromLabel: "To Test",
       toLabel: "Testing",
       provider: h.provider,
+      runCommand: h.runCommand,
     });
 
     const prompts = h.commands.extraSystemPrompts();
@@ -156,6 +160,7 @@ describe("E2E bootstrap — extraSystemPrompt injection", () => {
       fromLabel: "To Do",
       toLabel: "Doing",
       provider: h.provider,
+      runCommand: h.runCommand,
     });
 
     const prompts = h.commands.extraSystemPrompts();
@@ -183,6 +188,7 @@ describe("E2E bootstrap — extraSystemPrompt injection", () => {
       fromLabel: "Planning",
       toLabel: "Planning",
       provider: h.provider,
+      runCommand: h.runCommand,
     });
 
     const prompts = h.commands.extraSystemPrompts();

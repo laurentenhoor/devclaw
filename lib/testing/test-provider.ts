@@ -11,8 +11,8 @@ import type {
   IssueComment,
   PrStatus,
 } from "../providers/provider.js";
-import { getStateLabels } from "../workflow.js";
-import { DEFAULT_WORKFLOW, type WorkflowConfig } from "../workflow.js";
+import { getStateLabels } from "../workflow/index.js";
+import { DEFAULT_WORKFLOW, type WorkflowConfig } from "../workflow/index.js";
 
 // ---------------------------------------------------------------------------
 // Call tracking

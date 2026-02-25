@@ -11,12 +11,12 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert";
 import { createTestHarness, type TestHarness } from "../testing/index.js";
-import { dispatchTask } from "../dispatch.js";
+import { dispatchTask } from "../dispatch/index.js";
 import { executeCompletion } from "./pipeline.js";
 import { projectTick } from "./tick.js";
-import { reviewPass } from "./review.js";
-import { DEFAULT_WORKFLOW, ReviewPolicy, type WorkflowConfig } from "../workflow.js";
-import { readProjects, getRoleWorker, getProject, countActiveSlots } from "../projects.js";
+import { reviewPass } from "./heartbeat/review.js";
+import { DEFAULT_WORKFLOW, ReviewPolicy, type WorkflowConfig } from "../workflow/index.js";
+import { readProjects, getRoleWorker, getProject, countActiveSlots } from "../projects/index.js";
 
 // ---------------------------------------------------------------------------
 // Test suite
@@ -54,6 +54,7 @@ describe("E2E pipeline", () => {
         fromLabel: "To Do",
         toLabel: "Doing",
         provider: h.provider,
+        runCommand: h.runCommand,
       });
 
       // Verify dispatch result
@@ -103,6 +104,7 @@ describe("E2E pipeline", () => {
         fromLabel: "To Do",
         toLabel: "Doing",
         provider: h.provider,
+        runCommand: h.runCommand,
       });
 
       const taskMsg = h.commands.taskMessages()[0];
@@ -136,6 +138,7 @@ describe("E2E pipeline", () => {
         fromLabel: "To Do",
         toLabel: "Doing",
         provider: h.provider,
+        runCommand: h.runCommand,
       });
 
       assert.strictEqual(result.sessionAction, "send");
@@ -168,6 +171,7 @@ describe("E2E pipeline", () => {
         provider: h.provider,
         repoPath: "/tmp/test-repo",
         projectName: "test-project",
+        runCommand: h.runCommand,
       });
 
       assert.strictEqual(output.labelTransition, "Doing → To Review");
@@ -211,6 +215,7 @@ describe("E2E pipeline", () => {
         provider: h.provider,
         repoPath: "/tmp/test-repo",
         projectName: "test-project",
+        runCommand: h.runCommand,
       });
 
       assert.strictEqual(output.labelTransition, "Reviewing → To Test");
@@ -233,6 +238,7 @@ describe("E2E pipeline", () => {
         provider: h.provider,
         repoPath: "/tmp/test-repo",
         projectName: "test-project",
+        runCommand: h.runCommand,
       });
 
       assert.strictEqual(output.labelTransition, "Reviewing → To Improve");
@@ -252,6 +258,7 @@ describe("E2E pipeline", () => {
         provider: h.provider,
         repoPath: "/tmp/test-repo",
         projectName: "test-project",
+        runCommand: h.runCommand,
       });
 
       assert.strictEqual(output.labelTransition, "Reviewing → Refining");
@@ -286,6 +293,7 @@ describe("E2E pipeline", () => {
         provider: h.provider,
         repoPath: "/tmp/test-repo",
         projectName: "test-project",
+        runCommand: h.runCommand,
       });
 
       assert.strictEqual(output.labelTransition, "Testing → Done");
@@ -328,6 +336,7 @@ describe("E2E pipeline", () => {
         provider: h.provider,
         repoPath: "/tmp/test-repo",
         projectName: "test-project",
+        runCommand: h.runCommand,
       });
 
       assert.strictEqual(output.labelTransition, "Testing → To Improve");
@@ -368,6 +377,7 @@ describe("E2E pipeline", () => {
         provider: h.provider,
         repoPath: "/tmp/test-repo",
         projectName: "test-project",
+        runCommand: h.runCommand,
       });
 
       assert.strictEqual(output.labelTransition, "Doing → Refining");
@@ -398,6 +408,7 @@ describe("E2E pipeline", () => {
         workflow: DEFAULT_WORKFLOW,
         provider: h.provider,
         repoPath: "/tmp/test-repo",
+        runCommand: h.runCommand,
       });
 
       assert.strictEqual(transitions, 1);
@@ -424,6 +435,7 @@ describe("E2E pipeline", () => {
         workflow: DEFAULT_WORKFLOW,
         provider: h.provider,
         repoPath: "/tmp/test-repo",
+        runCommand: h.runCommand,
       });
 
       assert.strictEqual(transitions, 0);
@@ -444,6 +456,7 @@ describe("E2E pipeline", () => {
         workflow: DEFAULT_WORKFLOW,
         provider: h.provider,
         repoPath: "/tmp/test-repo",
+        runCommand: h.runCommand,
       });
 
       assert.strictEqual(transitions, 2);
@@ -468,6 +481,7 @@ describe("E2E pipeline", () => {
         workflow: DEFAULT_WORKFLOW,
         provider: h.provider,
         repoPath: "/tmp/test-repo",
+        runCommand: h.runCommand,
       });
 
       assert.strictEqual(transitions, 1);
@@ -494,6 +508,7 @@ describe("E2E pipeline", () => {
         workflow: DEFAULT_WORKFLOW,
         provider: h.provider,
         repoPath: "/tmp/test-repo",
+        runCommand: h.runCommand,
       });
 
       assert.strictEqual(transitions, 0, "Should not auto-merge agent-routed issues");
@@ -517,6 +532,7 @@ describe("E2E pipeline", () => {
         workflow: DEFAULT_WORKFLOW,
         provider: h.provider,
         repoPath: "/tmp/test-repo",
+        runCommand: h.runCommand,
       });
 
       assert.strictEqual(transitions, 0, "Should not auto-merge issues with no routing label");
@@ -538,6 +554,7 @@ describe("E2E pipeline", () => {
         workflow: DEFAULT_WORKFLOW,
         provider: h.provider,
         repoPath: "/tmp/test-repo",
+        runCommand: h.runCommand,
       });
 
       assert.strictEqual(transitions, 1);
@@ -564,6 +581,7 @@ describe("E2E pipeline", () => {
           prClosedFiredIssueId = issueId;
           prClosedFiredUrl = prUrl;
         },
+        runCommand: h.runCommand,
       });
 
       assert.strictEqual(transitions, 1, "Should have made 1 transition");
@@ -595,6 +613,7 @@ describe("E2E pipeline", () => {
         provider: h.provider,
         repoPath: "/tmp/test-repo",
         onPrClosed: () => { prClosedCalled = true; },
+        runCommand: h.runCommand,
       });
 
       assert.strictEqual(transitions, 0, "Should make no transition when no PR exists");
@@ -619,7 +638,7 @@ describe("E2E pipeline", () => {
             },
           },
         },
-      } as typeof DEFAULT_WORKFLOW;
+      } as unknown as typeof DEFAULT_WORKFLOW;
 
       h.provider.seedIssue({ iid: 82, title: "No PR_CLOSED config", labels: ["To Review", "review:human"] });
       h.provider.setPrStatus(82, { state: "closed", url: "https://example.com/pr/82" });
@@ -630,6 +649,7 @@ describe("E2E pipeline", () => {
         workflow: workflowWithoutPrClosed,
         provider: h.provider,
         repoPath: "/tmp/test-repo",
+        runCommand: h.runCommand,
       });
 
       assert.strictEqual(transitions, 0, "No transition when PR_CLOSED not in workflow");
@@ -664,6 +684,7 @@ describe("E2E pipeline", () => {
         fromLabel: "To Do",
         toLabel: "Doing",
         provider: h.provider,
+        runCommand: h.runCommand,
       });
 
       // 3. Developer done → To Review
@@ -678,13 +699,14 @@ describe("E2E pipeline", () => {
         provider: h.provider,
         repoPath: "/tmp/test-repo",
         projectName: "test-project",
+        runCommand: h.runCommand,
       });
 
       let issue = await h.provider.getIssue(100);
       assert.ok(issue.labels.includes("To Review"), `After dev done: ${issue.labels}`);
 
       // 4. Reviewer dispatched → Reviewing → approve → To Test
-      const { activateWorker } = await import("../projects.js");
+      const { activateWorker } = await import("../projects/index.js");
       await activateWorker(h.workspaceDir, h.groupId, "reviewer", {
         issueId: "100", level: "junior",
       });
@@ -701,6 +723,7 @@ describe("E2E pipeline", () => {
         provider: h.provider,
         repoPath: "/tmp/test-repo",
         projectName: "test-project",
+        runCommand: h.runCommand,
       });
 
       issue = await h.provider.getIssue(100);
@@ -723,6 +746,7 @@ describe("E2E pipeline", () => {
         provider: h.provider,
         repoPath: "/tmp/test-repo",
         projectName: "test-project",
+        runCommand: h.runCommand,
       });
 
       issue = await h.provider.getIssue(100);
@@ -749,6 +773,7 @@ describe("E2E pipeline", () => {
         fromLabel: "To Do",
         toLabel: "Doing",
         provider: h.provider,
+        runCommand: h.runCommand,
       });
 
       // 2. Developer done → To Review (same state regardless of level)
@@ -764,6 +789,7 @@ describe("E2E pipeline", () => {
         provider: h.provider,
         repoPath: "/tmp/test-repo",
         projectName: "test-project",
+        runCommand: h.runCommand,
       });
 
       let issue = await h.provider.getIssue(200);
@@ -778,6 +804,7 @@ describe("E2E pipeline", () => {
         workflow: DEFAULT_WORKFLOW,
         provider: h.provider,
         repoPath: "/tmp/test-repo",
+        runCommand: h.runCommand,
       });
 
       assert.strictEqual(transitions, 1);
@@ -785,7 +812,7 @@ describe("E2E pipeline", () => {
       assert.ok(issue.labels.includes("To Test"), `After review pass: ${issue.labels}`);
 
       // 4. Tester passes → Done
-      const { activateWorker } = await import("../projects.js");
+      const { activateWorker } = await import("../projects/index.js");
       await activateWorker(h.workspaceDir, h.groupId, "tester", {
         issueId: "200", level: "medior",
       });
@@ -802,6 +829,7 @@ describe("E2E pipeline", () => {
         provider: h.provider,
         repoPath: "/tmp/test-repo",
         projectName: "test-project",
+        runCommand: h.runCommand,
       });
 
       issue = await h.provider.getIssue(200);
@@ -828,6 +856,7 @@ describe("E2E pipeline", () => {
         fromLabel: "To Do",
         toLabel: "Doing",
         provider: h.provider,
+        runCommand: h.runCommand,
       });
 
       // 2. Developer done → To Review
@@ -841,13 +870,14 @@ describe("E2E pipeline", () => {
         provider: h.provider,
         repoPath: "/tmp/test-repo",
         projectName: "test-project",
+        runCommand: h.runCommand,
       });
 
       let issue = await h.provider.getIssue(300);
       assert.ok(issue.labels.includes("To Review"), `After dev done: ${issue.labels}`);
 
       // 3. Reviewer REJECTS → To Improve
-      const { activateWorker } = await import("../projects.js");
+      const { activateWorker } = await import("../projects/index.js");
       await activateWorker(h.workspaceDir, h.groupId, "reviewer", {
         issueId: "300", level: "junior",
       });
@@ -864,6 +894,7 @@ describe("E2E pipeline", () => {
         provider: h.provider,
         repoPath: "/tmp/test-repo",
         projectName: "test-project",
+        runCommand: h.runCommand,
       });
 
       issue = await h.provider.getIssue(300);
@@ -883,6 +914,7 @@ describe("E2E pipeline", () => {
         fromLabel: "To Improve",
         toLabel: "Doing",
         provider: h.provider,
+        runCommand: h.runCommand,
       });
 
       await executeCompletion({
@@ -896,6 +928,7 @@ describe("E2E pipeline", () => {
         provider: h.provider,
         repoPath: "/tmp/test-repo",
         projectName: "test-project",
+        runCommand: h.runCommand,
       });
 
       issue = await h.provider.getIssue(300);
@@ -918,6 +951,7 @@ describe("E2E pipeline", () => {
         provider: h.provider,
         repoPath: "/tmp/test-repo",
         projectName: "test-project",
+        runCommand: h.runCommand,
       });
 
       issue = await h.provider.getIssue(300);
@@ -940,6 +974,7 @@ describe("E2E pipeline", () => {
         provider: h.provider,
         repoPath: "/tmp/test-repo",
         projectName: "test-project",
+        runCommand: h.runCommand,
       });
 
       issue = await h.provider.getIssue(300);
@@ -967,6 +1002,7 @@ describe("E2E pipeline", () => {
         targetRole: "reviewer",
         workflow: workflowWithPolicy(ReviewPolicy.HUMAN),
         provider: h.provider,
+        runCommand: h.runCommand,
       });
 
       assert.strictEqual(result.pickups.length, 0, "Should NOT dispatch reviewer");
@@ -986,6 +1022,7 @@ describe("E2E pipeline", () => {
         targetRole: "reviewer",
         workflow: workflowWithPolicy(ReviewPolicy.AGENT),
         provider: h.provider,
+        runCommand: h.runCommand,
       });
 
       assert.strictEqual(result.pickups.length, 1, "Should dispatch reviewer");
@@ -1003,6 +1040,7 @@ describe("E2E pipeline", () => {
         targetRole: "reviewer",
         workflow: workflowWithPolicy(ReviewPolicy.SKIP),
         provider: h.provider,
+        runCommand: h.runCommand,
       });
 
       assert.strictEqual(result.pickups.length, 0, "Should NOT dispatch reviewer under skip policy");
@@ -1022,6 +1060,7 @@ describe("E2E pipeline", () => {
         agentId: "test-agent",
         workflow: workflowWithPolicy(ReviewPolicy.HUMAN),
         provider: h.provider,
+        runCommand: h.runCommand,
       });
 
       const roles = result.pickups.map((p) => p.role);
@@ -1053,6 +1092,7 @@ describe("E2E pipeline", () => {
         fromLabel: "To Do",
         toLabel: "Doing",
         provider: h.provider,
+        runCommand: h.runCommand,
       });
 
       const issue = await h.provider.getIssue(400);
@@ -1079,6 +1119,7 @@ describe("E2E pipeline", () => {
         fromLabel: "To Do",
         toLabel: "Doing",
         provider: h.provider,
+        runCommand: h.runCommand,
       });
 
       const issue = await h.provider.getIssue(404);
@@ -1104,6 +1145,7 @@ describe("E2E pipeline", () => {
         fromLabel: "To Improve",
         toLabel: "Doing",
         provider: h.provider,
+        runCommand: h.runCommand,
       });
 
       const issue = await h.provider.getIssue(401);
@@ -1122,6 +1164,7 @@ describe("E2E pipeline", () => {
         targetRole: "reviewer",
         workflow: { ...DEFAULT_WORKFLOW, reviewPolicy: ReviewPolicy.AGENT },
         provider: h.provider,
+        runCommand: h.runCommand,
       });
 
       assert.strictEqual(result.pickups.length, 0, "Should NOT dispatch reviewer for review:human");
@@ -1141,6 +1184,7 @@ describe("E2E pipeline", () => {
         targetRole: "reviewer",
         workflow: { ...DEFAULT_WORKFLOW, reviewPolicy: ReviewPolicy.AGENT },
         provider: h.provider,
+        runCommand: h.runCommand,
       });
 
       assert.strictEqual(result.pickups.length, 1, "Should dispatch reviewer for review:agent");
@@ -1172,6 +1216,7 @@ describe("E2E pipeline", () => {
         provider: h.provider,
         repoPath: "/tmp/test-repo",
         projectName: "test-project",
+        runCommand: h.runCommand,
       });
 
       // Should have: getIssue (for URL), transitionLabel, closeIssue

@@ -5,9 +5,9 @@
  */
 import type { PluginRuntime } from "openclaw/plugin-sdk";
 import type { StateLabel, IssueProvider } from "../providers/provider.js";
-import { deactivateWorker, loadProjectBySlug, getRoleWorker } from "../projects.js";
-import { runCommand } from "../run-command.js";
-import { notify, getNotificationConfig } from "../notify.js";
+import { deactivateWorker, loadProjectBySlug, getRoleWorker } from "../projects/index.js";
+import type { RunCommand } from "../context.js";
+import { notify, getNotificationConfig } from "../dispatch/notify.js";
 import { log as auditLog } from "../audit.js";
 import { loadConfig } from "../config/index.js";
 import { detectStepRouting } from "./queue-scan.js";
@@ -20,8 +20,8 @@ import {
   resolveNotifyChannel,
   type CompletionRule,
   type WorkflowConfig,
-} from "../workflow.js";
-import type { Channel } from "../projects.js";
+} from "../workflow/index.js";
+import type { Channel } from "../projects/index.js";
 
 export type { CompletionRule };
 
@@ -73,7 +73,9 @@ export async function executeCompletion(opts: {
   level?: string;
   /** Slot index within the level's array */
   slotIndex?: number;
+  runCommand: RunCommand;
 }): Promise<CompletionOutput> {
+  const rc = opts.runCommand;
   const {
     workspaceDir, projectSlug, role, result, issueId, summary, provider,
     repoPath, projectName, channels, pluginConfig, runtime,
@@ -95,7 +97,7 @@ export async function executeCompletion(opts: {
   for (const action of rule.actions) {
     switch (action) {
       case Action.GIT_PULL:
-        try { await runCommand(["git", "pull"], { timeoutMs: timeouts.gitPullMs, cwd: repoPath }); } catch (err) {
+        try { await rc(["git", "pull"], { timeoutMs: timeouts.gitPullMs, cwd: repoPath }); } catch (err) {
           auditLog(workspaceDir, "pipeline_warning", { step: "gitPull", issue: issueId, role, error: (err as Error).message ?? String(err) }).catch(() => {});
         }
         break;

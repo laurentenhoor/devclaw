@@ -5,19 +5,14 @@
  * To add a new role, add an entry to registry.ts — everything else derives from it.
  */
 export { ROLE_REGISTRY } from "./registry.js";
-export type { RoleConfig, RoleId } from "./types.js";
+export type { RoleConfig } from "./types.js";
 export {
   // Role IDs
-  type WorkerRole,
   getAllRoleIds,
   isValidRole,
   getRole,
   requireRole,
-  // Role aliases
-  ROLE_ALIASES,
-  canonicalRole,
-  // Level aliases
-  LEVEL_ALIASES,
+  // Role/level aliases (used by migration + tests)
   canonicalLevel,
   // Levels
   getLevelsForRole,
@@ -37,6 +32,4 @@ export {
   isValidResult,
   // Session keys
   getSessionKeyRolePattern,
-  // Notifications
-  isNotificationEnabled,
 } from "./selectors.js";

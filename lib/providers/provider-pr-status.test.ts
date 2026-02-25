@@ -8,9 +8,15 @@
  */
 import { describe, it, mock } from "node:test";
 import assert from "node:assert";
+import type { RunCommand } from "../context.js";
 import { GitHubProvider } from "./github.js";
 import { GitLabProvider } from "./gitlab.js";
 import { PrState } from "./provider.js";
+
+/** Noop runCommand for tests that mock all provider methods anyway. */
+const mockRunCommand: RunCommand = async () => ({
+  stdout: "", stderr: "", exitCode: 0, code: 0, signal: null, killed: false, termination: "exit",
+} as any);
 
 // ---------------------------------------------------------------------------
 // GitHub provider tests
@@ -18,7 +24,7 @@ import { PrState } from "./provider.js";
 
 describe("GitHubProvider.getPrStatus — closed PR handling", () => {
   it("returns url:null when no PR has ever been created", async () => {
-    const provider = new GitHubProvider({ repoPath: "/fake" });
+    const provider = new GitHubProvider({ repoPath: "/fake", runCommand: mockRunCommand });
 
     // findPrsForIssue returns [] for open and merged, findPrsViaTimeline returns null (GraphQL unavailable)
     (provider as any).findPrsForIssue = async () => [];
@@ -31,7 +37,7 @@ describe("GitHubProvider.getPrStatus — closed PR handling", () => {
   });
 
   it("returns url:null when timeline returns empty array (no PRs at all)", async () => {
-    const provider = new GitHubProvider({ repoPath: "/fake" });
+    const provider = new GitHubProvider({ repoPath: "/fake", runCommand: mockRunCommand });
 
     (provider as any).findPrsForIssue = async () => [];
     (provider as any).findPrsViaTimeline = async () => [];
@@ -43,7 +49,7 @@ describe("GitHubProvider.getPrStatus — closed PR handling", () => {
   });
 
   it("returns url:closedPrUrl when a closed-without-merge PR exists", async () => {
-    const provider = new GitHubProvider({ repoPath: "/fake" });
+    const provider = new GitHubProvider({ repoPath: "/fake", runCommand: mockRunCommand });
 
     const closedPrUrl = "https://github.com/owner/repo/pull/7";
 
@@ -77,7 +83,7 @@ describe("GitHubProvider.getPrStatus — closed PR handling", () => {
   });
 
   it("prefers open PR over closed PR", async () => {
-    const provider = new GitHubProvider({ repoPath: "/fake" });
+    const provider = new GitHubProvider({ repoPath: "/fake", runCommand: mockRunCommand });
 
     const openPrUrl = "https://github.com/owner/repo/pull/9";
 
@@ -109,7 +115,7 @@ describe("GitHubProvider.getPrStatus — closed PR handling", () => {
   });
 
   it("prefers merged PR over closed PR", async () => {
-    const provider = new GitHubProvider({ repoPath: "/fake" });
+    const provider = new GitHubProvider({ repoPath: "/fake", runCommand: mockRunCommand });
 
     const mergedPrUrl = "https://github.com/owner/repo/pull/5";
 
@@ -137,7 +143,7 @@ describe("GitHubProvider.getPrStatus — closed PR handling", () => {
   });
 
   it("ignores non-CLOSED states in timeline when returning closed PR", async () => {
-    const provider = new GitHubProvider({ repoPath: "/fake" });
+    const provider = new GitHubProvider({ repoPath: "/fake", runCommand: mockRunCommand });
 
     (provider as any).findPrsForIssue = async () => [];
     // Timeline has only OPEN PRs — none should trigger closed-PR path
@@ -163,7 +169,7 @@ describe("GitHubProvider.getPrStatus — closed PR handling", () => {
 
 describe("GitLabProvider.getPrStatus — closed MR handling", () => {
   it("returns url:null when no MR has ever been created", async () => {
-    const provider = new GitLabProvider({ repoPath: "/fake" });
+    const provider = new GitLabProvider({ repoPath: "/fake", runCommand: mockRunCommand });
 
     (provider as any).getRelatedMRs = async () => [];
 
@@ -174,7 +180,7 @@ describe("GitLabProvider.getPrStatus — closed MR handling", () => {
   });
 
   it("returns url:closedMrUrl when a closed-without-merge MR exists", async () => {
-    const provider = new GitLabProvider({ repoPath: "/fake" });
+    const provider = new GitLabProvider({ repoPath: "/fake", runCommand: mockRunCommand });
 
     const closedMrUrl = "https://gitlab.com/owner/repo/-/merge_requests/3";
 
@@ -198,7 +204,7 @@ describe("GitLabProvider.getPrStatus — closed MR handling", () => {
   });
 
   it("prefers open MR over closed MR", async () => {
-    const provider = new GitLabProvider({ repoPath: "/fake" });
+    const provider = new GitLabProvider({ repoPath: "/fake", runCommand: mockRunCommand });
 
     const openMrUrl = "https://gitlab.com/owner/repo/-/merge_requests/4";
     const closedMrUrl = "https://gitlab.com/owner/repo/-/merge_requests/2";
@@ -219,7 +225,7 @@ describe("GitLabProvider.getPrStatus — closed MR handling", () => {
   });
 
   it("prefers merged MR over closed MR", async () => {
-    const provider = new GitLabProvider({ repoPath: "/fake" });
+    const provider = new GitLabProvider({ repoPath: "/fake", runCommand: mockRunCommand });
 
     const mergedMrUrl = "https://gitlab.com/owner/repo/-/merge_requests/5";
     const closedMrUrl = "https://gitlab.com/owner/repo/-/merge_requests/1";
@@ -236,7 +242,7 @@ describe("GitLabProvider.getPrStatus — closed MR handling", () => {
   });
 
   it("handles multiple closed MRs — returns the first found", async () => {
-    const provider = new GitLabProvider({ repoPath: "/fake" });
+    const provider = new GitLabProvider({ repoPath: "/fake", runCommand: mockRunCommand });
 
     const closedMrUrl1 = "https://gitlab.com/owner/repo/-/merge_requests/10";
     const closedMrUrl2 = "https://gitlab.com/owner/repo/-/merge_requests/11";
