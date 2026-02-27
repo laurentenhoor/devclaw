@@ -84,7 +84,7 @@ export function ensureSessionFireAndForget(sessionKey: string, model: string, wo
 
 export function sendToAgent(
   sessionKey: string, taskMessage: string,
-  opts: { agentId?: string; projectName: string; issueId: number; role: string; level?: string; slotIndex?: number; orchestratorSessionKey?: string; workspaceDir: string; dispatchTimeoutMs?: number; extraSystemPrompt?: string; model?: string; runCommand: RunCommand },
+  opts: { agentId?: string; projectName: string; issueId: number; role: string; level?: string; slotIndex?: number; orchestratorSessionKey?: string; workspaceDir: string; dispatchTimeoutMs?: number; extraSystemPrompt?: string; runCommand: RunCommand },
 ): void {
   const rc = opts.runCommand;
   const gatewayParams = JSON.stringify({
@@ -96,7 +96,6 @@ export function sendToAgent(
     lane: "subagent",
     ...(opts.orchestratorSessionKey ? { spawnedBy: opts.orchestratorSessionKey } : {}),
     ...(opts.extraSystemPrompt ? { extraSystemPrompt: opts.extraSystemPrompt } : {}),
-    ...(opts.model ? { model: opts.model } : {}),
   });
   // Fire-and-forget: long-running agent turn, don't await
   rc(
