@@ -40,6 +40,7 @@ import {
   getActiveLabel,
   getRevertLabel,
   getQueueLabels,
+  getStateLabels,
   hasWorkflowStates,
   getCurrentStateLabel,
   isOwnedByOrUnclaimed,
@@ -68,8 +69,9 @@ export type HealthIssue = {
     | "orphan_issue_id"      // Case 5: inactive but issueId set
     | "issue_gone"           // Case 6: active but issue deleted/inaccessible
     | "issue_closed"         // Case 6b: active but issue closed externally
-    | "orphaned_label"        // Case 7: active label but no worker tracking it
-    | "context_overflow";    // Case 1c: active worker but session hit context limit (abortedLastRun)
+    | "orphaned_label"       // Case 7: active label but no worker tracking it
+    | "context_overflow"     // Case 1c: active worker but session hit context limit (abortedLastRun)
+    | "stateless_issue";     // Case 8: open managed issue with no state label (#473)
   severity: "critical" | "warning";
   project: string;
   projectSlug: string;
@@ -597,6 +599,97 @@ export async function scanOrphanedLabels(opts: {
 
       fixes.push(fix);
     }
+  }
+
+  return fixes;
+}
+
+/**
+ * Scan for open, DevClaw-managed issues that have lost their state label.
+ * These issues are invisible to the queue scanner and effectively stuck.
+ *
+ * Detection: open issue has workflow-related labels but zero state labels.
+ * Recovery: restore to initial state (e.g. "Planning") so operator can re-triage.
+ * See #473 for the root cause analysis.
+ */
+export async function scanStatelessIssues(opts: {
+  workspaceDir: string;
+  projectSlug: string;
+  project: Project;
+  provider: IssueProvider;
+  workflow?: WorkflowConfig;
+  autoFix: boolean;
+  instanceName?: string;
+}): Promise<HealthFix[]> {
+  const {
+    workspaceDir, projectSlug, project, provider,
+    workflow = DEFAULT_WORKFLOW,
+    autoFix,
+    instanceName,
+  } = opts;
+
+  const fixes: HealthFix[] = [];
+  const stateLabels = getStateLabels(workflow);
+  const initialLabel = workflow.states[workflow.initial]?.label;
+  if (!initialLabel) return fixes;
+
+  // Fetch all open issues and filter client-side for missing state labels
+  let allOpenIssues: Issue[];
+  try {
+    allOpenIssues = await provider.listIssues({ state: "open" });
+  } catch {
+    return fixes; // Provider error — skip this scan
+  }
+
+  for (const issue of allOpenIssues) {
+    const hasStateLabel = issue.labels.some((l) => stateLabels.includes(l));
+    if (hasStateLabel) continue;
+
+    // Only flag DevClaw-managed issues (have workflow labels like role:*, review:*, etc.)
+    const hasWorkflowLabels = issue.labels.some((l) =>
+      l.startsWith("developer:") || l.startsWith("tester:") || l.startsWith("reviewer:") ||
+      l.startsWith("architect:") || l.startsWith("review:") || l.startsWith("test:") ||
+      l.startsWith("owner:") || l.startsWith("notify:"),
+    );
+    if (!hasWorkflowLabels) continue;
+
+    // Ownership filter
+    if (instanceName && !isOwnedByOrUnclaimed(issue.labels, instanceName)) continue;
+
+    const fix: HealthFix = {
+      issue: {
+        type: "stateless_issue",
+        severity: "critical",
+        project: project.name,
+        projectSlug,
+        role: "developer" as Role,
+        issueId: String(issue.iid),
+        expectedLabel: initialLabel,
+        actualLabel: null,
+        message: `Issue #${issue.iid} has no state label — invisible to queue scanner. Labels: [${issue.labels.join(", ")}]`,
+      },
+      fixed: false,
+    };
+
+    if (autoFix) {
+      try {
+        await provider.ensureLabel(initialLabel, "");
+        await provider.addLabel(issue.iid, initialLabel);
+        fix.fixed = true;
+        fix.labelReverted = `(none) → ${initialLabel}`;
+
+        await auditLog(workspaceDir, "stateless_issue_recovered", {
+          project: project.name,
+          issueId: issue.iid,
+          restoredTo: initialLabel,
+          originalLabels: issue.labels,
+        });
+      } catch {
+        fix.labelRevertFailed = true;
+      }
+    }
+
+    fixes.push(fix);
   }
 
   return fixes;
