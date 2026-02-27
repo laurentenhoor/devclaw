@@ -21,6 +21,7 @@ import {
 } from "./templates.js";
 import { getAllRoleIds } from "../roles/index.js";
 import { migrateWorkspaceLayout, DATA_DIR } from "./migrate-layout.js";
+import { trackVersion } from "./version.js";
 
 /** Sentinel file indicating the workspace has been initialized. */
 const INITIALIZED_SENTINEL = ".initialized";
@@ -68,6 +69,9 @@ export async function ensureDefaultFiles(workspacePath: string): Promise<void> {
   // Mark workspace as initialized
   const sentinelPath = path.join(dataDir, INITIALIZED_SENTINEL);
   await writeIfMissing(sentinelPath, new Date().toISOString() + "\n");
+
+  // Track version — detect upgrades and log to audit trail
+  await trackVersion(workspacePath);
 }
 
 /**
