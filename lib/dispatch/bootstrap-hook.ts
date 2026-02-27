@@ -15,6 +15,7 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import type { PluginContext } from "../context.js";
 import { getSessionKeyRolePattern } from "../roles/index.js";
 import { DATA_DIR } from "../setup/migrate-layout.js";
+import { DEFAULT_ROLE_INSTRUCTIONS } from "../setup/templates.js";
 
 /**
  * Parse a DevClaw subagent session key to extract project name and role.
@@ -57,14 +58,15 @@ export type RoleInstructionsResult = {
 
 /**
  * Load role-specific instructions from workspace.
- * Tries project-specific file first, then falls back to default.
+ * Tries project-specific file first, then workspace default, then package default.
  * Returns both the content and the source path for logging/traceability.
  *
  * Resolution order:
- *   1. devclaw/projects/<project>/prompts/<role>.md  (project-specific)
+ *   1. devclaw/projects/<project>/prompts/<role>.md  (project-specific override)
  *   2. projects/roles/<project>/<role>.md             (old project-specific)
  *   3. devclaw/prompts/<role>.md                      (workspace default)
  *   4. projects/roles/default/<role>.md               (old default)
+ *   5. Package default from templates.ts              (in-memory fallback)
  */
 export async function loadRoleInstructions(
   workspaceDir: string,
@@ -100,6 +102,13 @@ export async function loadRoleInstructions(
     } catch {
       /* not found, try next */
     }
+  }
+
+  // Final fallback: package defaults (in-memory, always available)
+  const packageDefault = DEFAULT_ROLE_INSTRUCTIONS[role];
+  if (packageDefault) {
+    if (opts?.withSource) return { content: packageDefault, source: "package-default" };
+    return packageDefault;
   }
 
   if (opts?.withSource) return { content: "", source: null };
