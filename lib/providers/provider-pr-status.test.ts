@@ -149,7 +149,7 @@ describe("GitHubProvider.getPrStatus — closed PR handling", () => {
     // Timeline has only OPEN PRs — none should trigger closed-PR path
     (provider as any).findPrsViaTimeline = async (_id: number, state: string) => {
       if (state === "all") {
-        return [{ number: 10, title: "", body: "", headRefName: "", url: "https://github.com/owner/repo/pull/10", mergedAt: null, reviewDecision: null, state: "OPEN" }];
+        return [{ number: 10, title: "", body: "", headRefName: "", url: "https://github.com/owner/repo/pull/10", mergedAt: null, reviewDecision: null, state: "OPEN", mergeable: null }];
       }
       return [];
     };
@@ -160,6 +160,103 @@ describe("GitHubProvider.getPrStatus — closed PR handling", () => {
     // but the CLOSED fallback path should not pick it up.
     assert.strictEqual(status.state, PrState.CLOSED);
     assert.strictEqual(status.url, null, "OPEN state in timeline should not match closed-PR path");
+  });
+
+  it("detects merge conflicts via mergeable field", async () => {
+    const provider = new GitHubProvider({ repoPath: "/fake", runCommand: mockRunCommand });
+
+    const conflictedPrUrl = "https://github.com/owner/repo/pull/11";
+
+    (provider as any).findPrsForIssue = async (_id: number, state: string) => {
+      if (state === "open") {
+        return [
+          {
+            title: "feat: conflicted pr",
+            body: "",
+            headRefName: "feature/11-conflicted",
+            url: conflictedPrUrl,
+            number: 11,
+            reviewDecision: "",
+            mergeable: "CONFLICTING",
+          },
+        ];
+      }
+      return [];
+    };
+    // Simulate no changes-requested reviews and no comments
+    (provider as any).hasChangesRequestedReview = async () => false;
+    (provider as any).hasUnacknowledgedReviews = async () => false;
+    (provider as any).hasConversationComments = async () => false;
+
+    const status = await provider.getPrStatus(42);
+
+    assert.strictEqual(status.state, PrState.OPEN);
+    assert.strictEqual(status.url, conflictedPrUrl);
+    assert.strictEqual(status.mergeable, false, "mergeable: CONFLICTING should be detected as false");
+  });
+
+  it("distinguishes mergeable states", async () => {
+    const provider = new GitHubProvider({ repoPath: "/fake", runCommand: mockRunCommand });
+
+    const mergeablePrUrl = "https://github.com/owner/repo/pull/12";
+
+    (provider as any).findPrsForIssue = async (_id: number, state: string) => {
+      if (state === "open") {
+        return [
+          {
+            title: "feat: clean pr",
+            body: "",
+            headRefName: "feature/12-clean",
+            url: mergeablePrUrl,
+            number: 12,
+            reviewDecision: "",
+            mergeable: "MERGEABLE",
+          },
+        ];
+      }
+      return [];
+    };
+    (provider as any).hasChangesRequestedReview = async () => false;
+    (provider as any).hasUnacknowledgedReviews = async () => false;
+    (provider as any).hasConversationComments = async () => false;
+
+    const status = await provider.getPrStatus(42);
+
+    assert.strictEqual(status.state, PrState.OPEN);
+    assert.strictEqual(status.url, mergeablePrUrl);
+    assert.strictEqual(status.mergeable, true, "mergeable: MERGEABLE should be detected as true");
+  });
+
+  it("handles unknown mergeable state", async () => {
+    const provider = new GitHubProvider({ repoPath: "/fake", runCommand: mockRunCommand });
+
+    const unknownPrUrl = "https://github.com/owner/repo/pull/13";
+
+    (provider as any).findPrsForIssue = async (_id: number, state: string) => {
+      if (state === "open") {
+        return [
+          {
+            title: "feat: unknown state pr",
+            body: "",
+            headRefName: "feature/13-unknown",
+            url: unknownPrUrl,
+            number: 13,
+            reviewDecision: "",
+            mergeable: "UNKNOWN",
+          },
+        ];
+      }
+      return [];
+    };
+    (provider as any).hasChangesRequestedReview = async () => false;
+    (provider as any).hasUnacknowledgedReviews = async () => false;
+    (provider as any).hasConversationComments = async () => false;
+
+    const status = await provider.getPrStatus(42);
+
+    assert.strictEqual(status.state, PrState.OPEN);
+    assert.strictEqual(status.url, unknownPrUrl);
+    assert.strictEqual(status.mergeable, undefined, "mergeable: UNKNOWN should remain undefined (no assumption)");
   });
 });
 
