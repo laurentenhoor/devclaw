@@ -238,6 +238,7 @@ export async function dispatchTask(
       channel: notifyTarget?.channel ?? "telegram",
       runtime,
       accountId: notifyTarget?.accountId,
+      runCommand: rc,
     },
   ).catch((err) => {
     auditLog(workspaceDir, "dispatch_warning", {
@@ -252,12 +253,13 @@ export async function dispatchTask(
   ensureSessionFireAndForget(sessionKey, model, workspaceDir, rc, timeouts.sessionPatchMs, sessionLabel);
 
   // Step 4: Send task to agent (fire-and-forget)
+  // Model is set on the session via sessions.patch (step 3), not on the agent RPC —
+  // the gateway's agent endpoint rejects unknown properties like 'model'.
   sendToAgent(sessionKey, taskMessage, {
     agentId, projectName: project.name, issueId, role, level, slotIndex,
     orchestratorSessionKey: opts.sessionKey, workspaceDir,
     dispatchTimeoutMs: timeouts.dispatchMs,
     extraSystemPrompt: roleInstructions.trim() || undefined,
-    model,
     runCommand: rc,
   });
 

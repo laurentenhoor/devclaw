@@ -86,7 +86,7 @@ describe("E2E pipeline", () => {
       assert.ok(taskMsg.includes("work_finish"), "Task message should reference work_finish");
     });
 
-    it("should pass resolved model in agent RPC call (#436)", async () => {
+    it("should set resolved model via sessions.patch, not agent RPC (#436)", async () => {
       h.provider.seedIssue({ iid: 99, title: "Model test", labels: ["To Do"] });
 
       const result = await dispatchTask({
@@ -108,13 +108,11 @@ describe("E2E pipeline", () => {
       // Model should be resolved and returned
       assert.ok(result.model, "dispatch should return a model");
 
-      // Model must be passed to the agent RPC call (the bug fix)
+      // Model must NOT be passed to the agent RPC (gateway rejects unknown props)
       const agentModels = h.commands.agentModels();
-      assert.ok(agentModels.length > 0, "Should pass model in agent RPC call");
-      assert.strictEqual(agentModels[0], result.model,
-        `Agent RPC model should match dispatch result: expected ${result.model}, got ${agentModels[0]}`);
+      assert.strictEqual(agentModels.length, 0, "Should not pass model in agent RPC call — gateway rejects it");
 
-      // Also verify session patch has the same model
+      // Model is set on the session via sessions.patch instead
       const patches = h.commands.sessionPatches();
       assert.ok(patches.length > 0, "Should have patched session");
       assert.strictEqual(patches[0].model, result.model,
