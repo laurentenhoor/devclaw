@@ -24,6 +24,8 @@ import { createProjectRegisterTool } from "./lib/tools/admin/project-register.js
 import { createHealthTool } from "./lib/tools/admin/health.js";
 import { createSyncLabelsTool } from "./lib/tools/admin/sync-labels.js";
 import { createChannelLinkTool } from "./lib/tools/admin/channel-link.js";
+import { createChannelDeregisterTool } from "./lib/tools/admin/channel-deregister.js";
+import { createChannelListTool } from "./lib/tools/admin/channel-list.js";
 
 // Setup & onboarding
 import { createSetupTool } from "./lib/tools/admin/setup.js";
@@ -112,6 +114,8 @@ const plugin = {
     api.registerTool(createHealthTool(ctx), { names: ["health"] });
     api.registerTool(createSyncLabelsTool(ctx), { names: ["sync_labels"] });
     api.registerTool(createChannelLinkTool(ctx), { names: ["channel_link"] });
+    api.registerTool(createChannelDeregisterTool(ctx), { names: ["channel_deregister"] });
+    api.registerTool(createChannelListTool(ctx), { names: ["channel_list"] });
 
     // Setup & onboarding
     api.registerTool(createSetupTool(ctx), { names: ["setup"] });
@@ -128,7 +132,7 @@ const plugin = {
     registerAttachmentHook(api, ctx);
 
     api.logger.info(
-      "DevClaw plugin registered (20 tools, 1 CLI command group, 1 service, 3 hooks)",
+      "DevClaw plugin registered (22 tools, 1 CLI command group, 1 service, 3 hooks)",
     );
   },
 };
