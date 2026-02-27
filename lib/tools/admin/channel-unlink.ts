@@ -1,7 +1,7 @@
 /**
- * channel_deregister — Remove a channel from a project.
+ * channel_unlink — Remove a channel from a project.
  *
- * Deregisters (unlinks) a channel from a project. Validates that the channel
+ * Unlinks a channel from a project. Validates that the channel
  * exists and prevents removing the last channel from a project (projects must
  * have at least one notification endpoint).
  */
@@ -12,10 +12,10 @@ import { readProjects, writeProjects } from "../../projects/index.js";
 import { log as auditLog } from "../../audit.js";
 import { requireWorkspaceDir } from "../helpers.js";
 
-export function createChannelDeregisterTool(_ctx: PluginContext) {
+export function createChannelUnlinkTool(_ctx: PluginContext) {
   return (toolCtx: ToolContext) => ({
-    name: "channel_deregister",
-    label: "Channel Deregister",
+    name: "channel_unlink",
+    label: "Channel Unlink",
     description:
       "Remove a channel from a project. Validates that the channel exists and prevents " +
       "removing the last channel (projects must have at least one notification endpoint).",
@@ -29,7 +29,7 @@ export function createChannelDeregisterTool(_ctx: PluginContext) {
         },
         project: {
           type: "string",
-          description: "Project name or slug to deregister the channel from",
+          description: "Project name or slug to unlink the channel from",
         },
         confirm: {
           type: "boolean",
@@ -105,7 +105,7 @@ export function createChannelDeregisterTool(_ctx: PluginContext) {
 
       await writeProjects(workspaceDir, data);
 
-      await auditLog(workspaceDir, "channel_deregister", {
+      await auditLog(workspaceDir, "channel_unlink", {
         project: target.name,
         projectSlug: target.slug,
         channelId,
@@ -122,7 +122,7 @@ export function createChannelDeregisterTool(_ctx: PluginContext) {
         channelType: channel.channel,
         remainingChannels: target.channels.length,
         announcement:
-          `Channel "${channel.name}" (${channelId}) deregistered from project "${target.name}". ` +
+          `Channel "${channel.name}" (${channelId}) unlinked from project "${target.name}". ` +
           `${target.channels.length} channel(s) remaining.`,
       });
     },

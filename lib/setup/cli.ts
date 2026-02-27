@@ -183,10 +183,10 @@ export function registerCli(program: Command, ctx: PluginContext): void {
       }
     });
 
-  // Deregister (unlink) a channel from a project
+  // Unlink a channel from a project
   channel
-    .command("deregister")
-    .description("Deregister/unlink a channel from a project")
+    .command("unlink")
+    .description("Unlink a channel from a project")
     .requiredOption("-p, --project <name>", "Project name or slug")
     .requiredOption("-c, --channel-id <id>", "Channel ID to remove")
     .option("-y, --yes", "Skip confirmation prompt")
@@ -258,13 +258,13 @@ export function registerCli(program: Command, ctx: PluginContext): void {
         project.channels.splice(idx, 1);
 
         await writeProjects(workspaceDir, data);
-        await auditLog(workspaceDir, "channel_deregister_cli", {
+        await auditLog(workspaceDir, "channel_unlink_cli", {
           project: project.name,
           channelId: opts.channelId,
           channelName: channel.name,
         });
 
-        console.log(`✓ Channel deregistered from "${project.name}"`);
+        console.log(`✓ Channel unlinked from "${project.name}"`);
         console.log(`  Removed: ${channel.name} (${opts.channelId})`);
         console.log(`  Remaining channels: ${project.channels.length}`);
       } catch (err: any) {
