@@ -1,5 +1,7 @@
-# DevClaw workflow configuration
-# Modify values to customize. Copy to devclaw/projects/<project>/workflow.yaml for project-specific overrides.
+# DevClaw workflow configuration — this file is yours.
+# DevClaw will never overwrite it. Edit freely; missing keys use built-in defaults.
+# To reset to defaults: use `config_reset` (target: "workflow"). To see changes: use `config_diff`.
+# Copy to devclaw/projects/<project>/workflow.yaml for project-specific overrides.
 
 roles:
   developer:
