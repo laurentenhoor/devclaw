@@ -252,6 +252,22 @@ export class GitHubProvider implements IssueProvider {
       for (const l of currentStateLabels) args.push("--remove-label", l);
       await this.gh(args);
     }
+
+    // Post-transition validation: verify exactly one state label remains (#473)
+    try {
+      const postIssue = await this.getIssue(issueId);
+      const postStateLabels = postIssue.labels.filter((l) => stateLabels.includes(l));
+      if (postStateLabels.length !== 1 || !postStateLabels.includes(to)) {
+        // Log anomaly but don't throw — transition is already committed
+        console.error(
+          `[state_transition_anomaly] Issue #${issueId}: expected state "${to}", ` +
+          `found ${postStateLabels.length} state label(s): [${postStateLabels.join(", ")}]. ` +
+          `Transition: "${from}" → "${to}". See #473.`,
+        );
+      }
+    } catch {
+      // Validation is best-effort — don't break the transition
+    }
   }
 
   async addLabel(issueId: number, label: string): Promise<void> {

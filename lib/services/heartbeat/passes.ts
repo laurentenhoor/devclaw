@@ -7,6 +7,7 @@ import { type Project } from "../../projects/index.js";
 import {
   checkWorkerHealth,
   scanOrphanedLabels,
+  scanStatelessIssues,
   type SessionLookup,
 } from "./health.js";
 import { reviewPass } from "./review.js";
@@ -60,6 +61,17 @@ export async function performHealthPass(
     });
     fixedCount += orphanFixes.filter((f) => f.fixed).length;
   }
+
+  // Scan for stateless issues (managed issues that lost their state label — #473)
+  const statelessFixes = await scanStatelessIssues({
+    workspaceDir,
+    projectSlug,
+    project,
+    provider,
+    autoFix: true,
+    instanceName,
+  });
+  fixedCount += statelessFixes.filter((f) => f.fixed).length;
 
   return fixedCount;
 }

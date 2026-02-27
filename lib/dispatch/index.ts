@@ -17,7 +17,7 @@ import {
 import { resolveModel } from "../roles/index.js";
 import { notify, getNotificationConfig } from "./notify.js";
 import { loadConfig, type ResolvedRoleConfig } from "../config/index.js";
-import { ReviewPolicy, TestPolicy, resolveReviewRouting, resolveTestRouting, resolveNotifyChannel, isFeedbackState, hasReviewCheck, producesReviewableWork, hasTestPhase, detectOwner, getOwnerLabel, OWNER_LABEL_COLOR, getRoleLabelColor, STEP_ROUTING_COLOR } from "../workflow/index.js";
+import { ReviewPolicy, TestPolicy, resolveReviewRouting, resolveTestRouting, resolveNotifyChannel, isFeedbackState, hasReviewCheck, producesReviewableWork, hasTestPhase, detectOwner, getOwnerLabel, OWNER_LABEL_COLOR, getRoleLabelColor, STEP_ROUTING_COLOR, getStateLabels } from "../workflow/index.js";
 import { fetchPrFeedback, fetchPrContext, type PrFeedback, type PrContext } from "./pr-context.js";
 import { formatAttachmentsForTask } from "./attachments.js";
 import { loadRoleInstructions } from "./bootstrap-hook.js";
@@ -172,40 +172,48 @@ export async function dispatchTask(
   });
 
   // Apply role:level label (best-effort — failure must not abort dispatch)
+  // IMPORTANT: Never pass state labels to removeLabels() — state transitions are
+  // handled exclusively by transitionLabel(). Accidentally removing a state label
+  // makes the issue invisible to the queue scanner. See #473 for context.
   let issue: { labels: string[] } | undefined;
   try {
     issue = await provider.getIssue(issueId);
+    const stateLabels = getStateLabels(workflow);
+
     const oldRoleLabels = issue.labels.filter((l) => l.startsWith(`${role}:`));
-    if (oldRoleLabels.length > 0) {
-      await provider.removeLabels(issueId, oldRoleLabels);
+    const safeRoleLabels = filterNonStateLabels(oldRoleLabels, stateLabels);
+    if (safeRoleLabels.length > 0) {
+      await provider.removeLabels(issueId, safeRoleLabels);
     }
     const roleLabel = `${role}:${level}:${botName}`;
     await provider.ensureLabel(roleLabel, getRoleLabelColor(role));
     await provider.addLabel(issueId, roleLabel);
 
-    // Step 1c: Apply review routing label when role produces reviewable work (best-effort)
+    // Apply review routing label when role produces reviewable work (best-effort)
     if (producesReviewableWork(workflow, role)) {
       const reviewLabel = resolveReviewRouting(
         workflow.reviewPolicy ?? ReviewPolicy.HUMAN, level,
       );
       const oldRouting = issue.labels.filter((l) => l.startsWith("review:"));
-      if (oldRouting.length > 0) await provider.removeLabels(issueId, oldRouting);
+      const safeRouting = filterNonStateLabels(oldRouting, stateLabels);
+      if (safeRouting.length > 0) await provider.removeLabels(issueId, safeRouting);
       await provider.ensureLabel(reviewLabel, STEP_ROUTING_COLOR);
       await provider.addLabel(issueId, reviewLabel);
     }
 
-    // Step 1e: Apply test routing label when workflow has a test phase (best-effort)
+    // Apply test routing label when workflow has a test phase (best-effort)
     if (hasTestPhase(workflow)) {
       const testLabel = resolveTestRouting(
         workflow.testPolicy ?? TestPolicy.SKIP, level,
       );
       const oldTestRouting = issue.labels.filter((l) => l.startsWith("test:"));
-      if (oldTestRouting.length > 0) await provider.removeLabels(issueId, oldTestRouting);
+      const safeTestRouting = filterNonStateLabels(oldTestRouting, stateLabels);
+      if (safeTestRouting.length > 0) await provider.removeLabels(issueId, safeTestRouting);
       await provider.ensureLabel(testLabel, STEP_ROUTING_COLOR);
       await provider.addLabel(issueId, testLabel);
     }
 
-    // Step 1d: Apply owner label if issue is unclaimed (auto-claim on pickup)
+    // Apply owner label if issue is unclaimed (auto-claim on pickup)
     if (opts.instanceName && !detectOwner(issue.labels)) {
       const ownerLabel = getOwnerLabel(opts.instanceName);
       await provider.ensureLabel(ownerLabel, OWNER_LABEL_COLOR);
@@ -302,6 +310,14 @@ async function recordWorkerState(
     slotIndex,
     name: opts.name,
   });
+}
+
+/**
+ * Filter out state labels from a label array to prevent accidental state loss.
+ * State labels should only be modified via transitionLabel(). See #473.
+ */
+function filterNonStateLabels(labels: string[], stateLabels: string[]): string[] {
+  return labels.filter((l) => !stateLabels.includes(l));
 }
 
 async function auditDispatch(
