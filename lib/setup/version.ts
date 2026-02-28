@@ -1,36 +1,46 @@
 /**
- * setup/version.ts — DevClaw version tracking for workspaces.
+ * setup/version.ts — Version tracking for DevClaw workspaces.
  *
- * Tracks which DevClaw version last wrote to the workspace via a `.version`
- * file in the data directory. Detects upgrades and logs them to the audit trail.
+ * Reads/writes `devclaw/.version` to track which version scaffolded the workspace.
+ * Used for upgrade detection and audit logging.
  */
-import fs from "node:fs/promises";
+import fsAsync from "node:fs/promises";
+import fsSync from "node:fs";
 import path from "node:path";
-import { DATA_DIR } from "./migrate-layout.js";
-import { log as auditLog } from "../audit.js";
+import { fileURLToPath } from "node:url";
+
+/** Injected at build time by esbuild (see build.mjs). */
+declare const __PLUGIN_VERSION__: string | undefined;
 
 const VERSION_FILE = ".version";
 
+// Pre-compute package.json path for dev/test fallback (ESM-safe)
+const THIS_DIR = path.dirname(fileURLToPath(import.meta.url));
+
 /**
- * Read the DevClaw version from package.json (bundled at build time).
+ * Get the current DevClaw version.
  */
-export function getPackageVersion(): string {
-  // esbuild bundles into dist/index.js — package.json is one level up
+export function getCurrentVersion(): string {
+  if (typeof __PLUGIN_VERSION__ !== "undefined" && __PLUGIN_VERSION__) {
+    return __PLUGIN_VERSION__;
+  }
+  // Dev/test fallback: read from package.json
   try {
-    const pkgPath = path.join(path.dirname(new URL(import.meta.url).pathname), "..", "..", "package.json");
-    const pkg = JSON.parse(require("node:fs").readFileSync(pkgPath, "utf-8"));
-    return pkg.version ?? "unknown";
+    const pkgPath = path.join(THIS_DIR, "..", "..", "package.json");
+    const pkg = JSON.parse(fsSync.readFileSync(pkgPath, "utf-8"));
+    return pkg.version ?? "0.0.0";
   } catch {
-    return "unknown";
+    return "0.0.0";
   }
 }
 
 /**
- * Read the workspace's tracked version, or null if not yet tracked.
+ * Read the stored version from `devclaw/.version`.
+ * Returns null if the file doesn't exist (pre-versioning workspace).
  */
-export async function readWorkspaceVersion(workspacePath: string): Promise<string | null> {
+export async function readVersionFile(dataDir: string): Promise<string | null> {
   try {
-    const content = await fs.readFile(path.join(workspacePath, DATA_DIR, VERSION_FILE), "utf-8");
+    const content = await fsAsync.readFile(path.join(dataDir, VERSION_FILE), "utf-8");
     return content.trim() || null;
   } catch {
     return null;
@@ -38,44 +48,30 @@ export async function readWorkspaceVersion(workspacePath: string): Promise<strin
 }
 
 /**
- * Write the current DevClaw version to the workspace.
+ * Write the current version to `devclaw/.version`.
  */
-export async function writeWorkspaceVersion(workspacePath: string, version: string): Promise<void> {
-  const versionPath = path.join(workspacePath, DATA_DIR, VERSION_FILE);
-  await fs.mkdir(path.dirname(versionPath), { recursive: true });
-  await fs.writeFile(versionPath, version + "\n", "utf-8");
+export async function writeVersionFile(dataDir: string): Promise<void> {
+  await fsAsync.writeFile(
+    path.join(dataDir, VERSION_FILE),
+    getCurrentVersion() + "\n",
+    "utf-8",
+  );
 }
 
 /**
- * Check for version changes and update the workspace version file.
- * Logs upgrades to the audit trail.
+ * Detect whether an upgrade occurred.
  *
- * Returns { previous, current, upgraded } for callers that need the info.
+ * Returns null for first-run (no existing .version file) or same version.
+ * Returns { from, to } when versions differ.
  */
-export async function trackVersion(workspacePath: string): Promise<{
-  previous: string | null;
-  current: string;
-  upgraded: boolean;
-}> {
-  const current = getPackageVersion();
-  const previous = await readWorkspaceVersion(workspacePath);
+export async function detectUpgrade(
+  dataDir: string,
+): Promise<{ from: string; to: string } | null> {
+  const stored = await readVersionFile(dataDir);
+  if (!stored) return null; // First run — no upgrade
 
-  if (previous === current) {
-    return { previous, current, upgraded: false };
-  }
+  const current = getCurrentVersion();
+  if (stored === current) return null; // Same version
 
-  // Write new version
-  await writeWorkspaceVersion(workspacePath, current);
-
-  if (previous && previous !== current) {
-    // Upgrade detected
-    await auditLog(workspacePath, "version_upgrade", {
-      from: previous,
-      to: current,
-    });
-    return { previous, current, upgraded: true };
-  }
-
-  // First-run (no previous version) — just write, no upgrade event
-  return { previous: null, current, upgraded: false };
+  return { from: stored, to: current };
 }

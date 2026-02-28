@@ -14,7 +14,7 @@ import type { PluginContext } from "../../context.js";
 import { writeAllDefaults, backupAndWrite, fileExists } from "../../setup/workspace.js";
 import { WORKFLOW_YAML_TEMPLATE, DEFAULT_ROLE_INSTRUCTIONS } from "../../setup/templates.js";
 import { DATA_DIR } from "../../setup/migrate-layout.js";
-import { getPackageVersion, readWorkspaceVersion } from "../../setup/version.js";
+import { getCurrentVersion, readVersionFile } from "../../setup/version.js";
 
 export function createConfigTool(ctx: PluginContext) {
   return (toolCtx: ToolContext) => ({
@@ -157,8 +157,9 @@ async function handleDiff(workspacePath: string) {
 }
 
 async function handleVersion(workspacePath: string) {
-  const packageVersion = getPackageVersion();
-  const workspaceVersion = await readWorkspaceVersion(workspacePath);
+  const packageVersion = getCurrentVersion();
+  const dataDir = path.join(workspacePath, DATA_DIR);
+  const workspaceVersion = await readVersionFile(dataDir);
 
   const match = workspaceVersion === packageVersion;
 
