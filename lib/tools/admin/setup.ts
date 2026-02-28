@@ -8,6 +8,7 @@ import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../../types.js";
 import type { PluginContext } from "../../context.js";
 import { runSetup, type SetupOpts } from "../../setup/index.js";
+import { writeAllDefaults } from "../../setup/workspace.js";
 import { getAllDefaultModels, getAllRoleIds, getLevelsForRole } from "../../roles/index.js";
 import { ExecutionMode } from "../../workflow/index.js";
 
@@ -55,10 +56,35 @@ export function createSetupTool(ctx: PluginContext) {
           enum: Object.values(ExecutionMode),
           description: "Project execution mode. Default: parallel.",
         },
+        ejectDefaults: {
+          type: "boolean",
+          description: "Write all package defaults to workspace. Skips files that already exist.",
+        },
+        resetDefaults: {
+          type: "boolean",
+          description: "Force-write all package defaults to workspace, overwriting existing files. Creates .bak backups.",
+        },
       },
     },
 
     async execute(_id: string, params: Record<string, unknown>) {
+      // Handle --eject-defaults and --reset-defaults (standalone operations)
+      if (params.ejectDefaults || params.resetDefaults) {
+        const workspacePath = toolCtx.workspaceDir;
+        if (!workspacePath) throw new Error("No workspace directory available");
+        const force = !!params.resetDefaults;
+        const written = await writeAllDefaults(workspacePath, force);
+        const action = force ? "Reset (force-wrote)" : "Ejected (wrote missing)";
+        return jsonResult({
+          success: true,
+          action: force ? "reset-defaults" : "eject-defaults",
+          filesWritten: written,
+          summary: written.length > 0
+            ? `${action} ${written.length} file(s):\n${written.map(f => `  ${f}`).join("\n")}`
+            : "All files already exist — nothing to write.",
+        });
+      }
+
       const result = await runSetup({
         runtime: ctx.runtime,
         newAgentName: params.newAgentName as string | undefined,

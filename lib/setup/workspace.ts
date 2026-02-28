@@ -8,6 +8,8 @@
  *
  * The runtime config loader (lib/config/loader.ts) uses a three-layer merge with
  * built-in fallbacks, so missing keys in workflow.yaml are handled automatically.
+ *
+ * To explicitly write/reset defaults, use setup --eject-defaults or --reset-defaults.
  */
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -25,6 +27,9 @@ import { migrateWorkspaceLayout, DATA_DIR } from "./migrate-layout.js";
 import { writeVersionFile, detectUpgrade } from "./version.js";
 import { log as auditLog } from "../audit.js";
 
+/** Sentinel file indicating the workspace has been initialized. */
+const INITIALIZED_SENTINEL = ".initialized";
+
 /**
  * Ensure all workspace data files are up to date.
  *
@@ -38,6 +43,11 @@ import { log as auditLog } from "../audit.js";
 export async function ensureDefaultFiles(workspacePath: string): Promise<void> {
   const dataDir = path.join(workspacePath, DATA_DIR);
   await fs.mkdir(dataDir, { recursive: true });
+
+  // Ensure directories exist
+  await fs.mkdir(path.join(dataDir, "projects"), { recursive: true });
+  await fs.mkdir(path.join(dataDir, "prompts"), { recursive: true });
+  await fs.mkdir(path.join(dataDir, "log"), { recursive: true });
 
   // --- System instruction files — always overwrite with latest ---
   await backupAndWrite(path.join(workspacePath, "AGENTS.md"), AGENTS_MD_TEMPLATE);
@@ -57,36 +67,18 @@ export async function ensureDefaultFiles(workspacePath: string): Promise<void> {
 
   // devclaw/workflow.yaml — create-only (three-layer merge handles defaults for missing keys)
   const workflowPath = path.join(dataDir, "workflow.yaml");
-  if (!await fileExists(workflowPath)) {
-    await fs.writeFile(workflowPath, WORKFLOW_YAML_TEMPLATE, "utf-8");
-  }
+  await writeIfMissing(workflowPath, WORKFLOW_YAML_TEMPLATE);
 
   // devclaw/projects.json — create-only
   const projectsJsonPath = path.join(dataDir, "projects.json");
-  if (!await fileExists(projectsJsonPath)) {
-    await fs.writeFile(projectsJsonPath, JSON.stringify({ projects: {} }, null, 2) + "\n", "utf-8");
-  }
-
-  // devclaw/projects/ directory
-  await fs.mkdir(path.join(dataDir, "projects"), { recursive: true });
+  await writeIfMissing(projectsJsonPath, JSON.stringify({ projects: {} }, null, 2) + "\n");
 
   // devclaw/prompts/ — create-only per role (user customizations are preserved)
-  const promptsDir = path.join(dataDir, "prompts");
-  await fs.mkdir(promptsDir, { recursive: true });
   for (const role of getAllRoleIds()) {
-    const rolePath = path.join(promptsDir, `${role}.md`);
-    if (!await fileExists(rolePath)) {
-      const content = DEFAULT_ROLE_INSTRUCTIONS[role];
-      if (!content) throw new Error(`No default instructions found for role: ${role}`);
-      await fs.writeFile(rolePath, content, "utf-8");
-    }
+    const rolePath = path.join(dataDir, "prompts", `${role}.md`);
+    const content = DEFAULT_ROLE_INSTRUCTIONS[role];
+    if (content) await writeIfMissing(rolePath, content);
   }
-
-  // Note: project-specific prompts (devclaw/projects/*/prompts/*.md) are never
-  // touched. They are intentional user customizations.
-
-  // devclaw/log/ directory (audit.log created on first write)
-  await fs.mkdir(path.join(dataDir, "log"), { recursive: true });
 
   // Version tracking
   const upgrade = await detectUpgrade(dataDir);
@@ -97,6 +89,64 @@ export async function ensureDefaultFiles(workspacePath: string): Promise<void> {
       to: upgrade.to,
     });
   }
+
+  // Mark workspace as initialized
+  const sentinelPath = path.join(dataDir, INITIALIZED_SENTINEL);
+  await writeIfMissing(sentinelPath, new Date().toISOString() + "\n");
+}
+
+/**
+ * Write all package defaults to workspace.
+ * Used by setup --eject-defaults and --reset-defaults.
+ *
+ * @param force — If true, overwrite existing files (reset-defaults). If false, skip existing (eject-defaults).
+ * @returns List of files written.
+ */
+export async function writeAllDefaults(workspacePath: string, force = false): Promise<string[]> {
+  const dataDir = path.join(workspacePath, DATA_DIR);
+  const written: string[] = [];
+
+  // Ensure directories
+  await fs.mkdir(dataDir, { recursive: true });
+  await fs.mkdir(path.join(dataDir, "projects"), { recursive: true });
+  await fs.mkdir(path.join(dataDir, "prompts"), { recursive: true });
+  await fs.mkdir(path.join(dataDir, "log"), { recursive: true });
+
+  const files: Array<[string, string]> = [
+    [path.join(workspacePath, "AGENTS.md"), AGENTS_MD_TEMPLATE],
+    [path.join(workspacePath, "HEARTBEAT.md"), HEARTBEAT_MD_TEMPLATE],
+    [path.join(workspacePath, "IDENTITY.md"), IDENTITY_MD_TEMPLATE],
+    [path.join(workspacePath, "TOOLS.md"), TOOLS_MD_TEMPLATE],
+    [path.join(dataDir, "workflow.yaml"), WORKFLOW_YAML_TEMPLATE],
+  ];
+
+  for (const role of getAllRoleIds()) {
+    const content = DEFAULT_ROLE_INSTRUCTIONS[role];
+    if (content) files.push([path.join(dataDir, "prompts", `${role}.md`), content]);
+  }
+
+  for (const [filePath, content] of files) {
+    if (force) {
+      await backupAndWrite(filePath, content);
+      written.push(path.relative(workspacePath, filePath));
+    } else {
+      if (await writeIfMissing(filePath, content)) {
+        written.push(path.relative(workspacePath, filePath));
+      }
+    }
+  }
+
+  // Version tracking
+  const upgrade = await detectUpgrade(dataDir);
+  await writeVersionFile(dataDir);
+  if (upgrade) {
+    await auditLog(workspacePath, "version_upgrade", {
+      from: upgrade.from,
+      to: upgrade.to,
+    });
+  }
+
+  return written;
 }
 
 /**
@@ -124,7 +174,7 @@ export async function scaffoldWorkspace(workspacePath: string, defaultWorkspaceP
     }
   }
 
-  // Ensure all defaults (workspace docs, workflow, prompts, etc.)
+  // Ensure directories and missing structural files
   await ensureDefaultFiles(workspacePath);
 
   return ["AGENTS.md", "HEARTBEAT.md", "TOOLS.md"];
@@ -142,6 +192,16 @@ export async function backupAndWrite(filePath: string, content: string): Promise
     await fs.mkdir(path.dirname(filePath), { recursive: true });
   }
   await fs.writeFile(filePath, content, "utf-8");
+}
+
+/**
+ * Write a file only if it doesn't exist. Returns true if file was written.
+ */
+async function writeIfMissing(filePath: string, content: string): Promise<boolean> {
+  if (await fileExists(filePath)) return false;
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, content, "utf-8");
+  return true;
 }
 
 export async function fileExists(filePath: string): Promise<boolean> {

@@ -144,6 +144,7 @@ export async function tick(opts: {
         pluginConfig,
         maxPickups: remaining,
         instanceName,
+        runtime,
         runCommand,
       });
 

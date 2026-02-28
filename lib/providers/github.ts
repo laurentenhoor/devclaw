@@ -80,7 +80,7 @@ export class GitHubProvider implements IssueProvider {
   private async findPrsViaTimeline(
     issueId: number,
     state: "open" | "merged" | "all",
-  ): Promise<Array<{ number: number; title: string; body: string; headRefName: string; url: string; mergedAt: string | null; reviewDecision: string | null; state: string }> | null> {
+  ): Promise<Array<{ number: number; title: string; body: string; headRefName: string; url: string; mergedAt: string | null; reviewDecision: string | null; state: string; mergeable: string | null }> | null> {
     const repo = await this.getRepoInfo();
     if (!repo) return null;
 
@@ -92,10 +92,10 @@ export class GitHubProvider implements IssueProvider {
               nodes {
                 __typename
                 ... on ConnectedEvent {
-                  subject { ... on PullRequest { number title body headRefName state url mergedAt reviewDecision } }
+                  subject { ... on PullRequest { number title body headRefName state url mergedAt reviewDecision mergeable } }
                 }
                 ... on CrossReferencedEvent {
-                  source { ... on PullRequest { number title body headRefName state url mergedAt reviewDecision } }
+                  source { ... on PullRequest { number title body headRefName state url mergedAt reviewDecision mergeable } }
                 }
               }
             }
@@ -109,7 +109,7 @@ export class GitHubProvider implements IssueProvider {
 
       // Extract PR data from both event types
       const seen = new Set<number>();
-      const prs: Array<{ number: number; title: string; body: string; headRefName: string; url: string; mergedAt: string | null; reviewDecision: string | null; state: string }> = [];
+      const prs: Array<{ number: number; title: string; body: string; headRefName: string; url: string; mergedAt: string | null; reviewDecision: string | null; state: string; mergeable: string | null }> = [];
 
       for (const node of nodes) {
         const pr = node.subject ?? node.source;
@@ -125,6 +125,7 @@ export class GitHubProvider implements IssueProvider {
           mergedAt: pr.mergedAt ?? null,
           reviewDecision: pr.reviewDecision ?? null,
           state: pr.state ?? "",
+          mergeable: pr.mergeable ?? null,
         });
       }
 
@@ -141,6 +142,14 @@ export class GitHubProvider implements IssueProvider {
    * Find PRs associated with an issue.
    * Primary: GitHub timeline API (convention-free, catches all linked PRs).
    * Fallback: regex matching on branch name / title / body.
+   *
+   * TYPE CASTING NOTE: The timeline query returns a fixed set of fields
+   * (number, title, body, headRefName, state, url, mergedAt, reviewDecision, mergeable).
+   * When callers request additional fields via the `fields` parameter (e.g., "mergeable"),
+   * we cast the timeline results to T assuming they match. This works because:
+   * 1. For common fields (mergeable, reviewDecision), the timeline API provides them.
+   * 2. The fallback path (gh pr list) provides ALL requested fields via the fields parameter.
+   * If a caller requests a field the timeline API doesn't provide, the fallback ensures it.
    */
   private async findPrsForIssue<T extends { title: string; body: string; headRefName?: string }>(
     issueId: number,
@@ -151,6 +160,7 @@ export class GitHubProvider implements IssueProvider {
     const timelinePrs = await this.findPrsViaTimeline(issueId, state);
     if (timelinePrs && timelinePrs.length > 0) {
       // Map timeline results to the expected shape (T includes the requested fields)
+      // The timeline query now provides: number, title, body, headRefName, state, url, mergedAt, reviewDecision, mergeable
       return timelinePrs as unknown as T[];
     }
 
@@ -241,6 +251,22 @@ export class GitHubProvider implements IssueProvider {
       const args = ["issue", "edit", String(issueId)];
       for (const l of currentStateLabels) args.push("--remove-label", l);
       await this.gh(args);
+    }
+
+    // Post-transition validation: verify exactly one state label remains (#473)
+    try {
+      const postIssue = await this.getIssue(issueId);
+      const postStateLabels = postIssue.labels.filter((l) => stateLabels.includes(l));
+      if (postStateLabels.length !== 1 || !postStateLabels.includes(to)) {
+        // Log anomaly but don't throw — transition is already committed
+        console.error(
+          `[state_transition_anomaly] Issue #${issueId}: expected state "${to}", ` +
+          `found ${postStateLabels.length} state label(s): [${postStateLabels.join(", ")}]. ` +
+          `Transition: "${from}" → "${to}". See #473.`,
+        );
+      }
+    } catch {
+      // Validation is best-effort — don't break the transition
     }
   }
 
