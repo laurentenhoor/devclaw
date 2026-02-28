@@ -35,7 +35,7 @@ Advance an issue to the next queue. State-agnostic — works from any HOLD or QU
 
 Complete a task with a result. Called by workers (DEVELOPER/TESTER/ARCHITECT sub-agent sessions) directly, or by the orchestrator.
 
-**Source:** [`lib/tools/work-finish.ts`](../lib/tools/work-finish.ts)
+**Source:** [`lib/tools/worker/work-finish.ts`](../lib/tools/worker/work-finish.ts)
 
 **Parameters:**
 
@@ -83,7 +83,7 @@ Complete a task with a result. Called by workers (DEVELOPER/TESTER/ARCHITECT sub
 
 Create a new issue in the project's issue tracker.
 
-**Source:** [`lib/tools/task-create.ts`](../lib/tools/task-create.ts)
+**Source:** [`lib/tools/tasks/task-create.ts`](../lib/tools/tasks/task-create.ts)
 
 **Parameters:**
 
@@ -134,7 +134,7 @@ Only works on issues in HOLD states (Planning, Refining). The level is applied a
 
 Add a comment to an issue for feedback, notes, or discussion.
 
-**Source:** [`lib/tools/task-comment.ts`](../lib/tools/task-comment.ts)
+**Source:** [`lib/tools/tasks/task-comment.ts`](../lib/tools/tasks/task-comment.ts)
 
 **Parameters:**
 
@@ -157,7 +157,7 @@ When `authorRole` is provided, the comment is prefixed with a role emoji and att
 
 Update issue title and/or description. Only allowed when the issue is in the initial workflow state (e.g. "Planning") or an active architect state (e.g. "Researching"). Prevents editing in-progress work.
 
-**Source:** [`lib/tools/task-edit-body.ts`](../lib/tools/task-edit-body.ts)
+**Source:** [`lib/tools/tasks/task-edit-body.ts`](../lib/tools/tasks/task-edit-body.ts)
 
 **Parameters:**
 
@@ -176,13 +176,35 @@ At least one of `title` or `body` must be provided.
 
 ---
 
+### `task_owner`
+
+Claim issue ownership for this instance. Adds an `owner:{instanceName}` label so this instance owns the issue for queue scanning and dispatch. Supports claiming a single issue or all unclaimed queued issues.
+
+**Source:** [`lib/tools/tasks/task-owner.ts`](../lib/tools/tasks/task-owner.ts)
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `channelId` | string | Yes | Current chat/group ID |
+| `projectSlug` | string | No | Project slug (resolved from channel if omitted) |
+| `issueId` | number | No | Specific issue to claim. Omit to claim all unclaimed queued issues. |
+| `force` | boolean | No | Transfer ownership from another instance. Default: `false`. |
+
+**Use cases:**
+
+- Multi-instance deployments where each instance handles a subset of issues
+- Transfer ownership of an issue between instances
+
+---
+
 ## Operations
 
 ### `tasks_status`
 
 Full project dashboard showing all non-terminal state types with issue details.
 
-**Source:** [`lib/tools/tasks-status.ts`](../lib/tools/tasks-status.ts)
+**Source:** [`lib/tools/tasks/tasks-status.ts`](../lib/tools/tasks/tasks-status.ts)
 
 **Context:** Auto-filters to project in group chats. Shows all projects in DMs.
 
@@ -203,11 +225,39 @@ Full project dashboard showing all non-terminal state types with issue details.
 
 ---
 
+### `project_status`
+
+Instant local project info for the current channel. Returns registration details, channel bindings, worker slot states, workflow config, and execution settings — all from local data, no issue tracker API calls.
+
+**Source:** [`lib/tools/admin/project-status.ts`](../lib/tools/admin/project-status.ts)
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `channelId` | string | Yes | Current chat/group ID |
+
+**Returns:**
+
+- Project registration: name, repo, base branch, deploy URL, provider
+- Channel bindings: linked channels with types
+- Worker slots: per-role active/idle state, current issue, level
+- Workflow config: review policy, test phase, state flow
+- Execution settings: role execution mode
+
+**Use cases:**
+
+- Quick check of project setup without querying the issue tracker
+- Verify channel bindings and worker slot configuration
+- Use `tasks_status` instead when you need live issue counts from the tracker
+
+---
+
 ### `task_list`
 
 Browse and search issues by workflow state. Returns individual issues grouped by state label.
 
-**Source:** [`lib/tools/task-list.ts`](../lib/tools/task-list.ts)
+**Source:** [`lib/tools/tasks/task-list.ts`](../lib/tools/tasks/task-list.ts)
 
 **Parameters:**
 
@@ -240,7 +290,7 @@ Browse and search issues by workflow state. Returns individual issues grouped by
 
 Worker health scan with optional auto-fix.
 
-**Source:** [`lib/tools/health.ts`](../lib/tools/health.ts)
+**Source:** [`lib/tools/admin/health.ts`](../lib/tools/admin/health.ts)
 
 **Context:** Auto-filters to project in group chats.
 
@@ -269,7 +319,7 @@ Worker health scan with optional auto-fix.
 
 One-time project setup. Creates state labels, scaffolds project directory with override instructions, adds project to state.
 
-**Source:** [`lib/tools/project-register.ts`](../lib/tools/project-register.ts)
+**Source:** [`lib/tools/admin/project-register.ts`](../lib/tools/admin/project-register.ts)
 
 **Context:** Only works in the Telegram/WhatsApp group being registered.
 
@@ -302,7 +352,7 @@ One-time project setup. Creates state labels, scaffolds project directory with o
 
 Agent + workspace initialization.
 
-**Source:** [`lib/tools/setup.ts`](../lib/tools/setup.ts)
+**Source:** [`lib/tools/admin/setup.ts`](../lib/tools/admin/setup.ts)
 
 **Parameters:**
 
@@ -328,7 +378,7 @@ Agent + workspace initialization.
 
 Conversational onboarding guide. Returns step-by-step instructions for the agent to walk the user through setup.
 
-**Source:** [`lib/tools/onboard.ts`](../lib/tools/onboard.ts)
+**Source:** [`lib/tools/admin/onboard.ts`](../lib/tools/admin/onboard.ts)
 
 **Note:** Call this before `setup` to get step-by-step guidance.
 
@@ -344,7 +394,7 @@ Conversational onboarding guide. Returns step-by-step instructions for the agent
 
 Reference guide for workflow configuration. Call before making any workflow changes.
 
-**Source:** [`lib/tools/workflow-guide.ts`](../lib/tools/workflow-guide.ts)
+**Source:** [`lib/tools/admin/workflow-guide.ts`](../lib/tools/admin/workflow-guide.ts)
 
 **Parameters:**
 
@@ -366,7 +416,7 @@ Reference guide for workflow configuration. Call before making any workflow chan
 
 Spawn an architect for a design investigation. Creates a `To Research` issue with rich context and dispatches an architect worker through `To Research` → `Researching` states.
 
-**Source:** [`lib/tools/research-task.ts`](../lib/tools/research-task.ts)
+**Source:** [`lib/tools/tasks/research-task.ts`](../lib/tools/tasks/research-task.ts)
 
 **Parameters:**
 
@@ -431,7 +481,7 @@ This ensures the pipeline clears its backlog before starting new work.
 
 Sync GitHub/GitLab labels with the current workflow config. Creates any missing state labels, role:level labels, and step routing labels from the resolved (three-layer merged) config.
 
-**Source:** [`lib/tools/sync-labels.ts`](../lib/tools/sync-labels.ts)
+**Source:** [`lib/tools/admin/sync-labels.ts`](../lib/tools/admin/sync-labels.ts)
 
 **Parameters:**
 
@@ -447,3 +497,75 @@ Sync GitHub/GitLab labels with the current workflow config. Creates any missing 
 4. Reports created vs. already-existing labels
 
 **When to use:** After editing `workflow.yaml` to add custom states, change label names, or enable the test phase.
+
+---
+
+### `channel_link`
+
+Link a chat/channel to a project. If the channel is already linked to a different project, the old bond is removed first (auto-detach).
+
+**Source:** [`lib/tools/admin/channel-link.ts`](../lib/tools/admin/channel-link.ts)
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `channelId` | string | Yes | Chat/group ID to link |
+| `project` | string | Yes | Project name or slug to link to |
+
+**Use cases:**
+
+- Connect a new chat to an existing project
+- Switch which project a chat controls
+
+---
+
+### `channel_unlink`
+
+Remove a channel from a project. Validates that the channel exists and prevents removing the last channel (projects must have at least one notification endpoint).
+
+**Source:** [`lib/tools/admin/channel-unlink.ts`](../lib/tools/admin/channel-unlink.ts)
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `channelId` | string | Yes | Channel ID to remove |
+| `project` | string | Yes | Project name or slug |
+
+---
+
+### `channel_list`
+
+List channels for a project or all projects. Shows channel type, ID, name, and event subscriptions.
+
+**Source:** [`lib/tools/admin/channel-list.ts`](../lib/tools/admin/channel-list.ts)
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `project` | string | No | Project name or slug. Omit to list channels for all projects. |
+
+---
+
+### `config`
+
+Manage DevClaw workspace configuration. Supports three actions: reset config files to defaults, diff against defaults, and show version info.
+
+**Source:** [`lib/tools/admin/config.ts`](../lib/tools/admin/config.ts)
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `action` | `"reset"` \| `"diff"` \| `"version"` | Yes | Action to perform |
+| `scope` | `"prompts"` \| `"workflow"` \| `"all"` | No | Reset scope (only for `action: "reset"`) |
+
+**Actions:**
+
+| Action | Description |
+|---|---|
+| `reset` | Reset config files to package defaults. Creates `.bak` backups. Use `scope` to target: `prompts` (role prompts only), `workflow` (workflow.yaml only), `all` (everything). |
+| `diff` | Show differences between current `workflow.yaml` and the built-in default template. Helps identify customizations and see what changed in new versions. |
+| `version` | Show DevClaw package version and workspace tracked version. |

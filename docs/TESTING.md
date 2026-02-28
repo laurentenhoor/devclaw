@@ -25,12 +25,21 @@ npm run build
 | File | What it tests |
 |---|---|
 | [lib/roles/registry.test.ts](../lib/roles/registry.test.ts) | Role registry: role lookup, level resolution, model defaults |
-| [lib/projects.test.ts](../lib/projects.test.ts) | Project state: read/write, worker state, atomic file operations |
-| [lib/bootstrap-hook.test.ts](../lib/bootstrap-hook.test.ts) | Bootstrap hook: role instruction loading, source tracking, overloads |
+| [lib/projects/projects.test.ts](../lib/projects/projects.test.ts) | Project state: read/write, worker state, atomic file operations |
+| [lib/dispatch/bootstrap-hook.test.ts](../lib/dispatch/bootstrap-hook.test.ts) | Bootstrap hook: role instruction loading, source tracking, overloads |
+| [lib/dispatch/attachments.test.ts](../lib/dispatch/attachments.test.ts) | File attachment handling |
 | [lib/tools/tasks/task-set-level.test.ts](../lib/tools/tasks/task-set-level.test.ts) | Task set level tool: level hints, label detection |
-| [lib/tools/research-task.test.ts](../lib/tools/research-task.test.ts) | Research task tool: architect dispatch |
-| [lib/tools/queue-status.test.ts](../lib/tools/queue-status.test.ts) | Queue status formatting |
+| [lib/tools/tasks/task-edit-body.test.ts](../lib/tools/tasks/task-edit-body.test.ts) | Task edit body tool: title/body editing, state guards |
+| [lib/tools/tasks/research-task.test.ts](../lib/tools/tasks/research-task.test.ts) | Research task tool: architect dispatch |
+| [lib/tools/admin/queue-status.test.ts](../lib/tools/admin/queue-status.test.ts) | Queue status formatting |
+| [lib/tools/worker/group-isolation.test.ts](../lib/tools/worker/group-isolation.test.ts) | Worker group isolation |
+| [lib/services/heartbeat/health.test.ts](../lib/services/heartbeat/health.test.ts) | Heartbeat health pass: zombie detection, stale workers |
+| [lib/providers/provider-pr-status.test.ts](../lib/providers/provider-pr-status.test.ts) | PR status polling and detection |
+| [lib/setup/version.test.ts](../lib/setup/version.test.ts) | Version tracking and comparison |
+| [lib/setup/workspace.test.ts](../lib/setup/workspace.test.ts) | Workspace initialization and write-once defaults |
 | [lib/setup/migrate-layout.test.ts](../lib/setup/migrate-layout.test.ts) | Workspace layout migration: `projects/` → `devclaw/` |
+| [lib/names.test.ts](../lib/names.test.ts) | Deterministic name generation |
+| [lib/instance.test.ts](../lib/instance.test.ts) | Instance name management |
 
 ### E2E Tests
 

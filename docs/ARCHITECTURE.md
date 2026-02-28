@@ -571,10 +571,16 @@ Every piece of data and where it lives:
 │  task_create    → create issue in tracker                       │
 │  task_set_level → set level hint on HOLD-state issues           │
 │  task_comment   → add comment to issue                          │
+│  task_owner     → claim issue ownership (multi-instance)        │
 │  tasks_status   → read labels + read state                      │
+│  project_status → local project info (no API calls)             │
 │  health         → check sessions + fix zombies                  │
 │  project_register → labels + prompts + state init (one-time)    │
 │  research_task  → architect dispatch                            │
+│  channel_link   → bind channel to project                       │
+│  channel_unlink → remove channel from project                   │
+│  channel_list   → list project-channel bindings                 │
+│  config         → reset/diff/version for workspace config       │
 │                                                                 │
 │  Bootstrap hook → injects role instructions into worker sessions│
 │  workflow_guide → config reference for workflow changes           │

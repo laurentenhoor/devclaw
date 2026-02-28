@@ -71,51 +71,46 @@ Purpose-built test harness (`lib/testing/`) with:
 - `simulateBootstrap()` — tests the full bootstrap hook chain without a live gateway
 - `CommandInterceptor` — captures and filters CLI calls
 
+### Channel Management Tools
+
+Three new tools for managing project-to-channel bindings: `channel_link` (attach a chat to a project, auto-detaches previous), `channel_unlink` (remove a channel from a project), and `channel_list` (list channels for a project or all projects). Projects can now have multiple notification channels.
+
+### Version Tracking and Config Management
+
+Write-once defaults with version tracking — the plugin only writes workspace files (prompts, workflow.yaml) when the package version changes and the user hasn't customized them. The `config` tool provides three actions: `reset` (reset to package defaults with `.bak` backups), `diff` (compare current workflow.yaml against the default template), and `version` (show package and workspace versions).
+
+### Structural Refactoring
+
+Major module reorganization for better separation of concerns:
+- `lib/dispatch/` — dispatch, bootstrap hook, attachment hook, notifications
+- `lib/tools/tasks/`, `lib/tools/admin/`, `lib/tools/worker/` — tool grouping by domain
+- `lib/services/heartbeat/` — heartbeat passes split into separate modules
+- `lib/projects/` — project state I/O, mutations, slots, types
+- `lib/workflow/` — state machine types, defaults, labels, queries
+- `lib/context.ts` — `PluginContext` DI container replacing global singletons
+
+### Additional Tools
+
+- `project_status` — instant local project info (registration, channels, workers, config) with no API calls
+- `task_owner` — claim issue ownership for multi-instance deployments via `owner:{instanceName}` labels
+- `config` — workspace config management (reset, diff, version)
+
+### Reviewer Role
+
+Fourth built-in role with dedicated `Reviewing` state. Reviewers check PRs and call `work_finish` with approve/reject/blocked. Default levels: junior (Haiku) and senior (Sonnet).
+
 ---
 
 ## Planned
 
 ### Channel-agnostic Groups
 
-Currently DevClaw maps projects to **Telegram group IDs**. The `projectGroupId` is a Telegram-specific negative number. This means:
-- WhatsApp groups can't be used as project channels (partially supported now via `channel` field)
-- Discord, Slack, or other channels are excluded
-- The naming (`groupId`, `groupName`) is Telegram-specific
+Replace Telegram-specific group IDs with a generic channel identifier that works across any OpenClaw channel. The `channelId` parameter is already used in new tools — the remaining work is migrating older tools and state keys.
 
-**Planned: abstract channel binding**
-
-Replace Telegram-specific group IDs with a generic channel identifier that works across any OpenClaw channel.
-
-```json
-{
-  "projects": {
-    "whatsapp:120363140032870788@g.us": {
-      "name": "my-project",
-      "channel": "whatsapp",
-      "peer": "120363140032870788@g.us"
-    },
-    "telegram:-1234567890": {
-      "name": "other-project",
-      "channel": "telegram",
-      "peer": "-1234567890"
-    }
-  }
-}
-```
-
-Key changes:
-- `projectGroupId` becomes a composite key: `<channel>:<peerId>`
-- `project_register` accepts `channel` + `peerId` instead of `projectGroupId`
-- Project lookup uses the composite key from the message context
-- All tool params, state keys, and docs updated accordingly
-- Backward compatible: existing Telegram-only keys migrated on read
-
-This enables any OpenClaw channel (Telegram, WhatsApp, Discord, Slack, etc.) to host a project.
-
-#### Open questions
-
-- Should one project be bindable to multiple channels? (e.g. Telegram for devs, WhatsApp for stakeholder updates)
-- How does the orchestrator agent handle cross-channel context?
+Key changes remaining:
+- Migrate `projectGroupId` in older tool signatures
+- Update state keys in `projects.json`
+- Backward-compatible migration on read
 
 ---
 

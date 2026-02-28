@@ -194,7 +194,7 @@ Override the project-level policy for a single issue using labels:
 | `review:agent` | Force agent review |
 | `review:skip` | Skip review entirely |
 
-**Source:** [`lib/workflow.ts`](../lib/workflow.ts) — `resolveReviewRouting()`
+**Source:** [`lib/workflow/queries.ts`](../lib/workflow/queries.ts) — `resolveReviewRouting()`
 
 ---
 
@@ -401,5 +401,5 @@ Call the `workflow_guide` tool for interactive documentation. It returns compreh
 ## Related
 
 - [Configuration](CONFIGURATION.md) — Config file format, roles, timeouts, `openclaw.json`
-- [Tools Reference](TOOLS.md) — All 18 tools including `task_start`, `work_finish`, `task_list`, `workflow_guide`
+- [Tools Reference](TOOLS.md) — All 23 tools including `task_start`, `work_finish`, `task_list`, `workflow_guide`
 - [Architecture](ARCHITECTURE.md) — System design, session model, heartbeat internals

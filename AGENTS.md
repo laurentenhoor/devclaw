@@ -4,13 +4,20 @@ DevClaw is an OpenClaw plugin for multi-project dev/qa pipeline orchestration wi
 
 ## Project Structure
 
-- `index.ts` — Plugin entry point, registers all tools/CLI/services
-- `lib/run-command.ts` — Safe command execution wrapper (initialized in `register()`)
-- `lib/dispatch.ts` — Task dispatch logic (session spawn/reuse, gateway RPC)
+- `index.ts` — Plugin entry point, registers 23 tools, CLI, services, and hooks
+- `lib/context.ts` — `PluginContext` DI container (created once in `register()`, threaded everywhere)
+- `lib/dispatch/` — Task dispatch logic, bootstrap hook, attachment hook, notifications
 - `lib/providers/` — GitHub and GitLab issue providers (via `gh`/`glab` CLI)
-- `lib/services/` — Heartbeat, tick (queue scan), pipeline (completion rules)
-- `lib/setup/` — Agent creation, model fetching, LLM-powered model selection
-- `lib/tools/` — All registered tools (task_start, work_finish, task_create, etc.)
+- `lib/services/heartbeat/` — Heartbeat service (health, review, queue passes)
+- `lib/services/` — Pipeline (completion rules), tick (queue scan), queue
+- `lib/setup/` — Agent creation, workspace management, CLI, version tracking
+- `lib/tools/tasks/` — Task lifecycle and management tools
+- `lib/tools/admin/` — Project admin, channel management, config, setup tools
+- `lib/tools/worker/` — Worker-side tools (work_finish)
+- `lib/workflow/` — State machine types, defaults, labels, queries
+- `lib/projects/` — Project state (projects.json) I/O, mutations, slots
+- `lib/config/` — Three-layer config resolution with Zod validation
+- `lib/roles/` — Role registry, model selection, level resolution
 
 ## Coding Style
 
@@ -22,7 +29,7 @@ DevClaw is an OpenClaw plugin for multi-project dev/qa pipeline orchestration wi
 
 ## Conventions
 
-- Never import `child_process` directly — the OpenClaw security scanner flags it. Use `runCommand()` from `lib/run-command.ts`, which wraps `api.runtime.system.runCommandWithTimeout`.
+- Never import `child_process` directly — the OpenClaw security scanner flags it. Use `runCommand` from `PluginContext` (`lib/context.ts`), which wraps `api.runtime.system.runCommandWithTimeout`.
 - Functions that call `runCommand()` must be async.
 
 ## Testing Changes
@@ -37,4 +44,4 @@ Wait 3 seconds, then check logs:
 openclaw logs
 ```
 
-Expect: `[plugins] DevClaw plugin registered (11 tools, 1 CLI command group, 1 service)`
+Expect: `[plugins] DevClaw plugin registered (23 tools, 1 CLI command group, 1 service, 3 hooks)`

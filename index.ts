@@ -134,7 +134,7 @@ const plugin = {
     registerAttachmentHook(api, ctx);
 
     api.logger.info(
-      "DevClaw plugin registered (22 tools, 1 CLI command group, 1 service, 3 hooks)",
+      "DevClaw plugin registered (23 tools, 1 CLI command group, 1 service, 3 hooks)",
     );
   },
 };

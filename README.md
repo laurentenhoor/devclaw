@@ -80,7 +80,7 @@ GitHub/GitLab issues are the single source of truth — not an internal database
 
 - **[External task state](#your-issues-stay-in-your-tracker)** — labels, transitions, and status queries go through your issue tracker
 - **[Atomic operations](#what-atomic-means-here)** — label transition + state update + session dispatch + audit log in one call
-- **[Tool-based guardrails](#the-toolbox)** — 18 tools enforce the process; the agent provides intent, the plugin handles mechanics
+- **[Tool-based guardrails](#the-toolbox)** — 23 tools enforce the process; the agent provides intent, the plugin handles mechanics
 
 ### ~60-80% token savings
 
@@ -450,7 +450,7 @@ openclaw plugins install @laurentenhoor/devclaw
 openclaw plugins install @laurentenhoor/devclaw
 ```
 
-On restart, workspace files (docs, prompts, workflow states) are automatically refreshed to the latest defaults. Role and timeout customizations in `workflow.yaml` are preserved.
+Workspace files use write-once defaults with version tracking — new package versions only write files that haven't been customized. Your `workflow.yaml` and role prompt customizations are always preserved. Use `config({ action: "diff" })` to see what changed between versions, or `config({ action: "reset", scope: "all" })` to reset to defaults.
 
 For local development:
 
@@ -496,7 +496,7 @@ You can also use the [CLI wizard or non-interactive setup](docs/ONBOARDING.md#st
 
 ## The toolbox
 
-DevClaw gives the orchestrator 18 tools. These aren't just convenience wrappers — they're **guardrails**. Each tool encodes a complex multi-step operation into a single atomic call. The agent provides intent, the plugin handles mechanics. The agent physically cannot skip a label transition, forget to update state, or dispatch to the wrong session — those decisions are made by deterministic code, not LLM reasoning.
+DevClaw gives the orchestrator 23 tools. These aren't just convenience wrappers — they're **guardrails**. Each tool encodes a complex multi-step operation into a single atomic call. The agent provides intent, the plugin handles mechanics. The agent physically cannot skip a label transition, forget to update state, or dispatch to the wrong session — those decisions are made by deterministic code, not LLM reasoning.
 
 | Tool                   | What it does                                                                            |
 | ---------------------- | --------------------------------------------------------------------------------------- |
@@ -508,16 +508,21 @@ DevClaw gives the orchestrator 18 tools. These aren't just convenience wrappers 
 | `task_edit_body`       | Edit issue title/description (initial state only; audit-logged)                         |
 | `task_list`            | Browse and search issues by workflow state                                              |
 | `task_attach`          | Attach files to issues from worker sessions                                             |
+| `task_owner`           | Claim issue ownership for this instance (multi-instance support)                        |
 | `tasks_status`         | Full project dashboard: hold, active, and queued issues with details                    |
+| `project_status`       | Instant local project info: registration, channels, worker slots, config (no API calls) |
 | `health`               | Detect zombie workers, stale sessions, state inconsistencies                            |
 | `project_register`     | One-time project setup: creates labels, scaffolds instructions, initializes state       |
+| `sync_labels`          | Sync GitHub/GitLab labels with workflow config after editing `workflow.yaml`            |
+| `channel_link`         | Link a chat/channel to a project (auto-detaches previous project)                      |
+| `channel_unlink`       | Remove a channel from a project                                                         |
+| `channel_list`         | List channels for a project or all projects                                             |
 | `setup`                | Agent + workspace initialization                                                        |
 | `onboard`              | Conversational setup guide                                                              |
-| `research_task`        | Spawn an architect for design investigation — creates issue, dispatches worker          |
 | `autoconfigure_models` | LLM-powered model selection based on available models                                   |
 | `workflow_guide`       | Configuration reference for workflow.yaml (call before editing)                         |
-| `sync_labels`          | Sync GitHub/GitLab labels with workflow config after editing `workflow.yaml`            |
-| `claim_ownership`      | Workers claim task ownership with deterministic name generation                         |
+| `config`               | Manage workspace config: reset to defaults, diff against defaults, version info         |
+| `research_task`        | Spawn an architect for design investigation — creates issue, dispatches worker          |
 
 Full parameters and usage in the [Tools Reference](docs/TOOLS.md).
 

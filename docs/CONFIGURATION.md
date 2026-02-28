@@ -162,7 +162,7 @@ Token-free interval-based health checks + queue dispatch:
 | `intervalSeconds` | number | `60` | Seconds between ticks |
 | `maxPickupsPerTick` | number | `4` | Maximum worker dispatches per tick (budget control) |
 
-**Source:** [`lib/services/heartbeat.ts`](../lib/services/heartbeat.ts)
+**Source:** [`lib/services/heartbeat/index.ts`](../lib/services/heartbeat/index.ts)
 
 The heartbeat service runs as a plugin service tied to the gateway lifecycle. Every tick: health pass (auto-fix zombies, stale workers) → review pass (poll PR status for "To Review" issues) → tick pass (fill free slots by priority). Zero LLM tokens consumed.
 
@@ -230,17 +230,23 @@ Restrict DevClaw tools to your orchestrator agent:
             "task_set_level",
             "task_comment",
             "task_edit_body",
+            "task_attach",
+            "task_owner",
             "tasks_status",
             "task_list",
+            "project_status",
             "health",
             "project_register",
+            "sync_labels",
+            "channel_link",
+            "channel_unlink",
+            "channel_list",
             "setup",
             "onboard",
             "autoconfigure_models",
             "research_task",
             "workflow_guide",
-            "sync_labels",
-            "claim_ownership"
+            "config"
           ]
         }
       }
@@ -255,7 +261,7 @@ Restrict DevClaw tools to your orchestrator agent:
 
 All project state lives in `<workspace>/devclaw/projects.json`, keyed by group ID.
 
-**Source:** [`lib/projects.ts`](../lib/projects.ts)
+**Source:** [`lib/projects/index.ts`](../lib/projects/index.ts)
 
 ### Schema
 
@@ -381,7 +387,7 @@ Role instructions are injected into worker sessions via the `agent:bootstrap` ho
 
 Edit to customize: deployment steps, test commands, acceptance criteria, coding standards.
 
-**Source:** [`lib/bootstrap-hook.ts`](../lib/bootstrap-hook.ts)
+**Source:** [`lib/dispatch/bootstrap-hook.ts`](../lib/dispatch/bootstrap-hook.ts)
 
 ---
 

@@ -82,27 +82,27 @@ Deterministic checks in `execute()` functions. These **throw errors** — the LL
 
 | Check | Where | What it prevents |
 |---|---|---|
-| `isValidResult(role, result)` | `work-finish.ts` | Developer calling `pass`, tester calling `approve`, etc. |
-| `worker.active` guard | `work-finish.ts` | Finishing work that was never started |
-| `validatePrExistsForDeveloper()` | `work-finish.ts` | Developer marking `done` without an open PR |
-| `getRule(role, result, workflow)` | `work-finish.ts` | Any completion with no matching state transition |
-| `worker.active` slot check | `work-start.ts` | Two workers of the same role running simultaneously |
-| Sequential execution check | `work-start.ts` | Any role running while another is active (sequential mode) |
-| Role mismatch guard | `work-start.ts` | Dispatching a tester to a "To Do" issue |
-| State label check | `work-start.ts` | Dispatching to an issue with no recognized state |
-| Editable-state guard | `task-edit-body.ts` | Editing issue body while work is in progress |
-| Empty body check | `task-comment.ts` | Posting an empty comment |
-| Required field checks | `research-task.ts` | Creating a research task without description |
+| `isValidResult(role, result)` | `tools/worker/work-finish.ts` | Developer calling `pass`, tester calling `approve`, etc. |
+| `worker.active` guard | `tools/worker/work-finish.ts` | Finishing work that was never started |
+| `validatePrExistsForDeveloper()` | `tools/worker/work-finish.ts` | Developer marking `done` without an open PR |
+| `getRule(role, result, workflow)` | `tools/worker/work-finish.ts` | Any completion with no matching state transition |
+| `worker.active` slot check | `tools/tasks/task-start.ts` | Two workers of the same role running simultaneously |
+| Sequential execution check | `tools/tasks/task-start.ts` | Any role running while another is active (sequential mode) |
+| Role mismatch guard | `tools/tasks/task-start.ts` | Dispatching a tester to a "To Do" issue |
+| State label check | `tools/tasks/task-start.ts` | Dispatching to an issue with no recognized state |
+| Editable-state guard | `tools/tasks/task-edit-body.ts` | Editing issue body while work is in progress |
+| Empty body check | `tools/tasks/task-comment.ts` | Posting an empty comment |
+| Required field checks | `tools/tasks/research-task.ts` | Creating a research task without description |
 
 ### Computed behavior (no LLM input)
 
 | Mechanism | Where | What it does |
 |---|---|---|
-| Session key naming | `dispatch.ts` | Deterministic: `agent:{id}:subagent:{project}-{role}-{level}` |
-| Review routing label | `dispatch.ts` | Computed from policy + level, applied as `review:human` or `review:agent` |
-| Level selection heuristic | `model-selector.ts` | Keywords in title/description → junior/medior/senior |
-| Context budget clearing | `dispatch.ts` | Clears session when context > budget threshold |
-| Eyes reaction (managed marker) | `task-create.ts`, `dispatch.ts` | Applied automatically, used as filter in heartbeat |
+| Session key naming | `dispatch/session.ts` | Deterministic: `agent:{id}:subagent:{project}-{role}-{level}` |
+| Review routing label | `dispatch/index.ts` | Computed from policy + level, applied as `review:human` or `review:agent` |
+| Level selection heuristic | `roles/model-selector.ts` | Keywords in title/description → junior/medior/senior |
+| Context budget clearing | `dispatch/index.ts` | Clears session when context > budget threshold |
+| Eyes reaction (managed marker) | `tools/tasks/task-create.ts`, `dispatch/index.ts` | Applied automatically, used as filter in heartbeat |
 
 ---
 
