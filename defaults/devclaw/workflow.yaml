@@ -1,7 +1,11 @@
-# DevClaw workflow configuration — this file is yours.
-# DevClaw will never overwrite it. Edit freely; missing keys use built-in defaults.
-# To reset to defaults: use `config_reset` (target: "workflow"). To see changes: use `config_diff`.
+# DevClaw workflow configuration
+#
+# This file is YOUR configuration — DevClaw will never overwrite it on restart.
+# Edit freely: roles, models, timeouts, reviewPolicy, testPolicy, states, etc.
 # Copy to devclaw/projects/<project>/workflow.yaml for project-specific overrides.
+#
+# To see what changed in a new version: config({ action: "diff" })
+# To reset to package defaults:         config({ action: "reset", scope: "workflow" })
 
 roles:
   developer:

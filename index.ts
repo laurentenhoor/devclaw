@@ -32,8 +32,7 @@ import { createSetupTool } from "./lib/tools/admin/setup.js";
 import { createOnboardTool } from "./lib/tools/admin/onboard.js";
 import { createAutoConfigureModelsTool } from "./lib/tools/admin/autoconfigure-models.js";
 import { createWorkflowGuideTool } from "./lib/tools/admin/workflow-guide.js";
-import { createConfigResetTool } from "./lib/tools/admin/config-reset.js";
-import { createConfigDiffTool } from "./lib/tools/admin/config-diff.js";
+import { createConfigTool } from "./lib/tools/admin/config.js";
 
 // Infrastructure
 import { registerCli } from "./lib/setup/cli.js";
@@ -124,8 +123,7 @@ const plugin = {
     api.registerTool(createOnboardTool(ctx), { names: ["onboard"] });
     api.registerTool(createAutoConfigureModelsTool(ctx), { names: ["autoconfigure_models"] });
     api.registerTool(createWorkflowGuideTool(ctx), { names: ["workflow_guide"] });
-    api.registerTool(createConfigResetTool(ctx), { names: ["config_reset"] });
-    api.registerTool(createConfigDiffTool(ctx), { names: ["config_diff"] });
+    api.registerTool(createConfigTool(ctx), { names: ["config"] });
 
     // CLI, services & hooks
     api.registerCli(({ program }: { program: any }) => registerCli(program, ctx), {
