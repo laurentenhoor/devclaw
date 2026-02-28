@@ -1,10 +1,13 @@
 /**
  * setup/workspace.ts — Workspace file scaffolding.
  *
- * ensureDefaultFiles() creates directories and missing structural files only.
- * User-customized files (workflow.yaml, prompts, workspace docs) are never
- * overwritten on startup. Package defaults serve as in-memory fallbacks
- * when files are missing (see bootstrap-hook.ts loadRoleInstructions).
+ * On startup, ensureDefaultFiles() creates missing workspace files with curated
+ * defaults. User-owned config files (workflow.yaml, prompts, IDENTITY.md) are
+ * write-once: created if missing, never overwritten. System instruction files
+ * (AGENTS.md, HEARTBEAT.md, TOOLS.md) are always refreshed.
+ *
+ * The runtime config loader (lib/config/loader.ts) uses a three-layer merge with
+ * built-in fallbacks, so missing keys in workflow.yaml are handled automatically.
  *
  * To explicitly write/reset defaults, use setup --eject-defaults or --reset-defaults.
  */
@@ -21,48 +24,70 @@ import {
 } from "./templates.js";
 import { getAllRoleIds } from "../roles/index.js";
 import { migrateWorkspaceLayout, DATA_DIR } from "./migrate-layout.js";
+import { writeVersionFile, detectUpgrade } from "./version.js";
+import { log as auditLog } from "../audit.js";
 
 /** Sentinel file indicating the workspace has been initialized. */
 const INITIALIZED_SENTINEL = ".initialized";
 
 /**
- * Ensure workspace directories and structural files exist.
+ * Ensure all workspace data files are up to date.
  *
- * Called on every heartbeat startup. Only creates directories and files that
- * are missing — never overwrites existing user customizations.
- * Package defaults are used as in-memory fallbacks at runtime.
+ * Called on every heartbeat startup.
+ *
+ * File categories:
+ *   - System instructions (AGENTS.md, HEARTBEAT.md, TOOLS.md): always overwrite
+ *   - User-owned config (workflow.yaml, prompts, IDENTITY.md): create-only
+ *   - Runtime state (projects.json): create-only
  */
 export async function ensureDefaultFiles(workspacePath: string): Promise<void> {
   const dataDir = path.join(workspacePath, DATA_DIR);
+  await fs.mkdir(dataDir, { recursive: true });
 
   // Ensure directories exist
-  await fs.mkdir(dataDir, { recursive: true });
   await fs.mkdir(path.join(dataDir, "projects"), { recursive: true });
   await fs.mkdir(path.join(dataDir, "prompts"), { recursive: true });
   await fs.mkdir(path.join(dataDir, "log"), { recursive: true });
 
-  // Workspace instruction files — create only if missing
-  await writeIfMissing(path.join(workspacePath, "AGENTS.md"), AGENTS_MD_TEMPLATE);
-  await writeIfMissing(path.join(workspacePath, "HEARTBEAT.md"), HEARTBEAT_MD_TEMPLATE);
-  await writeIfMissing(path.join(workspacePath, "IDENTITY.md"), IDENTITY_MD_TEMPLATE);
-  await writeIfMissing(path.join(workspacePath, "TOOLS.md"), TOOLS_MD_TEMPLATE);
+  // --- System instruction files — always overwrite with latest ---
+  await backupAndWrite(path.join(workspacePath, "AGENTS.md"), AGENTS_MD_TEMPLATE);
+  await backupAndWrite(path.join(workspacePath, "HEARTBEAT.md"), HEARTBEAT_MD_TEMPLATE);
+  await backupAndWrite(path.join(workspacePath, "TOOLS.md"), TOOLS_MD_TEMPLATE);
+
+  // --- User-owned files — create-only, never overwrite ---
+
+  // IDENTITY.md
+  const identityPath = path.join(workspacePath, "IDENTITY.md");
+  if (!await fileExists(identityPath)) {
+    await fs.writeFile(identityPath, IDENTITY_MD_TEMPLATE, "utf-8");
+  }
 
   // Remove BOOTSTRAP.md — one-time onboarding file, not needed after setup
   try { await fs.unlink(path.join(workspacePath, "BOOTSTRAP.md")); } catch { /* already gone */ }
 
-  // devclaw/workflow.yaml — create only if missing
+  // devclaw/workflow.yaml — create-only (three-layer merge handles defaults for missing keys)
   const workflowPath = path.join(dataDir, "workflow.yaml");
   await writeIfMissing(workflowPath, WORKFLOW_YAML_TEMPLATE);
 
-  // devclaw/projects.json — create only if missing
+  // devclaw/projects.json — create-only
   const projectsJsonPath = path.join(dataDir, "projects.json");
   await writeIfMissing(projectsJsonPath, JSON.stringify({ projects: {} }, null, 2) + "\n");
 
-  // devclaw/prompts/ — create only if missing (package defaults used as runtime fallback)
+  // devclaw/prompts/ — create-only per role (user customizations are preserved)
   for (const role of getAllRoleIds()) {
     const rolePath = path.join(dataDir, "prompts", `${role}.md`);
     const content = DEFAULT_ROLE_INSTRUCTIONS[role];
     if (content) await writeIfMissing(rolePath, content);
+  }
+
+  // Version tracking
+  const upgrade = await detectUpgrade(dataDir);
+  await writeVersionFile(dataDir);
+  if (upgrade) {
+    await auditLog(workspacePath, "version_upgrade", {
+      from: upgrade.from,
+      to: upgrade.to,
+    });
   }
 
   // Mark workspace as initialized
@@ -111,6 +136,16 @@ export async function writeAllDefaults(workspacePath: string, force = false): Pr
     }
   }
 
+  // Version tracking
+  const upgrade = await detectUpgrade(dataDir);
+  await writeVersionFile(dataDir);
+  if (upgrade) {
+    await auditLog(workspacePath, "version_upgrade", {
+      from: upgrade.from,
+      to: upgrade.to,
+    });
+  }
+
   return written;
 }
 
@@ -142,7 +177,7 @@ export async function scaffoldWorkspace(workspacePath: string, defaultWorkspaceP
   // Ensure directories and missing structural files
   await ensureDefaultFiles(workspacePath);
 
-  return ["AGENTS.md", "HEARTBEAT.md", "IDENTITY.md", "TOOLS.md"];
+  return ["AGENTS.md", "HEARTBEAT.md", "TOOLS.md"];
 }
 
 // ---------------------------------------------------------------------------
