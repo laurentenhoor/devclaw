@@ -68,7 +68,21 @@ export function buildTaskMessage(opts: {
   }
 
   if (opts.prContext) parts.push(...formatPrContext(opts.prContext));
-  if (opts.prFeedback) parts.push(...formatPrFeedback(opts.prFeedback, baseBranch));
+  if (opts.prFeedback) {
+    parts.push(...formatPrFeedback(opts.prFeedback, baseBranch));
+    
+    // Defensive warning if branch name is missing (shouldn't happen in practice)
+    if (!opts.prFeedback.branchName && opts.prFeedback.reason === "merge_conflict") {
+      parts.push(
+        ``,
+        `⚠️ **Branch name could not be determined automatically.**`,
+        `Check the PR URL above to find the correct branch, then:`,
+        `\`\`\`bash`,
+        `gh pr view <PR-number> --json headRefName --jq .headRefName`,
+        `\`\`\``,
+      );
+    }
+  }
   if (opts.attachmentContext) parts.push(opts.attachmentContext);
 
   parts.push(
