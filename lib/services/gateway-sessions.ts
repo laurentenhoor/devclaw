@@ -59,7 +59,10 @@ export async function fetchGatewaySessions(gatewayTimeoutMs = 15_000, runCommand
             lookup.set(key, {
               key,
               updatedAt: entry.updatedAt ?? 0,
-              percentUsed: entry.percentUsed ?? 0,
+              percentUsed: entry.percentUsed
+                ?? (entry.contextTokens && entry.totalTokens
+                  ? Math.round((entry.contextTokens / entry.totalTokens) * 100)
+                  : 0),
               abortedLastRun: entry.abortedLastRun,
               totalTokens: entry.totalTokens,
               contextTokens: entry.contextTokens,

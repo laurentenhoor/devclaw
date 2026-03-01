@@ -84,11 +84,18 @@ export function registerHeartbeatService(api: OpenClawPluginApi, pluginCtx: Plug
  * Run one heartbeat tick for all agents.
  * Re-reads config and re-discovers agents each tick so projects onboarded
  * after the gateway starts are picked up automatically — no restart needed.
+ *
+ * Guarded by _tickRunning to prevent concurrent ticks from interleaving
+ * (setInterval + async means the next tick can fire while the previous awaits).
  */
+let _tickRunning = false;
+
 async function runHeartbeatTick(
   ctx: PluginContext,
   logger: ServiceContext["logger"],
 ): Promise<void> {
+  if (_tickRunning) return;
+  _tickRunning = true;
   try {
     const config = resolveHeartbeatConfig(ctx.pluginConfig);
     if (!config.enabled) return;
@@ -100,6 +107,8 @@ async function runHeartbeatTick(
     logTickResult(result, logger);
   } catch (err) {
     logger.error(`work_heartbeat tick failed: ${err}`);
+  } finally {
+    _tickRunning = false;
   }
 }
 

@@ -101,10 +101,24 @@ export async function dispatchTask(
   const slot = roleWorker.levels[level]?.[slotIndex] ?? emptySlot();
   let existingSessionKey = slot.sessionKey;
 
+  // Deactivated slot (issueId null) means session belongs to a previous issue — don't reuse
+  if (existingSessionKey && !slot.issueId) {
+    rc(
+      ["openclaw", "gateway", "call", "sessions.delete", "--params", JSON.stringify({ key: existingSessionKey })],
+      { timeoutMs: 10_000 },
+    ).catch(() => {});
+    existingSessionKey = null;
+  }
+
   // Context budget check: clear session if over budget (unless same issue — feedback cycle)
   if (existingSessionKey && timeouts.sessionContextBudget < 1) {
     const shouldClear = await shouldClearSession(existingSessionKey, slot.issueId, issueId, timeouts, workspaceDir, project.name, rc);
     if (shouldClear) {
+      // Delete the gateway session (fire-and-forget)
+      rc(
+        ["openclaw", "gateway", "call", "sessions.delete", "--params", JSON.stringify({ key: existingSessionKey })],
+        { timeoutMs: 10_000 },
+      ).catch(() => {});
       await updateSlot(workspaceDir, project.slug, role, level, slotIndex, {
         sessionKey: null,
       });

@@ -49,6 +49,9 @@ export class GitHubProvider implements IssueProvider {
   private async gh(args: string[]): Promise<string> {
     return withResilience(async () => {
       const result = await this.runCommand(["gh", ...args], { timeoutMs: 30_000, cwd: this.repoPath });
+      if (result.code != null && result.code !== 0) {
+        throw new Error(result.stderr?.trim() || `gh command failed with exit code ${result.code}`);
+      }
       return result.stdout.trim();
     });
   }

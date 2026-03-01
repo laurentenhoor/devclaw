@@ -148,7 +148,9 @@ export function createWorkFinishTool(ctx: PluginContext) {
 
       for (const [level, slots] of Object.entries(roleWorker.levels)) {
         for (let i = 0; i < slots.length; i++) {
-          if (slots[i]!.active && slots[i]!.issueId) {
+          if (slots[i]!.active && slots[i]!.issueId &&
+              (!toolCtx.sessionKey || !slots[i]!.sessionKey ||
+               slots[i]!.sessionKey === toolCtx.sessionKey)) {
             slotLevel = level;
             slotIndex = i;
             issueId = Number(slots[i]!.issueId);
