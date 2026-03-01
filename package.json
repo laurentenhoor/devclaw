@@ -1,6 +1,6 @@
 {
   "name": "@laurentenhoor/devclaw",
-  "version": "1.6.4",
+  "version": "1.6.5",
   "description": "Multi-project dev/qa pipeline orchestration for OpenClaw",
   "type": "module",
   "license": "MIT",
