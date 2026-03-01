@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Critical:** work_finish now re-validates PR mergeable status during conflict resolution cycles, preventing infinite loops where developers claim "fixed" without pushing changes (#482, #480, #464, #483)
+
 ### Improved
 
 - **Explicit branch name in conflict resolution instructions** — Conflict resolution feedback now includes the exact feature branch name and complete step-by-step checkout commands. Developers no longer need to infer the branch name from the PR URL, preventing confusion when multiple PRs exist for the same issue (#482, #484).
