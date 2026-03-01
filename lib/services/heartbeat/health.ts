@@ -49,12 +49,20 @@ import {
   type Role,
 } from "../../workflow/index.js";
 import { isSessionAlive, type SessionLookup } from "../gateway-sessions.js";
+import { sendToAgent } from "../../dispatch/session.js";
+import type { RunCommand } from "../../context.js";
 
 // Re-export for consumers that import from health.ts
 export { fetchGatewaySessions, isSessionAlive, type GatewaySession, type SessionLookup } from "../gateway-sessions.js";
 
 /** Grace period: skip session-dead checks for workers started within this window. */
 export const GRACE_PERIOD_MS = 5 * 60 * 1_000; // 5 minutes
+
+/** Context token threshold below which we assume the task message never arrived. */
+const STALL_CONTEXT_THRESHOLD = 1_000;
+
+/** Message sent to nudge a stalled session back to life. */
+const NUDGE_MESSAGE = `You appear to have stalled. Continue working on your current task. If you are blocked or unable to proceed, call work_finish with result "blocked".`;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -71,6 +79,7 @@ export type HealthIssue = {
     | "issue_closed"         // Case 6b: active but issue closed externally
     | "orphaned_label"       // Case 7: active label but no worker tracking it
     | "context_overflow"     // Case 1c: active worker but session hit context limit (abortedLastRun)
+    | "session_stalled"     // Active worker but session inactive for >stallTimeoutMinutes
     | "stateless_issue";     // Case 8: open managed issue with no state label (#473)
   severity: "critical" | "warning";
   project: string;
@@ -91,6 +100,7 @@ export type HealthFix = {
   fixed: boolean;
   labelReverted?: string;
   labelRevertFailed?: boolean;
+  nudgeSent?: boolean;
 };
 
 // ---------------------------------------------------------------------------
@@ -168,6 +178,12 @@ export async function checkWorkerHealth(opts: {
   workflow?: WorkflowConfig;
   /** Hours after which an active worker is considered stale (default: 2) */
   staleWorkerHours?: number;
+  /** Minutes of session inactivity before stall detection (default: 15) */
+  stallTimeoutMinutes?: number;
+  /** Required for sending nudge messages to stalled sessions */
+  runCommand: RunCommand;
+  /** Agent ID for sendToAgent calls */
+  agentId?: string;
 }): Promise<HealthFix[]> {
   const {
     workspaceDir, projectSlug, project, role, autoFix, provider, sessions,
@@ -399,6 +415,75 @@ export async function checkWorkerHealth(opts: {
             level,
             slotIndex,
           }).catch(() => {});
+          continue;
+        }
+      }
+
+      // Case: Active with alive session but no recent activity (stalled)
+      if (slot.active && sessionKey && sessions && !withinGracePeriod && isSessionAlive(sessionKey, sessions)) {
+        const session = sessions.get(sessionKey)!;
+        const stallThresholdMs = (opts.stallTimeoutMinutes ?? 15) * 60_000;
+        const sessionIdleMs = Date.now() - (session.updatedAt || 0);
+
+        if (sessionIdleMs > stallThresholdMs) {
+          const idleMinutes = Math.round(sessionIdleMs / 60_000);
+          const taskNeverArrived = (session.contextTokens ?? 0) < STALL_CONTEXT_THRESHOLD;
+
+          const fix: HealthFix = {
+            issue: {
+              type: "session_stalled",
+              severity: "critical",
+              project: project.name,
+              projectSlug,
+              role,
+              level,
+              sessionKey,
+              issueId: slot.issueId,
+              slotIndex,
+              message: taskNeverArrived
+                ? `${role.toUpperCase()} ${level}[${slotIndex}] session idle ${idleMinutes}m, task likely never arrived — re-queuing`
+                : `${role.toUpperCase()} ${level}[${slotIndex}] session idle ${idleMinutes}m — sending nudge`,
+            },
+            fixed: false,
+          };
+
+          if (autoFix) {
+            if (taskNeverArrived) {
+              // Task never arrived → revert label, deactivate, let next tick re-dispatch
+              if (issue && currentLabel === expectedLabel) {
+                await revertLabel(fix, expectedLabel, slotQueueLabel);
+              }
+              await deactivateSlot();
+            } else {
+              // Task arrived but worker stalled → nudge the session
+              sendToAgent(sessionKey, NUDGE_MESSAGE, {
+                agentId: opts.agentId,
+                projectName: project.name,
+                issueId: issueIdNum!,
+                role,
+                level,
+                slotIndex,
+                workspaceDir,
+                runCommand: opts.runCommand,
+              });
+              fix.nudgeSent = true;
+            }
+            fix.fixed = true;
+          }
+
+          await auditLog(workspaceDir, "session_stalled", {
+            project: project.name,
+            projectSlug,
+            role,
+            level,
+            sessionKey,
+            issueId: slot.issueId,
+            slotIndex,
+            idleMinutes,
+            taskNeverArrived,
+            action: taskNeverArrived ? "requeue" : "nudge",
+          }).catch(() => {});
+          fixes.push(fix);
           continue;
         }
       }

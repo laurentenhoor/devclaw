@@ -34,6 +34,8 @@ export type TimeoutConfig = {
   staleWorkerHours?: number;
   /** Context budget ratio (0-1). Clear session when context exceeds this fraction of the context window. Default: 0.6 */
   sessionContextBudget?: number;
+  /** Minutes of session inactivity before stall detection kicks in. Default: 15 */
+  stallTimeoutMinutes?: number;
 };
 
 /**
@@ -66,6 +68,8 @@ export type ResolvedTimeouts = {
   staleWorkerHours: number;
   /** Context budget ratio (0-1). Clear session when context exceeds this fraction of the context window. Default: 0.6 */
   sessionContextBudget: number;
+  /** Minutes of session inactivity before stall detection kicks in. Default: 15 */
+  stallTimeoutMinutes: number;
 };
 
 /**

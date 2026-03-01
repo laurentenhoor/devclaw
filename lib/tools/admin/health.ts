@@ -71,6 +71,7 @@ export function createHealthTool(ctx: PluginContext) {
             sessions,
             autoFix: fix,
             provider,
+            runCommand: ctx.runCommand,
           });
           issues.push(...healthFixes.map((f) => ({ ...f, project: project.name, role })));
 

@@ -32,6 +32,9 @@ export async function performHealthPass(
   provider: import("../../providers/provider.js").IssueProvider,
   staleWorkerHours?: number,
   instanceName?: string,
+  runCommand?: RunCommand,
+  stallTimeoutMinutes?: number,
+  agentId?: string,
 ): Promise<number> {
   let fixedCount = 0;
 
@@ -46,6 +49,9 @@ export async function performHealthPass(
       autoFix: true,
       provider,
       staleWorkerHours,
+      stallTimeoutMinutes,
+      runCommand: runCommand!,
+      agentId,
     });
     fixedCount += healthFixes.filter((f) => f.fixed).length;
 
