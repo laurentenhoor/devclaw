@@ -8,11 +8,14 @@
  * Architect workflow: Researching → Done (done, closes issue), Researching → Refining (blocked).
  */
 import { jsonResult } from "openclaw/plugin-sdk";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import type { ToolContext } from "../../types.js";
 import type { PluginContext, RunCommand } from "../../context.js";
 import { getRoleWorker, resolveRepoPath, findSlotByIssue } from "../../projects/index.js";
 import { executeCompletion, getRule } from "../../services/pipeline.js";
 import { log as auditLog } from "../../audit.js";
+import { DATA_DIR } from "../../setup/migrate-layout.js";
 import { requireWorkspaceDir, resolveChannelId, resolveProject, resolveProvider } from "../helpers.js";
 import { getAllRoleIds, isValidResult, getCompletionResults } from "../../roles/index.js";
 import { loadWorkflow } from "../../workflow/index.js";
@@ -26,6 +29,42 @@ async function getCurrentBranch(repoPath: string, runCommand: RunCommand): Promi
     cwd: repoPath,
   });
   return result.stdout.trim();
+}
+
+
+/**
+ * Check if this work_finish is completing a conflict resolution cycle.
+ * Returns true if the issue was recently transitioned to "To Improve" due to merge conflicts.
+ * Used to gate mergeable-status validation — without this check, developers can claim
+ * success after local rebase but before pushing, causing infinite dispatch loops (#482).
+ */
+async function isConflictResolutionCycle(
+  workspaceDir: string,
+  issueId: number,
+): Promise<boolean> {
+  const auditPath = join(workspaceDir, DATA_DIR, "log", "audit.log");
+  try {
+    const content = await readFile(auditPath, "utf-8");
+    const lines = content.split("\n").filter(Boolean);
+    // Walk backwards through recent entries
+    for (let i = lines.length - 1; i >= 0; i--) {
+      try {
+        const entry = JSON.parse(lines[i]!);
+        if (
+          entry.issueId === issueId &&
+          entry.event === "review_transition" &&
+          entry.reason === "merge_conflict"
+        ) {
+          return true;
+        }
+      } catch {
+        // skip malformed lines
+      }
+    }
+  } catch {
+    // If we can't read the audit log, fail open (assume not a conflict cycle)
+  }
+  return false;
 }
 
 /**
@@ -43,6 +82,8 @@ async function validatePrExistsForDeveloper(
   repoPath: string,
   provider: Awaited<ReturnType<typeof resolveProvider>>["provider"],
   runCommand: RunCommand,
+  workspaceDir: string,
+  projectSlug: string,
 ): Promise<void> {
   try {
     const prStatus = await provider.getPrStatus(issueId);
@@ -82,10 +123,52 @@ async function validatePrExistsForDeveloper(
     } catch {
       // Ignore errors — marking is cosmetic
     }
+
+    // Conflict resolution validation: When an issue returns from "To Improve" due to
+    // merge conflicts, we must verify the PR is actually mergeable before accepting
+    // work_finish(done). Without this check, developers can claim success after local
+    // rebase but before pushing, causing infinite dispatch loops (#482).
+    const isConflictCycle = await isConflictResolutionCycle(workspaceDir, issueId);
+
+    if (isConflictCycle && prStatus.mergeable === false) {
+      await auditLog(workspaceDir, "work_finish_rejected", {
+        project: projectSlug,
+        issue: issueId,
+        reason: "pr_still_conflicting",
+        prUrl: prStatus.url,
+      });
+
+      const branchName = prStatus.sourceBranch || "your-branch";
+      throw new Error(
+        `Cannot complete work_finish(done) while PR still shows merge conflicts.\n\n` +
+        `✗ PR status: CONFLICTING\n` +
+        `✗ PR URL: ${prStatus.url}\n` +
+        `✗ Branch: ${branchName}\n\n` +
+        `Your local rebase may have succeeded, but changes must be pushed to the remote.\n\n` +
+        `Verify your changes were pushed:\n` +
+        `  git log origin/${branchName}..HEAD\n` +
+        `  # Should show no commits (meaning everything is pushed)\n\n` +
+        `If unpushed commits exist, push them:\n` +
+        `  git push --force-with-lease origin ${branchName}\n\n` +
+        `Wait a few seconds for GitHub to update, then verify the PR:\n` +
+        `  gh pr view ${issueId}\n` +
+        `  # Should show "Mergeable" status\n\n` +
+        `Once the PR shows as mergeable on GitHub, call work_finish again.`,
+      );
+    }
+
+    if (isConflictCycle) {
+      await auditLog(workspaceDir, "conflict_resolution_verified", {
+        project: projectSlug,
+        issue: issueId,
+        prUrl: prStatus.url,
+        mergeable: prStatus.mergeable,
+      });
+    }
   } catch (err) {
     // Re-throw our own validation errors; swallow provider/network errors.
     // Swallowing keeps work_finish unblocked when the API is unreachable.
-    if (err instanceof Error && err.message.startsWith("Cannot mark work_finish(done)")) {
+    if (err instanceof Error && err.message.startsWith("Cannot mark work_finish(done)") || err.message.startsWith("Cannot complete work_finish(done)")) {
       throw err;
     }
     console.warn(`PR validation warning for issue #${issueId}:`, err);
@@ -175,7 +258,7 @@ export function createWorkFinishTool(ctx: PluginContext) {
 
       // For developers marking work as done, validate that a PR exists
       if (role === "developer" && result === "done") {
-        await validatePrExistsForDeveloper(issueId, repoPath, provider, ctx.runCommand);
+        await validatePrExistsForDeveloper(issueId, repoPath, provider, ctx.runCommand, workspaceDir, project.slug);
       }
 
       const completion = await executeCompletion({
