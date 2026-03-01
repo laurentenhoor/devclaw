@@ -90,3 +90,21 @@ If blocked: `work_finish({ role: "developer", result: "blocked", projectSlug: "<
 
 These are orchestrator-only tools. Do not call them:
 - `task_start`, `tasks_status`, `health`, `project_register`
+
+### CRITICAL: Branch Identification for PR Feedback
+
+When the task message includes a **PR Review Feedback** section with conflict resolution instructions, 
+you MUST work on the branch explicitly mentioned in the instructions.
+
+**The instructions will show:**
+```
+🔹 PR: https://github.com/.../pull/123
+🔹 Branch: `feature/456-description`
+```
+
+Use THAT branch. Do not:
+- Create a new branch
+- Work on a different PR for the same issue
+- Guess the branch name
+
+If multiple PRs exist for the same issue number, the feedback section tells you which one has conflicts. Always check the branch name before you start.

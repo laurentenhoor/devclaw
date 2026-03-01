@@ -5,6 +5,12 @@ All notable changes to DevClaw will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Improved
+
+- **Explicit branch name in conflict resolution instructions** — Conflict resolution feedback now includes the exact feature branch name and complete step-by-step checkout commands. Developers no longer need to infer the branch name from the PR URL, preventing confusion when multiple PRs exist for the same issue (#482, #484).
+
 ## [1.6.0] - 2026-02-23
 
 ### Added

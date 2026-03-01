@@ -15,6 +15,8 @@ import { PrState } from "../providers/provider.js";
 
 export type PrFeedback = {
   url: string;
+  /** Source branch name (e.g. "feature/484-explicit-branch-name"). */
+  branchName?: string;
   reason?: "changes_requested" | "merge_conflict" | "rejected";
   comments: Array<{ id: number; author: string; body: string; state: string; path?: string; line?: number }>;
 };
@@ -32,6 +34,9 @@ export type PrContext = {
  * Fetch PR review feedback for an issue returning from review.
  * Returns undefined if no PR or no review comments found.
  * Best-effort: swallows errors (caller can still work from issue context).
+ *
+ * Includes explicit branch name in feedback to prevent developers from working
+ * on the wrong PR when multiple PRs exist for the same issue (#482).
  */
 export async function fetchPrFeedback(
   provider: IssueProvider,
@@ -51,6 +56,7 @@ export async function fetchPrFeedback(
 
     return {
       url: prStatus.url,
+      branchName: prStatus.sourceBranch,
       reason,
       comments: reviewComments.map((c) => ({
         id: c.id, author: c.author, body: c.body, state: c.state,
@@ -124,11 +130,52 @@ export function formatPrFeedback(prFeedback: PrFeedback, baseBranch: string): st
   }
 
   if (prFeedback.reason === "merge_conflict") {
-    parts.push(``, `### Conflict Resolution Instructions`,
-      `1. Rebase your branch onto \`${baseBranch}\`: \`git rebase ${baseBranch}\``,
-      `2. Resolve any conflicts`,
-      `3. Force-push: \`git push --force-with-lease\``,
-      `Prefer rebase over merge commits.`);
+    const branchName = prFeedback.branchName || "your-branch";
+
+    parts.push(
+      ``, `### Conflict Resolution Instructions`,
+      ``,
+      `**Important:** You must update the EXISTING PR branch, not create a new one.`,
+      ``,
+      `🔹 PR: ${prFeedback.url}`,
+      `🔹 Branch: \`${branchName}\``,
+      ``,
+      `**Step-by-step:**`,
+      ``,
+      `1. Fetch and check out the PR branch:`,
+      `   \`\`\`bash`,
+      `   git fetch origin ${branchName}`,
+      `   git checkout ${branchName}`,
+      `   # Or if you already have a worktree:`,
+      `   cd "${branchName}"`,
+      `   git fetch origin`,
+      `   git reset --hard origin/${branchName}`,
+      `   \`\`\``,
+      ``,
+      `2. Rebase onto \`${baseBranch}\`:`,
+      `   \`\`\`bash`,
+      `   git rebase ${baseBranch}`,
+      `   \`\`\``,
+      ``,
+      `3. Resolve any conflicts:`,
+      `   - Edit conflicted files (marked with <<<<<<< and >>>>>>>)`,
+      `   - \`git add <resolved-files>\``,
+      `   - \`git rebase --continue\``,
+      `   - Repeat until rebase completes`,
+      ``,
+      `4. Force-push to the SAME branch:`,
+      `   \`\`\`bash`,
+      `   git push --force-with-lease origin ${branchName}`,
+      `   \`\`\``,
+      ``,
+      `5. Verify the PR shows as mergeable:`,
+      `   \`\`\`bash`,
+      `   gh pr view <PR-number>`,
+      `   # Status should be "Mergeable" or "Open"`,
+      `   \`\`\``,
+      ``,
+      `⚠️ Do NOT create a new PR. Do NOT switch branches. Update THIS PR only.`,
+    );
   }
 
   return parts;
