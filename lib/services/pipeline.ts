@@ -212,6 +212,27 @@ export async function executeCompletion(opts: {
     switch (action) {
       case Action.CLOSE_ISSUE:
         await provider.closeIssue(issueId);
+        // Notify that the issue has been fully completed and closed
+        notify(
+          {
+            type: "issueComplete",
+            project: projectName,
+            issueId,
+            issueUrl: issue.web_url,
+            issueTitle: issue.title,
+            prUrl,
+          },
+          {
+            workspaceDir,
+            config: notifyConfig,
+            channelId: notifyTarget?.channelId,
+            channel: notifyTarget?.channel ?? "telegram",
+            runtime,
+            accountId: notifyTarget?.accountId,
+          },
+        ).catch((err) => {
+          auditLog(workspaceDir, "pipeline_warning", { step: "issueCompleteNotify", issue: issueId, role, error: (err as Error).message ?? String(err) }).catch(() => {});
+        });
         break;
       case Action.REOPEN_ISSUE:
         await provider.reopenIssue(issueId);
