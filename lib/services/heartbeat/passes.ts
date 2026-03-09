@@ -133,6 +133,7 @@ export async function performReviewPass(
               channel: target?.channel ?? "telegram",
               runtime,
               accountId: target?.accountId,
+              messageThreadId: target?.messageThreadId,
               runCommand,
             },
           ).catch(() => {});
@@ -162,6 +163,7 @@ export async function performReviewPass(
           channel: target?.channel ?? "telegram",
           runtime,
           accountId: target?.accountId,
+          messageThreadId: target?.messageThreadId,
           runCommand,
         },
       ).catch(() => {});
@@ -185,6 +187,7 @@ export async function performReviewPass(
           channel: target?.channel ?? "telegram",
           runtime,
           accountId: target?.accountId,
+          messageThreadId: target?.messageThreadId,
           runCommand,
         },
       ).catch(() => {});
@@ -242,6 +245,7 @@ export async function performReviewSkipPass(
               channel: target?.channel ?? "telegram",
               runtime,
               accountId: target?.accountId,
+              messageThreadId: target?.messageThreadId,
               runCommand,
             },
           ).catch(() => {});

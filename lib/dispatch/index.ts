@@ -271,6 +271,7 @@ export async function dispatchTask(
       channel: notifyTarget?.channel ?? "telegram",
       runtime,
       accountId: notifyTarget?.accountId,
+      messageThreadId: notifyTarget?.messageThreadId,
       runCommand: rc,
     },
   ).catch((err) => {
