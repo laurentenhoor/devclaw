@@ -224,16 +224,20 @@ export function createWorkFinishTool(ctx: PluginContext) {
       const { project } = await resolveProject(workspaceDir, channelId);
       const roleWorker = getRoleWorker(project, role);
 
-      // Find the first active slot across all levels
+      // Find the first active slot across all levels that matches this session.
+      // Session keys can differ slightly in casing between the tool context and
+      // stored slot state, so comparisons are case-insensitive.
       let slotIndex: number | null = null;
       let slotLevel: string | null = null;
       let issueId: number | null = null;
 
       for (const [level, slots] of Object.entries(roleWorker.levels)) {
         for (let i = 0; i < slots.length; i++) {
-          if (slots[i]!.active && slots[i]!.issueId &&
-              (!toolCtx.sessionKey || !slots[i]!.sessionKey ||
-               slots[i]!.sessionKey === toolCtx.sessionKey)) {
+          const slot = slots[i]!;
+          if (slot.active && slot.issueId &&
+              (!toolCtx.sessionKey || !slot.sessionKey ||
+               (slot.sessionKey && toolCtx.sessionKey &&
+                slot.sessionKey.toLowerCase() === toolCtx.sessionKey.toLowerCase()))) {
             slotLevel = level;
             slotIndex = i;
             issueId = Number(slots[i]!.issueId);
