@@ -132,7 +132,11 @@ export async function dispatchTask(
   // Compute session key deterministically (avoids waiting for gateway)
   // Slot name provides both collision prevention and human-readable identity
   const botName = slotName(project.name, role, level, slotIndex);
-  const sessionKey = `agent:${agentId ?? "unknown"}:subagent:${project.name}-${role}-${level}-${botName.toLowerCase()}`;
+  // Use project.slug (always lowercase) to build session key.
+  // project.name may have mixed case (e.g. "UpMoltWork"), which caused heartbeat
+  // mismatches when the gateway stores session keys in lowercase format.
+  const projectKey = (project.slug ?? project.name).toLowerCase();
+  const sessionKey = `agent:${agentId ?? "unknown"}:subagent:${projectKey}-${role}-${level}-${botName.toLowerCase()}`;
 
   // Clear stale session key if it doesn't match the current deterministic key
   // (handles migration from old numeric format like ...-0 to name-based ...-Cordelia)
