@@ -85,6 +85,14 @@ export type NotifyEvent =
       issueUrl: string;
       issueTitle: string;
       prUrl?: string;
+    }
+  | {
+      type: "issueComplete";
+      project: string;
+      issueId: number;
+      issueUrl: string;
+      issueTitle: string;
+      prUrl?: string;
     };
 
 /**
@@ -243,6 +251,15 @@ function buildMessage(event: NotifyEvent): string {
       if (event.prUrl) msg += `\n🔗 ${prLink(event.prUrl)}`;
       msg += `\n📋 [Issue #${event.issueId}](${event.issueUrl})`;
       msg += `\n→ Moving to To Improve for developer attention`;
+      return msg;
+    }
+
+    case "issueComplete": {
+      let msg = `🏁 Issue completed: #${event.issueId} — ${event.issueTitle}`;
+      msg += `\n📦 Project: ${event.project}`;
+      if (event.prUrl) msg += `\n🔗 ${prLink(event.prUrl)}`;
+      msg += `\n📋 [Issue #${event.issueId}](${event.issueUrl})`;
+      msg += `\n✅ Issue closed — work delivered.`;
       return msg;
     }
   }
