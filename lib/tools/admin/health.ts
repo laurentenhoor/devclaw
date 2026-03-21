@@ -12,7 +12,7 @@
  *
  * Read-only by default (surfaces issues). Pass fix=true to apply fixes.
  */
-import { jsonResult } from "openclaw/plugin-sdk";
+import { jsonResult } from "../../json-result.js";
 import type { PluginContext } from "../../context.js";
 import type { ToolContext } from "../../types.js";
 import { readProjects, getProject } from "../../projects/index.js";
@@ -24,11 +24,19 @@ export function createHealthTool(ctx: PluginContext) {
   return (toolCtx: ToolContext) => ({
     name: "health",
     label: "Health",
-    description: `Scan worker health across projects. Detects zombies, stale workers, orphaned state. Pass fix=true to auto-fix. Context-aware: auto-filters in group chats.`,
+    description: `Scan worker health across projects. Detects zombies, stale workers, orphaned state. Pass fix=true to auto-fix. When channelId is set, pass messageThreadId in Telegram forum topics so the correct project is selected.`,
     parameters: {
       type: "object",
       properties: {
-        channelId: { type: "string", description: "Channel ID identifying the project. Omit for all." },
+        channelId: {
+          type: "string",
+          description: "Project slug or channel ID. Omit to scan all registered projects.",
+        },
+        messageThreadId: {
+          type: "number",
+          description:
+            "Optional Telegram forum topic ID (message_thread_id). When provided with a channel ID, resolves the topic-bound project within the chat.",
+        },
         fix: { type: "boolean", description: "Apply fixes for detected issues. Default: false (read-only)." },
       },
     },
@@ -38,17 +46,24 @@ export function createHealthTool(ctx: PluginContext) {
       const fix = (params.fix as boolean) ?? false;
 
       const slugOrChannelId = params.channelId as string | undefined;
+      const messageThreadId = params.messageThreadId as number | undefined;
+      const channelType = (toolCtx.messageChannel as string | undefined) ?? "telegram";
+      const accountId = toolCtx.agentAccountId as string | undefined;
 
       const data = await readProjects(workspaceDir);
 
-      // Resolve slug from slugOrChannelId
       let slugs = Object.keys(data.projects);
       if (slugOrChannelId) {
-        const project = getProject(data, slugOrChannelId);
-        const slug = project ?
-          (data.projects[slugOrChannelId] ? slugOrChannelId :
-            Object.keys(data.projects).find(s => data.projects[s].channels.some(ch => ch.channelId === slugOrChannelId)))
-          : undefined;
+        const project =
+          data.projects[slugOrChannelId] !== undefined
+            ? data.projects[slugOrChannelId]
+            : getProject(data, {
+                channelId: slugOrChannelId,
+                channel: channelType,
+                accountId,
+                messageThreadId,
+              });
+        const slug = project?.slug;
         slugs = slug ? [slug] : [];
       }
 

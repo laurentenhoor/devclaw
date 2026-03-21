@@ -8,7 +8,7 @@
  * Calls provider.ensureLabel() directly instead of provider.ensureAllStateLabels()
  * so that custom workflow states from workspace/project overrides are included.
  */
-import { jsonResult } from "openclaw/plugin-sdk";
+import { jsonResult } from "../../json-result.js";
 import type { ToolContext } from "../../types.js";
 import type { PluginContext } from "../../context.js";
 import { requireWorkspaceDir } from "../helpers.js";
@@ -36,7 +36,12 @@ export function createSyncLabelsTool(ctx: PluginContext) {
         channelId: {
           type: "string",
           description:
-            "Channel ID identifying the project. Omit to sync all registered projects.",
+            "Project slug or channel ID. Omit to sync all registered projects.",
+        },
+        messageThreadId: {
+          type: "number",
+          description:
+            "Optional Telegram forum topic ID (message_thread_id). When provided with a channel ID, resolves the topic-bound project within the chat.",
         },
       },
     },
@@ -44,12 +49,23 @@ export function createSyncLabelsTool(ctx: PluginContext) {
     async execute(_id: string, params: Record<string, unknown>) {
       const workspaceDir = requireWorkspaceDir(toolCtx);
       const targetChannelId = params.channelId as string | undefined;
+      const messageThreadId = params.messageThreadId as number | undefined;
+      const channelType = (toolCtx.messageChannel as string | undefined) ?? "telegram";
+      const accountId = toolCtx.agentAccountId as string | undefined;
 
       const data = await readProjects(workspaceDir);
       let slugs: string[];
 
       if (targetChannelId) {
-        const project = getProject(data, targetChannelId);
+        let project =
+          data.projects[targetChannelId] !== undefined
+            ? data.projects[targetChannelId]
+            : getProject(data, {
+                channelId: targetChannelId,
+                channel: channelType,
+                accountId,
+                messageThreadId,
+              });
         if (!project) {
           throw new Error(
             `No project found for "${targetChannelId}". Register a new project with project_register first.`,

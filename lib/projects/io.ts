@@ -102,36 +102,105 @@ export async function writeProjects(
 }
 
 /**
- * Resolve a project by slug or channelId (for backward compatibility).
- * Returns the slug of the found project.
+ * Build a stable scope key for a channel binding.
+ * Used for topic-aware project resolution.
  */
-export function resolveProjectSlug(
-  data: ProjectsData,
-  slugOrChannelId: string,
-): string | undefined {
-  // Direct lookup by slug
-  if (data.projects[slugOrChannelId]) {
-    return slugOrChannelId;
-  }
-
-  // Reverse lookup by channelId in channels
-  for (const [slug, project] of Object.entries(data.projects)) {
-    if (project.channels.some(ch => ch.channelId === slugOrChannelId)) {
-      return slug;
-    }
-  }
-
-  return undefined;
+export function resolveProjectChannelScope(opts: {
+  channel: string;
+  channelId: string;
+  accountId?: string;
+  messageThreadId?: number | string | null;
+}): string {
+  const account = opts.accountId ?? "default";
+  const topic = opts.messageThreadId ?? "root";
+  return `${opts.channel}:${account}:${opts.channelId}:topic:${topic}`;
 }
 
 /**
- * Get a project by slug or channelId (dual-mode resolution).
+ * Resolve a project by slug or channel scope (for backward compatibility).
+ * When given a bare string, treats it as slug or channelId (legacy behavior).
+ * When given a scope object, performs topic-aware resolution.
+ */
+export function resolveProjectSlug(
+  data: ProjectsData,
+  slugOrChannelIdOrScope: string | {
+    channelId: string;
+    channel?: string;
+    accountId?: string;
+    messageThreadId?: number | string | null;
+  },
+): string | undefined {
+  // String input: legacy mode (slug or channelId)
+  if (typeof slugOrChannelIdOrScope === "string") {
+    const slugOrChannelId = slugOrChannelIdOrScope;
+    // Direct lookup by slug
+    if (data.projects[slugOrChannelId]) {
+      return slugOrChannelId;
+    }
+
+    // Reverse lookup by channelId in channels
+    for (const [slug, project] of Object.entries(data.projects)) {
+      if (project.channels.some((ch) => ch.channelId === slugOrChannelId)) {
+        return slug;
+      }
+    }
+
+    return undefined;
+  }
+
+  // Scoped input: topic-aware resolution
+  const { channelId, channel, accountId, messageThreadId } = slugOrChannelIdOrScope;
+  const requestedChannel = channel ?? "telegram";
+  const requestedKey = resolveProjectChannelScope({
+    channel: requestedChannel,
+    channelId,
+    accountId,
+    messageThreadId,
+  });
+
+  let fallbackSlug: string | undefined;
+
+  for (const [slug, project] of Object.entries(data.projects)) {
+    for (const ch of project.channels) {
+      const scopeKey = resolveProjectChannelScope({
+        channel: ch.channel,
+        channelId: ch.channelId,
+        accountId: ch.accountId,
+        messageThreadId: ch.messageThreadId,
+      });
+
+      // Exact topic match wins immediately
+      if (scopeKey === requestedKey) {
+        return slug;
+      }
+
+      // Record chat-level fallback when messageThreadId is undefined/root
+      const isRootScope =
+        ch.channel === requestedChannel &&
+        ch.channelId === channelId &&
+        (ch.messageThreadId == null || ch.messageThreadId === ("root" as any));
+      if (isRootScope && !fallbackSlug) {
+        fallbackSlug = slug;
+      }
+    }
+  }
+
+  return fallbackSlug;
+}
+
+/**
+ * Get a project by slug or channel scope (dual-mode resolution).
  */
 export function getProject(
   data: ProjectsData,
-  slugOrChannelId: string,
+  slugOrChannelIdOrScope: string | {
+    channelId: string;
+    channel?: string;
+    accountId?: string;
+    messageThreadId?: number | string | null;
+  },
 ): Project | undefined {
-  const slug = resolveProjectSlug(data, slugOrChannelId);
+  const slug = resolveProjectSlug(data, slugOrChannelIdOrScope);
   return slug ? data.projects[slug] : undefined;
 }
 

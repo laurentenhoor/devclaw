@@ -85,6 +85,14 @@ export type NotifyEvent =
       issueUrl: string;
       issueTitle: string;
       prUrl?: string;
+    }
+  | {
+      type: "issueComplete";
+      project: string;
+      issueId: number;
+      issueUrl: string;
+      issueTitle: string;
+      prUrl?: string;
     };
 
 /**
@@ -245,6 +253,15 @@ function buildMessage(event: NotifyEvent): string {
       msg += `\n→ Moving to To Improve for developer attention`;
       return msg;
     }
+
+    case "issueComplete": {
+      let msg = `🏁 Issue completed: #${event.issueId} — ${event.issueTitle}`;
+      msg += `\n📦 Project: ${event.project}`;
+      if (event.prUrl) msg += `\n🔗 ${prLink(event.prUrl)}`;
+      msg += `\n📋 [Issue #${event.issueId}](${event.issueUrl})`;
+      msg += `\n✅ Issue closed — work delivered.`;
+      return msg;
+    }
   }
 }
 
@@ -262,13 +279,16 @@ async function sendMessage(
   runtime?: PluginRuntime,
   accountId?: string,
   runCommand?: RunCommand,
+  messageThreadId?: number,
 ): Promise<boolean> {
   try {
     // Use runtime API when available (avoids CLI subprocess timeouts)
     if (runtime) {
       if (channel === "telegram") {
-        // Cast to any to bypass TypeScript type limitation; disableWebPagePreview is valid in Telegram API
-        await runtime.channel.telegram.sendMessageTelegram(target, message, { silent: true, disableWebPagePreview: true, accountId } as any);
+        // Cast to any to bypass TypeScript type limitation; disableWebPagePreview and messageThreadId are valid in Telegram API
+        const telegramOpts: Record<string, unknown> = { silent: true, disableWebPagePreview: true, accountId };
+        if (messageThreadId != null) telegramOpts.messageThreadId = messageThreadId;
+        await runtime.channel.telegram.sendMessageTelegram(target, message, telegramOpts as any);
         return true;
       }
       if (channel === "whatsapp") {
@@ -341,6 +361,8 @@ export async function notify(
     accountId?: string;
     /** Injected runCommand for dependency injection. */
     runCommand?: RunCommand;
+    /** Optional Telegram forum topic ID for per-topic routing */
+    messageThreadId?: number;
   },
 ): Promise<boolean> {
   if (opts.config?.[event.type] === false) return true;
@@ -364,7 +386,7 @@ export async function notify(
     message,
   });
 
-  return sendMessage(target, message, channel, opts.workspaceDir, opts.runtime, opts.accountId, opts.runCommand);
+  return sendMessage(target, message, channel, opts.workspaceDir, opts.runtime, opts.accountId, opts.runCommand, opts.messageThreadId);
 }
 
 /**

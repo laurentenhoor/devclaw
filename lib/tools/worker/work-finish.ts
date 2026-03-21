@@ -7,7 +7,7 @@
  * All roles (including architect) use the standard pipeline via executeCompletion.
  * Architect workflow: Researching → Done (done, closes issue), Researching → Refining (blocked).
  */
-import { jsonResult } from "openclaw/plugin-sdk";
+import { jsonResult } from "../../json-result.js";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ToolContext } from "../../types.js";
@@ -185,6 +185,7 @@ export function createWorkFinishTool(ctx: PluginContext) {
       required: ["channelId", "role", "result"],
       properties: {
         channelId: { type: "string", description: "YOUR chat/group ID — the numeric ID of the chat you are in right now (e.g. '-1003844794417'). Do NOT guess; use the ID of the conversation this message came from." },
+        messageThreadId: { type: "number", description: "Optional Telegram forum topic ID for this project (message_thread_id). When provided, resolves the project bound to this topic within the chat." },
         role: { type: "string", enum: getAllRoleIds(), description: "Worker role" },
         result: { type: "string", enum: ["done", "pass", "fail", "refine", "blocked", "approve", "reject"], description: "Completion result" },
         summary: { type: "string", description: "Brief summary" },
@@ -209,6 +210,7 @@ export function createWorkFinishTool(ctx: PluginContext) {
       const role = params.role as string;
       const result = params.result as string;
       const channelId = resolveChannelId(toolCtx, params.channelId as string | undefined);
+      const messageThreadId = params.messageThreadId as number | undefined;
       const summary = params.summary as string | undefined;
       const prUrl = params.prUrl as string | undefined;
       const createdTasks = params.createdTasks as Array<{ id: number; title: string; url: string }> | undefined;
@@ -221,19 +223,29 @@ export function createWorkFinishTool(ctx: PluginContext) {
       }
 
       // Resolve project + worker
-      const { project } = await resolveProject(workspaceDir, channelId);
+      const channelType = (toolCtx.messageChannel as string | undefined) ?? "telegram";
+      const accountId = toolCtx.agentAccountId as string | undefined;
+      const { project } = await resolveProject(workspaceDir, channelId, {
+        channel: channelType,
+        accountId,
+        messageThreadId,
+      });
       const roleWorker = getRoleWorker(project, role);
 
-      // Find the first active slot across all levels
+      // Find the first active slot across all levels that matches this session.
+      // Session keys can differ slightly in casing between the tool context and
+      // stored slot state, so comparisons are case-insensitive.
       let slotIndex: number | null = null;
       let slotLevel: string | null = null;
       let issueId: number | null = null;
 
       for (const [level, slots] of Object.entries(roleWorker.levels)) {
         for (let i = 0; i < slots.length; i++) {
-          if (slots[i]!.active && slots[i]!.issueId &&
-              (!toolCtx.sessionKey || !slots[i]!.sessionKey ||
-               slots[i]!.sessionKey === toolCtx.sessionKey)) {
+          const slot = slots[i]!;
+          if (slot.active && slot.issueId &&
+              (!toolCtx.sessionKey || !slot.sessionKey ||
+               (slot.sessionKey && toolCtx.sessionKey &&
+                slot.sessionKey.toLowerCase() === toolCtx.sessionKey.toLowerCase()))) {
             slotLevel = level;
             slotIndex = i;
             issueId = Number(slots[i]!.issueId);

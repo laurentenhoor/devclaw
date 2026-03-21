@@ -41,9 +41,17 @@ export function resolveChannelId(_ctx: ToolContext, explicitChannelId?: string):
 export async function resolveProject(
   workspaceDir: string,
   channelId: string,
+  opts?: { channel?: string; accountId?: string; messageThreadId?: number | string | null },
 ): Promise<{ data: ProjectsData; project: Project }> {
   const data = await readProjects(workspaceDir);
-  const project = getProject(data, channelId);
+  const project = opts
+    ? getProject(data, {
+        channelId,
+        channel: opts.channel,
+        accountId: opts.accountId,
+        messageThreadId: opts.messageThreadId,
+      })
+    : getProject(data, channelId);
   if (!project) {
     throw new Error(
       `No project found for "${channelId}". ` +

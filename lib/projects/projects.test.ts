@@ -17,6 +17,7 @@ import {
   countActiveSlots,
   reconcileSlots,
   writeProjects,
+  resolveProjectSlug,
   type ProjectsData,
   type RoleWorkerState,
 } from "./index.js";
@@ -257,6 +258,87 @@ describe("readProjects migration", () => {
     assert.ok(project.workers.tester, "qa should be migrated to tester");
     assert.ok(project.workers.developer.levels.medior, "mid should be migrated to medior");
     assert.strictEqual(project.workers.developer.levels.medior[0]!.sessionKey, "key-m");
+
+    await fs.rm(tmpDir, { recursive: true });
+  });
+
+  it("should migrate legacy topicId to messageThreadId and strip topicId from disk", async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "devclaw-proj-"));
+    const dataDir = path.join(tmpDir, "devclaw");
+    await fs.mkdir(dataDir, { recursive: true });
+
+    const raw = {
+      projects: {
+        p1: {
+          slug: "p1",
+          name: "P1",
+          repo: "~/p1",
+          groupName: "P1",
+          deployUrl: "",
+          baseBranch: "main",
+          deployBranch: "main",
+          channels: [
+            {
+              channelId: "-100",
+              channel: "telegram",
+              name: "primary",
+              events: ["*"],
+              topicId: 42,
+            },
+          ],
+          workers: {
+            developer: emptyRoleWorkerState({ junior: 1 }),
+            tester: emptyRoleWorkerState({ junior: 1 }),
+            architect: emptyRoleWorkerState({ senior: 1 }),
+          },
+        },
+        p2: {
+          slug: "p2",
+          name: "P2",
+          repo: "~/p2",
+          groupName: "P2",
+          deployUrl: "",
+          baseBranch: "main",
+          deployBranch: "main",
+          channels: [
+            {
+              channelId: "-100",
+              channel: "telegram",
+              name: "primary",
+              events: ["*"],
+              topicId: 176,
+              messageThreadId: 176,
+            },
+          ],
+          workers: {
+            developer: emptyRoleWorkerState({ junior: 1 }),
+            tester: emptyRoleWorkerState({ junior: 1 }),
+            architect: emptyRoleWorkerState({ senior: 1 }),
+          },
+        },
+      },
+    };
+    await fs.writeFile(path.join(dataDir, "projects.json"), JSON.stringify(raw), "utf-8");
+
+    const data = await readProjects(tmpDir);
+    const ch1 = data.projects.p1.channels[0]!;
+    assert.strictEqual(ch1.messageThreadId, 42);
+    assert.strictEqual((ch1 as { topicId?: unknown }).topicId, undefined);
+
+    const ch2 = data.projects.p2.channels[0]!;
+    assert.strictEqual(ch2.messageThreadId, 176);
+    assert.strictEqual((ch2 as { topicId?: unknown }).topicId, undefined);
+
+    const disk = JSON.parse(await fs.readFile(path.join(dataDir, "projects.json"), "utf-8")) as {
+      projects: { p1: { channels: Array<{ topicId?: number }> }; p2: { channels: Array<{ topicId?: number }> } };
+    };
+    assert.strictEqual(disk.projects.p1.channels[0]!.topicId, undefined);
+    assert.strictEqual(disk.projects.p2.channels[0]!.topicId, undefined);
+
+    assert.strictEqual(
+      resolveProjectSlug(data, { channelId: "-100", channel: "telegram", messageThreadId: 42 }),
+      "p1",
+    );
 
     await fs.rm(tmpDir, { recursive: true });
   });

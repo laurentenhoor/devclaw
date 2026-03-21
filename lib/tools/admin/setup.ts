@@ -4,7 +4,7 @@
  * Creates agent, configures model levels, writes workspace files.
  * Thin wrapper around lib/setup/.
  */
-import { jsonResult } from "openclaw/plugin-sdk";
+import { jsonResult } from "../../json-result.js";
 import type { ToolContext } from "../../types.js";
 import type { PluginContext } from "../../context.js";
 import { runSetup, type SetupOpts } from "../../setup/index.js";

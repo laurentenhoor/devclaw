@@ -6,7 +6,7 @@
  * - Manually attach a local file to an issue
  * - View attachment metadata and local paths
  */
-import { jsonResult } from "openclaw/plugin-sdk";
+import { jsonResult } from "../../json-result.js";
 import type { PluginContext } from "../../context.js";
 import type { ToolContext } from "../../types.js";
 import { log as auditLog } from "../../audit.js";
@@ -38,6 +38,10 @@ Use cases:
           type: "string",
           description: "YOUR chat/group ID — the numeric ID of the chat you are in right now (e.g. '-1003844794417'). Do NOT guess; use the ID of the conversation this message came from.",
         },
+        messageThreadId: {
+          type: "number",
+          description: "Optional Telegram forum topic ID for this project (message_thread_id). When provided, resolves the topic-bound project within the chat.",
+        },
         issueId: {
           type: "number",
           description: "Issue ID",
@@ -60,11 +64,18 @@ Use cases:
 
     async execute(_id: string, params: Record<string, unknown>) {
       const channelId = resolveChannelId(toolCtx, params.channelId as string | undefined);
+      const messageThreadId = params.messageThreadId as number | undefined;
       const issueId = params.issueId as number;
       const action = (params.action as string) ?? "list";
       const workspaceDir = requireWorkspaceDir(toolCtx);
 
-      const { project } = await resolveProject(workspaceDir, channelId);
+      const channelType = (toolCtx.messageChannel as string | undefined) ?? "telegram";
+      const accountId = toolCtx.agentAccountId as string | undefined;
+      const { project } = await resolveProject(workspaceDir, channelId, {
+        channel: channelType,
+        accountId,
+        messageThreadId,
+      });
 
       if (action === "list") {
         const attachments = await listAttachments(workspaceDir, project.slug, issueId);
@@ -114,7 +125,8 @@ Use cases:
         const filename = path.basename(resolvedPath);
 
         // Detect mime type
-        const { detectMime } = await import("openclaw/plugin-sdk");
+        // OpenClaw only exports detectMime from some channel submodules in this version.
+        const { detectMime } = await import("openclaw/plugin-sdk/msteams");
         const mimeType = await detectMime({ filePath: resolvedPath, buffer }) ?? "application/octet-stream";
 
         const { provider } = await resolveProvider(project, ctx.runCommand);

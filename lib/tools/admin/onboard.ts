@@ -3,7 +3,7 @@
  *
  * Returns step-by-step guidance. Call this before setup.
  */
-import { jsonResult } from "openclaw/plugin-sdk";
+import { jsonResult } from "../../json-result.js";
 import type { ToolContext } from "../../types.js";
 import type { PluginContext } from "../../context.js";
 import { isPluginConfigured, hasWorkspaceFiles, buildOnboardToolContext, buildReconfigContext } from "../../setup/onboarding.js";

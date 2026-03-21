@@ -8,7 +8,7 @@
  */
 import fs from "node:fs/promises";
 import path from "node:path";
-import { jsonResult } from "openclaw/plugin-sdk";
+import { jsonResult } from "../../json-result.js";
 import type { ToolContext } from "../../types.js";
 import type { PluginContext } from "../../context.js";
 import { writeAllDefaults, backupAndWrite, fileExists } from "../../setup/workspace.js";

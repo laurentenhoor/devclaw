@@ -6,7 +6,7 @@
  *
  * Replaces the manual steps of running glab/gh label create + editing projects.json.
  */
-import { jsonResult } from "openclaw/plugin-sdk";
+import { jsonResult } from "../../json-result.js";
 import type { ToolContext } from "../../types.js";
 import type { PluginContext } from "../../context.js";
 import fs from "node:fs/promises";
@@ -93,6 +93,11 @@ export function createProjectRegisterTool(ctx: PluginContext) {
           type: "string",
           description: "Channel ID — the chat/group ID where this project is managed (e.g. Telegram group ID)",
         },
+        messageThreadId: {
+          type: "number",
+          description:
+            "Optional Telegram forum topic ID (message_thread_id). When provided with channel='telegram', binds the project to this topic instead of the whole chat.",
+        },
         name: {
           type: "string",
           description: "Short project name (e.g. 'my-webapp')",
@@ -133,6 +138,7 @@ export function createProjectRegisterTool(ctx: PluginContext) {
       const baseBranch = params.baseBranch as string;
       const deployBranch = (params.deployBranch as string) ?? baseBranch;
       const deployUrl = (params.deployUrl as string) ?? "";
+      const messageThreadId = params.messageThreadId as number | undefined;
       const workspaceDir = toolCtx.workspaceDir;
 
       if (!workspaceDir) {
@@ -208,6 +214,9 @@ export function createProjectRegisterTool(ctx: PluginContext) {
           channel: channel as "telegram" | "whatsapp" | "discord" | "slack",
           name: `channel-${existing.channels.length + 1}`,
           events: ["*"],
+          ...(messageThreadId != null && channel === "telegram"
+            ? { messageThreadId }
+            : {}),
         };
         existing.channels.push(newChannel);
         if (repoRemote && !existing.repoRemote) {
@@ -226,6 +235,9 @@ export function createProjectRegisterTool(ctx: PluginContext) {
           channel: channel as "telegram" | "whatsapp" | "discord" | "slack",
           name: "primary",
           events: ["*"],
+          ...(messageThreadId != null && channel === "telegram"
+            ? { messageThreadId }
+            : {}),
         };
 
         data.projects[slug] = {

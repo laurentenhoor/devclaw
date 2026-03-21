@@ -12,7 +12,7 @@
  * - projects.json format: flat slots → per-level format
  */
 
-import type { RoleWorkerState, SlotState, Project } from "./types.js";
+import type { RoleWorkerState, SlotState, Project, Channel } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Role aliases — old role IDs → canonical IDs
@@ -195,6 +195,7 @@ function parseWorkerState(worker: Record<string, unknown>, role: string): RoleWo
  * 3. Old level names in worker state
  * 4. Old slot-based format → per-level format
  * 5. Missing channel field defaults to "telegram"
+ * 6. Telegram: legacy topicId → messageThreadId; topicId removed from stored shape
  */
 /**
  * Returns true if any migration was applied (caller should persist).
@@ -228,6 +229,19 @@ export function migrateProject(project: Project): boolean {
     }
   } else {
     project.workers = {};
+  }
+
+  // Telegram channels: legacy topicId → messageThreadId; drop topicId (canonical field only)
+  if (project.channels) {
+    for (const ch of project.channels) {
+      const rawCh = ch as unknown as Record<string, unknown> & Channel;
+      if (rawCh.channel !== "telegram" || rawCh.topicId == null) continue;
+      if (rawCh.messageThreadId == null) {
+        rawCh.messageThreadId = Number(rawCh.topicId);
+      }
+      delete rawCh.topicId;
+      changed = true;
+    }
   }
 
   // Migrate legacy `groupId` field to `channelId` in channel objects.

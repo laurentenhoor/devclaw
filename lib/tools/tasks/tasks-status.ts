@@ -4,7 +4,7 @@
  * Fetches all non-terminal issues grouped by state type (hold, active, queue).
  * Use `project_status` for instant local info, this tool for live issue data.
  */
-import { jsonResult } from "openclaw/plugin-sdk";
+import { jsonResult } from "../../json-result.js";
 import type { ToolContext } from "../../types.js";
 import type { PluginContext } from "../../context.js";
 import { log as auditLog } from "../../audit.js";
@@ -30,14 +30,25 @@ export function createTasksStatusTool(ctx: PluginContext) {
           type: "string",
           description: "YOUR chat/group ID — the numeric ID of the chat you are in right now (e.g. '-1003844794417'). Do NOT guess; use the ID of the conversation this message came from.",
         },
+        messageThreadId: {
+          type: "number",
+          description: "Optional Telegram forum topic ID for this project (message_thread_id). When provided, resolves the project bound to this topic within the chat.",
+        },
       },
     },
 
     async execute(_id: string, params: Record<string, unknown>) {
       const workspaceDir = requireWorkspaceDir(toolCtx);
       const channelId = resolveChannelId(toolCtx, params.channelId as string | undefined);
+      const messageThreadId = params.messageThreadId as number | undefined;
+      const channelType = (toolCtx.messageChannel as string | undefined) ?? "telegram";
+      const accountId = toolCtx.agentAccountId as string | undefined;
 
-      const { project } = await resolveProject(workspaceDir, channelId);
+      const { project } = await resolveProject(workspaceDir, channelId, {
+        channel: channelType,
+        accountId,
+        messageThreadId,
+      });
       const { provider } = await resolveProvider(project, ctx.runCommand);
 
       const projectConfig = await loadConfig(workspaceDir, project.name);

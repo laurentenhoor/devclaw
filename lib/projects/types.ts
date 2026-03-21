@@ -33,6 +33,11 @@ export type Channel = {
   name: string; // e.g. "primary", "dev-chat"
   events: string[]; // e.g. ["*"] for all, ["workerComplete"] for filtered
   accountId?: string; // Optional account ID for multi-account setups
+  /**
+   * Telegram forum topic ID used for topic-scoped routing.
+   * Mirrors Telegram API naming for clarity and interoperability.
+   */
+  messageThreadId?: number;
 };
 
 /**

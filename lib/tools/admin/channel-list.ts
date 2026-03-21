@@ -4,7 +4,7 @@
  * Shows registered channels with their type, ID, name, and event subscriptions.
  * Can list channels for a specific project or all projects.
  */
-import { jsonResult } from "openclaw/plugin-sdk";
+import { jsonResult } from "../../json-result.js";
 import type { PluginContext } from "../../context.js";
 import type { ToolContext } from "../../types.js";
 import { readProjects } from "../../projects/index.js";
@@ -57,6 +57,7 @@ export function createChannelListTool(_ctx: PluginContext) {
           name: ch.name,
           events: ch.events,
           accountId: ch.accountId,
+          messageThreadId: ch.messageThreadId ?? null,
         }));
 
         const announcement =
@@ -65,10 +66,16 @@ export function createChannelListTool(_ctx: PluginContext) {
             ? "_(none)_"
             : channels
                 .map(
-                  (ch) =>
-                    `• **${ch.name}** (${ch.type})\n  ID: \`${ch.channelId}\`\n  Events: ${ch.events.join(", ")}${
-                      ch.accountId ? `\n  Account: ${ch.accountId}` : ""
-                    }`,
+                  (ch) => {
+                    const topicSuffix =
+                      ch.type === "telegram" && ch.messageThreadId != null
+                        ? `\n  Topic: ${ch.messageThreadId}`
+                        : "";
+                    const accountSuffix = ch.accountId ? `\n  Account: ${ch.accountId}` : "";
+                    return `• **${ch.name}** (${ch.type})\n  ID: \`${ch.channelId}\`${topicSuffix}\n  Events: ${ch.events.join(
+                      ", ",
+                    )}${accountSuffix}`;
+                  },
                 )
                 .join("\n\n"));
 
@@ -100,6 +107,7 @@ export function createChannelListTool(_ctx: PluginContext) {
             name: ch.name,
             events: ch.events,
             accountId: ch.accountId,
+            messageThreadId: ch.messageThreadId ?? null,
           })),
         }));
 
@@ -111,10 +119,13 @@ export function createChannelListTool(_ctx: PluginContext) {
                 p.channels.length === 0
                   ? "  _(no channels)_"
                   : p.channels
-                      .map(
-                        (ch) =>
-                          `  • **${ch.name}** (${ch.type}) — \`${ch.channelId}\``,
-                      )
+                      .map((ch) => {
+                        const topicSuffix =
+                          ch.type === "telegram" && ch.messageThreadId != null
+                            ? ` topic:${ch.messageThreadId}`
+                            : "";
+                        return `  • **${ch.name}** (${ch.type}) — \`${ch.channelId}\`${topicSuffix}`;
+                      })
                       .join("\n");
               return `**${p.project}** (${p.projectSlug}):\n${channelList}`;
             })

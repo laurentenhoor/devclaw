@@ -8,7 +8,7 @@
  * The heartbeat is the sole dispatcher — this tool only places issues in
  * queues, never dispatches workers directly.
  */
-import { jsonResult } from "openclaw/plugin-sdk";
+import { jsonResult } from "../../json-result.js";
 import type { PluginContext } from "../../context.js";
 import type { ToolContext } from "../../types.js";
 import { log as auditLog } from "../../audit.js";
@@ -47,6 +47,10 @@ Examples:
           type: "string",
           description: "YOUR chat/group ID — the numeric ID of the chat you are in right now (e.g. '-1003844794417'). Do NOT guess; use the ID of the conversation this message came from.",
         },
+        messageThreadId: {
+          type: "number",
+          description: "Optional Telegram forum topic ID for this project (message_thread_id). When provided, resolves the topic-bound project within the chat.",
+        },
         issueId: {
           type: "number",
           description: "Issue ID to advance.",
@@ -64,7 +68,14 @@ Examples:
       const levelHint = params.level as string | undefined;
       const workspaceDir = requireWorkspaceDir(toolCtx);
 
-      const { project } = await resolveProject(workspaceDir, channelId);
+      const messageThreadId = params.messageThreadId as number | undefined;
+      const channelType = (toolCtx.messageChannel as string | undefined) ?? "telegram";
+      const accountId = toolCtx.agentAccountId as string | undefined;
+      const { project } = await resolveProject(workspaceDir, channelId, {
+        channel: channelType,
+        accountId,
+        messageThreadId,
+      });
       const { provider } = await resolveProvider(project, ctx.runCommand);
       const resolvedConfig = await loadConfig(workspaceDir, project.name);
       const workflow = resolvedConfig.workflow;

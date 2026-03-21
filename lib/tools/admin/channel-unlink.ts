@@ -5,7 +5,7 @@
  * exists and prevents removing the last channel from a project (projects must
  * have at least one notification endpoint).
  */
-import { jsonResult } from "openclaw/plugin-sdk";
+import { jsonResult } from "../../json-result.js";
 import type { PluginContext } from "../../context.js";
 import type { ToolContext } from "../../types.js";
 import { readProjects, writeProjects } from "../../projects/index.js";
@@ -35,6 +35,10 @@ export function createChannelUnlinkTool(_ctx: PluginContext) {
           type: "boolean",
           description: "Set to true to confirm the removal. Defaults to false (dry-run).",
         },
+        messageThreadId: {
+          type: "number",
+          description: "Optional Telegram forum topic ID. When provided, only unlinks the matching topic binding for this channel instead of all bindings for the chat.",
+        },
       },
     },
 
@@ -42,6 +46,7 @@ export function createChannelUnlinkTool(_ctx: PluginContext) {
       const channelId = params.channelId as string;
       const projectRef = params.project as string;
       const confirm = params.confirm as boolean | undefined;
+      const messageThreadId = params.messageThreadId as number | undefined;
       const workspaceDir = requireWorkspaceDir(toolCtx);
 
       if (!channelId) throw new Error("channelId is required.");
@@ -66,8 +71,11 @@ export function createChannelUnlinkTool(_ctx: PluginContext) {
         );
       }
 
-      // Find the channel
-      const idx = target.channels.findIndex((ch) => ch.channelId === channelId);
+      // Find the channel (optionally scoped by messageThreadId)
+      const idx = target.channels.findIndex((ch) =>
+        ch.channelId === channelId &&
+        (messageThreadId == null || ch.messageThreadId === messageThreadId)
+      );
       if (idx === -1) {
         throw new Error(
           `Channel ${channelId} not found in project "${target.name}".`,
@@ -93,9 +101,12 @@ export function createChannelUnlinkTool(_ctx: PluginContext) {
           channelId,
           channelName: channel.name,
           channelType: channel.channel,
+          messageThreadId: channel.messageThreadId ?? null,
           remainingChannels: target.channels.length - 1,
           announcement:
-            `DRY-RUN: Would remove channel "${channel.name}" (${channelId}) from project "${target.name}". ` +
+            `DRY-RUN: Would remove channel "${channel.name}" (${channelId}${
+              channel.messageThreadId != null ? ` topic ${channel.messageThreadId}` : ""
+            }) from project "${target.name}". ` +
             `${target.channels.length - 1} channel(s) would remain. Set confirm=true to proceed.`,
         });
       }
@@ -111,6 +122,7 @@ export function createChannelUnlinkTool(_ctx: PluginContext) {
         channelId,
         channelName: channel.name,
         channelType: channel.channel,
+        messageThreadId: channel.messageThreadId ?? null,
       });
 
       return jsonResult({
@@ -122,7 +134,9 @@ export function createChannelUnlinkTool(_ctx: PluginContext) {
         channelType: channel.channel,
         remainingChannels: target.channels.length,
         announcement:
-          `Channel "${channel.name}" (${channelId}) unlinked from project "${target.name}". ` +
+          `Channel "${channel.name}" (${channelId}${
+            channel.messageThreadId != null ? ` topic ${channel.messageThreadId}` : ""
+          }) unlinked from project "${target.name}". ` +
           `${target.channels.length} channel(s) remaining.`,
       });
     },

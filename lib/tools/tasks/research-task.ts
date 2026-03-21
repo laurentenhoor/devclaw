@@ -12,7 +12,7 @@
  *   → architect calls work_finish(result="done") → "Researching" → "Done" (issue closed)
  *   → operator reviews created tasks in Planning, moves to "To Do" when ready
  */
-import { jsonResult } from "openclaw/plugin-sdk";
+import { jsonResult } from "../../json-result.js";
 import type { ToolContext } from "../../types.js";
 import type { PluginContext } from "../../context.js";
 import type { StateLabel } from "../../providers/provider.js";
@@ -60,6 +60,11 @@ Example:
           type: "string",
           description: "YOUR chat/group ID — the numeric ID of the chat you are in right now (e.g. '-1003844794417'). Do NOT guess; use the ID of the conversation this message came from.",
         },
+        messageThreadId: {
+          type: "number",
+          description:
+            "Optional Telegram forum topic ID for this project (message_thread_id). When provided, resolves the topic-bound project within the chat.",
+        },
         title: {
           type: "string",
           description: "Research title (e.g., 'Research: Session persistence strategy')",
@@ -92,12 +97,19 @@ Example:
       const focusAreas = (params.focusAreas as string[]) ?? [];
       const complexity = (params.complexity as "simple" | "medium" | "complex") ?? "medium";
       const dryRun = (params.dryRun as boolean) ?? false;
+      const messageThreadId = params.messageThreadId as number | undefined;
       const workspaceDir = requireWorkspaceDir(toolCtx);
 
       if (!title) throw new Error("title is required");
       if (!description) throw new Error("description is required — provide detailed background context for the architect");
 
-      const { project } = await resolveProject(workspaceDir, channelId);
+      const channelType = (toolCtx.messageChannel as string | undefined) ?? "telegram";
+      const accountId = toolCtx.agentAccountId as string | undefined;
+      const { project } = await resolveProject(workspaceDir, channelId, {
+        channel: channelType,
+        accountId,
+        messageThreadId,
+      });
       const { provider } = await resolveProvider(project, ctx.runCommand);
       const pluginConfig = ctx.pluginConfig;
       const role = "architect";

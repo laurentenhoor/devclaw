@@ -6,7 +6,7 @@
  * (auto-detach). This is the primary way to switch which project a chat
  * controls.
  */
-import { jsonResult } from "openclaw/plugin-sdk";
+import { jsonResult } from "../../json-result.js";
 import type { PluginContext } from "../../context.js";
 import type { ToolContext } from "../../types.js";
 import { readProjects, writeProjects, type Channel } from "../../projects/index.js";
@@ -45,6 +45,11 @@ export function createChannelLinkTool(_ctx: PluginContext) {
           description:
             "Display name for this channel (e.g. 'general', 'dev-chat'). Auto-generated if omitted.",
         },
+        messageThreadId: {
+          type: "number",
+          description:
+            "Optional Telegram forum topic ID (message_thread_id). When provided, links this specific topic instead of the whole chat.",
+        },
       },
     },
 
@@ -53,6 +58,7 @@ export function createChannelLinkTool(_ctx: PluginContext) {
       const projectRef = params.project as string;
       const channelType = (params.channel as Channel["channel"]) ?? "telegram";
       const channelName = params.name as string | undefined;
+      const messageThreadId = params.messageThreadId as number | undefined;
       const workspaceDir = requireWorkspaceDir(toolCtx);
 
       if (!channelId) throw new Error("channelId is required.");
@@ -78,9 +84,11 @@ export function createChannelLinkTool(_ctx: PluginContext) {
         );
       }
 
-      // Already linked to this project?
-      const alreadyLinked = target.channels.some(
-        (ch) => ch.channelId === channelId,
+      // Already linked to this project for the same scope?
+      const alreadyLinked = target.channels.some((ch) =>
+        ch.channelId === channelId &&
+        ch.channel === channelType &&
+        (messageThreadId == null || ch.messageThreadId === messageThreadId)
       );
       if (alreadyLinked) {
         return jsonResult({
@@ -93,11 +101,13 @@ export function createChannelLinkTool(_ctx: PluginContext) {
         });
       }
 
-      // Auto-detach from any other project that has this channelId
+      // Auto-detach from any other project that has this exact scoped binding
       let detachedFrom: string | null = null;
       for (const project of Object.values(data.projects)) {
-        const idx = project.channels.findIndex(
-          (ch) => ch.channelId === channelId,
+        const idx = project.channels.findIndex((ch) =>
+          ch.channelId === channelId &&
+          ch.channel === channelType &&
+          (messageThreadId == null || ch.messageThreadId === messageThreadId)
         );
         if (idx !== -1) {
           detachedFrom = project.name;
@@ -112,6 +122,9 @@ export function createChannelLinkTool(_ctx: PluginContext) {
         channel: channelType,
         name: channelName ?? `channel-${target.channels.length + 1}`,
         events: ["*"],
+        ...(messageThreadId != null && channelType === "telegram"
+          ? { messageThreadId }
+          : {}),
       };
       target.channels.push(newChannel);
 
@@ -123,6 +136,7 @@ export function createChannelLinkTool(_ctx: PluginContext) {
         channelId,
         channelType,
         channelName: newChannel.name,
+        messageThreadId: messageThreadId ?? null,
         detachedFrom,
       });
 
@@ -136,8 +150,12 @@ export function createChannelLinkTool(_ctx: PluginContext) {
         projectSlug: target.slug,
         channelId,
         channelName: newChannel.name,
+        messageThreadId: messageThreadId ?? null,
         detachedFrom,
-        announcement: `Channel linked to "${target.name}"${detachNote}.`,
+        announcement:
+          messageThreadId != null && channelType === "telegram"
+            ? `Channel topic ${messageThreadId} linked to "${target.name}"${detachNote}.`
+            : `Channel linked to "${target.name}"${detachNote}.`,
       });
     },
   });

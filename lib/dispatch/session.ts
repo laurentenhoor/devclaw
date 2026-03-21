@@ -82,12 +82,56 @@ export function ensureSessionFireAndForget(sessionKey: string, model: string, wo
   });
 }
 
+/** Same shape as `resolveNotifyChannel()` — used to pass Telegram chat/topic into the gateway agent run. */
+export type NotifyRoutingTarget = {
+  channelId: string;
+  channel: string;
+  accountId?: string;
+  messageThreadId?: number;
+};
+
+function applyNotifyRoutingToGatewayParams(
+  params: Record<string, unknown>,
+  target: NotifyRoutingTarget | undefined,
+): void {
+  if (!target?.channelId) {
+    return;
+  }
+  params.to = target.channelId;
+  params.channel = target.channel;
+  if (target.accountId) {
+    params.accountId = target.accountId;
+  }
+  if (target.messageThreadId != null && Number.isFinite(Number(target.messageThreadId))) {
+    params.threadId = String(Math.trunc(Number(target.messageThreadId)));
+  }
+}
+
 export function sendToAgent(
   sessionKey: string, taskMessage: string,
-  opts: { agentId?: string; projectName: string; issueId: number; role: string; level?: string; slotIndex?: number; fromLabel?: string; orchestratorSessionKey?: string; workspaceDir: string; dispatchTimeoutMs?: number; extraSystemPrompt?: string; runCommand: RunCommand },
+  opts: {
+    agentId?: string;
+    projectName: string;
+    issueId: number;
+    role: string;
+    level?: string;
+    slotIndex?: number;
+    fromLabel?: string;
+    orchestratorSessionKey?: string;
+    workspaceDir: string;
+    dispatchTimeoutMs?: number;
+    extraSystemPrompt?: string;
+    runCommand: RunCommand;
+    /**
+     * When set (e.g. from `resolveNotifyChannel`), forwarded to the gateway `agent` call as
+     * `to`, `channel`, `accountId`, and `threadId` so plugin tools get `messageThreadId` injection
+     * (Telegram forum topics) on the worker run.
+     */
+    notifyTarget?: NotifyRoutingTarget;
+  },
 ): void {
   const rc = opts.runCommand;
-  const gatewayParams = JSON.stringify({
+  const gatewayParamsRecord: Record<string, unknown> = {
     idempotencyKey: `devclaw-${opts.projectName}-${opts.issueId}-${opts.role}-${opts.level ?? "unknown"}-${opts.slotIndex ?? 0}-${opts.fromLabel ?? "unknown"}-${sessionKey}`,
     agentId: opts.agentId ?? "devclaw",
     sessionKey,
@@ -96,7 +140,9 @@ export function sendToAgent(
     lane: "subagent",
     ...(opts.orchestratorSessionKey ? { spawnedBy: opts.orchestratorSessionKey } : {}),
     ...(opts.extraSystemPrompt ? { extraSystemPrompt: opts.extraSystemPrompt } : {}),
-  });
+  };
+  applyNotifyRoutingToGatewayParams(gatewayParamsRecord, opts.notifyTarget);
+  const gatewayParams = JSON.stringify(gatewayParamsRecord);
   // Fire-and-forget: long-running agent turn, don't await
   rc(
     ["openclaw", "gateway", "call", "agent", "--params", gatewayParams, "--expect-final", "--json"],
